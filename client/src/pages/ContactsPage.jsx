@@ -2,9 +2,10 @@ import { useState, useEffect, useRef } from 'react'
 import api from '../utils/api'
 import toast from 'react-hot-toast'
 import { CATEGORIES, STATUTS } from '../utils/constants'
-import { CategorieBadge, StatutBadge, ScoreBadge, PotentielStars } from '../components/ContactBadge'
+import { CategorieBadge, StatutBadge, ScoreBadge } from '../components/ContactBadge'
 import ContactModal from '../components/ContactModal'
 import ImportModal from '../components/ImportModal'
+import Icon from '../components/ui/Icon'
 import { format } from 'date-fns'
 
 export default function ContactsPage() {
@@ -60,75 +61,77 @@ export default function ContactsPage() {
 
   return (
     <div className="flex-1 overflow-hidden flex flex-col">
-      {/* Toolbar */}
-      <div className="bg-white border-b border-gray-200 p-4">
-        <div className="flex flex-wrap gap-3 items-center">
+      <div className="bg-white border-b border-quai-border p-4">
+        <div className="flex flex-col lg:flex-row lg:flex-wrap gap-3 lg:items-center">
           <input
-            className="input flex-1 min-w-48"
-            placeholder="Rechercher (nom, téléphone, ville...)"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
+            className="input flex-1 min-w-0 lg:min-w-[16rem]"
+            placeholder="Rechercher (nom, téléphone, ville…)"
+            value={search} onChange={e => setSearch(e.target.value)}
+            aria-label="Rechercher un contact"
           />
-          <select className="input w-auto" value={categorie} onChange={e => setCategorie(e.target.value)}>
-            <option value="">Toutes catégories</option>
-            {Object.entries(CATEGORIES).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-          </select>
-          <select className="input w-auto" value={statut} onChange={e => setStatut(e.target.value)}>
-            <option value="">Tous statuts</option>
-            {Object.entries(STATUTS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-          </select>
-          <select className="input w-auto" value={`${sort}:${order}`} onChange={e => { const [s, o] = e.target.value.split(':'); setSort(s); setOrder(o) }}>
-            <option value="score_priorite:DESC">Score ↓</option>
-            <option value="nom:ASC">Nom A-Z</option>
-            <option value="date_dernier_contact:DESC">Dernier contact ↓</option>
-            <option value="prochain_contact:ASC">Prochain contact ↑</option>
-            <option value="created_at:DESC">Ajouté récemment</option>
-          </select>
-          <button onClick={openNew} className="btn-primary btn-sm">+ Nouveau</button>
-          <button onClick={() => setShowImport(true)} className="btn-secondary btn-sm">📥 Import CSV</button>
-          <button onClick={handleExport} className="btn-secondary btn-sm">📤 Export</button>
+          <div className="flex flex-wrap gap-3">
+            <select className="input w-auto" value={categorie} onChange={e => setCategorie(e.target.value)} aria-label="Filtrer par catégorie">
+              <option value="">Toutes catégories</option>
+              {Object.entries(CATEGORIES).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+            </select>
+            <select className="input w-auto" value={statut} onChange={e => setStatut(e.target.value)} aria-label="Filtrer par statut">
+              <option value="">Tous statuts</option>
+              {Object.entries(STATUTS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+            </select>
+            <select className="input w-auto" value={`${sort}:${order}`} onChange={e => { const [s, o] = e.target.value.split(':'); setSort(s); setOrder(o) }} aria-label="Trier">
+              <option value="score_priorite:DESC">Score décroissant</option>
+              <option value="nom:ASC">Nom A-Z</option>
+              <option value="date_dernier_contact:DESC">Dernier contact</option>
+              <option value="prochain_contact:ASC">Prochain contact</option>
+              <option value="created_at:DESC">Ajouté récemment</option>
+            </select>
+          </div>
+          <div className="flex flex-wrap gap-2 lg:ml-auto">
+            <button onClick={openNew} className="btn-primary btn-sm inline-flex items-center gap-1.5"><Icon name="plus" size="sm" /> Nouveau</button>
+            <button onClick={() => setShowImport(true)} className="btn-secondary btn-sm inline-flex items-center gap-1.5"><Icon name="upload" size="sm" /> Importer</button>
+            <button onClick={handleExport} className="btn-secondary btn-sm inline-flex items-center gap-1.5"><Icon name="download" size="sm" /> Exporter</button>
+          </div>
         </div>
-        <div className="text-xs text-gray-500 mt-2">{total.toLocaleString('fr')} contact(s) trouvé(s)</div>
+        <div className="text-xs text-quai-muted mt-2">{total.toLocaleString('fr')} contact(s) trouvé(s)</div>
       </div>
 
-      {/* Table */}
       <div className="flex-1 overflow-auto">
         {loading && contacts.length === 0 ? (
-          <div className="flex items-center justify-center h-32 text-gray-400 animate-pulse">Chargement...</div>
+          <div className="flex items-center justify-center h-32 text-quai-muted animate-pulse">Chargement…</div>
         ) : (
           <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b border-gray-200 sticky top-0">
+            <thead className="bg-quai-light border-b border-quai-border sticky top-0">
               <tr>
-                <th className="text-left px-4 py-3 font-medium text-gray-600">Nom</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600">Téléphone</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600">Ville</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600">Catégorie</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600">Statut</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600">Score</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600">Dernier contact</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600">Prochain</th>
+                <th className="text-left px-4 py-3 font-medium text-quai-muted">Nom</th>
+                <th className="text-left px-4 py-3 font-medium text-quai-muted">Téléphone</th>
+                <th className="text-left px-4 py-3 font-medium text-quai-muted">Ville</th>
+                <th className="text-left px-4 py-3 font-medium text-quai-muted">Catégorie</th>
+                <th className="text-left px-4 py-3 font-medium text-quai-muted">Statut</th>
+                <th className="text-left px-4 py-3 font-medium text-quai-muted">Score</th>
+                <th className="text-left px-4 py-3 font-medium text-quai-muted">Dernier contact</th>
+                <th className="text-left px-4 py-3 font-medium text-quai-muted">Prochain</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-quai-border">
               {contacts.map(c => (
                 <tr
                   key={c.id}
                   onClick={() => openContact(c)}
-                  className="hover:bg-blue-50 cursor-pointer transition-colors"
+                  className="hover:bg-quai-light cursor-pointer transition-colors"
                 >
                   <td className="px-4 py-3">
-                    <div className="font-medium text-gray-900">{c.prenom} {c.nom}</div>
-                    {c.email && <div className="text-xs text-gray-400">{c.email}</div>}
+                    <div className="font-medium text-quai-navy">{c.prenom} {c.nom}</div>
+                    {c.email && <div className="text-xs text-quai-muted">{c.email}</div>}
                   </td>
-                  <td className="px-4 py-3 font-mono text-gray-700">{c.telephone}</td>
-                  <td className="px-4 py-3 text-gray-600">{c.ville}</td>
+                  <td className="px-4 py-3 font-mono text-quai-text">{c.telephone}</td>
+                  <td className="px-4 py-3 text-quai-muted">{c.ville}</td>
                   <td className="px-4 py-3"><CategorieBadge categorie={c.categorie} /></td>
                   <td className="px-4 py-3"><StatutBadge statut={c.statut} /></td>
                   <td className="px-4 py-3"><ScoreBadge score={c.score_priorite} /></td>
-                  <td className="px-4 py-3 text-gray-500 text-xs">
+                  <td className="px-4 py-3 text-quai-muted text-xs">
                     {c.date_dernier_contact ? format(new Date(c.date_dernier_contact), 'dd/MM/yyyy') : '—'}
                   </td>
-                  <td className="px-4 py-3 text-gray-500 text-xs">
+                  <td className="px-4 py-3 text-quai-muted text-xs">
                     {c.prochain_contact ? (
                       <span className={new Date(c.prochain_contact) < new Date() ? 'text-red-600 font-medium' : ''}>
                         {format(new Date(c.prochain_contact), 'dd/MM/yyyy')}
@@ -142,12 +145,11 @@ export default function ContactsPage() {
         )}
       </div>
 
-      {/* Pagination */}
       {pages > 1 && (
-        <div className="bg-white border-t border-gray-200 px-4 py-3 flex items-center justify-between">
-          <button disabled={page <= 1} onClick={() => setPage(p => p - 1)} className="btn-secondary btn-sm">← Précédent</button>
-          <span className="text-sm text-gray-600">Page {page} / {pages}</span>
-          <button disabled={page >= pages} onClick={() => setPage(p => p + 1)} className="btn-secondary btn-sm">Suivant →</button>
+        <div className="bg-white border-t border-quai-border px-4 py-3 flex items-center justify-between">
+          <button disabled={page <= 1} onClick={() => setPage(p => p - 1)} className="btn-secondary btn-sm inline-flex items-center gap-1.5"><Icon name="arrow-left" size="sm" /> Précédent</button>
+          <span className="text-sm text-quai-muted">Page {page} / {pages}</span>
+          <button disabled={page >= pages} onClick={() => setPage(p => p + 1)} className="btn-secondary btn-sm inline-flex items-center gap-1.5">Suivant <Icon name="arrow-right" size="sm" /></button>
         </div>
       )}
 

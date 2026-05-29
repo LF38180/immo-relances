@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from 'react'
 import api from '../utils/api'
 import toast from 'react-hot-toast'
-import { CATEGORIES, STATUTS_RELANCE, STATUTS } from '../utils/constants'
+import { STATUTS_RELANCE } from '../utils/constants'
 import { CategorieBadge, ScoreBadge, PotentielStars } from '../components/ContactBadge'
+import Icon from '../components/ui/Icon'
 import { format } from 'date-fns'
 
 const SHORTCUT_MAP = {
@@ -70,7 +71,7 @@ export default function SessionPage() {
         contactes: prev.contactes + (['contacte', 'rdv_obtenu'].includes(s) ? 1 : 0),
         pasRep: prev.pasRep + (['tente_sans_reponse', 'message_laisse'].includes(s) ? 1 : 0),
       }))
-      if (s === 'rdv_obtenu') toast.success('🎉 RDV obtenu ! Excellent !', { duration: 3000 })
+      if (s === 'rdv_obtenu') toast.success('RDV obtenu ! Excellent !', { duration: 3000 })
       else toast.success('Relance enregistrée')
 
       if (index + 1 >= file.length) {
@@ -90,7 +91,6 @@ export default function SessionPage() {
     else setIndex(i => i + 1)
   }
 
-  // Raccourcis clavier
   useEffect(() => {
     const handler = (e) => {
       if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT') return
@@ -102,23 +102,23 @@ export default function SessionPage() {
     return () => window.removeEventListener('keydown', handler)
   }, [submit])
 
-  if (loading) return <div className="flex-1 flex items-center justify-center"><div className="animate-pulse text-gray-400">Chargement de la file...</div></div>
+  if (loading) return <div className="flex-1 flex items-center justify-center bg-quai-light"><div className="animate-pulse text-quai-muted">Chargement de la file…</div></div>
 
   if (done || file.length === 0) {
     return (
-      <div className="flex-1 flex items-center justify-center p-8">
+      <div className="flex-1 flex items-center justify-center p-8 bg-quai-light">
         <div className="text-center max-w-md">
-          <div className="text-6xl mb-4">🏆</div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">
-            {file.length === 0 ? 'Aucune relance à faire' : 'Session terminée !'}
+          <Icon name="trophy" size="xl" className="text-quai-gold mx-auto mb-4" />
+          <h2 className="text-2xl font-display font-bold text-quai-navy mb-2">
+            {file.length === 0 ? 'Aucune relance à faire' : 'Session terminée'}
           </h2>
           <div className="grid grid-cols-2 gap-4 my-6">
-            <div className="card text-center"><div className="text-2xl font-bold text-blue-600">{sessionStats.total}</div><div className="text-xs text-gray-500">Relances</div></div>
-            <div className="card text-center"><div className="text-2xl font-bold text-green-600">{sessionStats.rdv}</div><div className="text-xs text-gray-500">RDV obtenus</div></div>
-            <div className="card text-center"><div className="text-2xl font-bold text-indigo-600">{sessionStats.contactes}</div><div className="text-xs text-gray-500">Contactés</div></div>
-            <div className="card text-center"><div className="text-2xl font-bold text-yellow-600">{sessionStats.pasRep}</div><div className="text-xs text-gray-500">Sans réponse</div></div>
+            <div className="card text-center"><div className="text-2xl font-bold text-quai-navy">{sessionStats.total}</div><div className="text-xs text-quai-muted">Relances</div></div>
+            <div className="card text-center"><div className="text-2xl font-bold text-emerald-600">{sessionStats.rdv}</div><div className="text-xs text-quai-muted">RDV obtenus</div></div>
+            <div className="card text-center"><div className="text-2xl font-bold text-quai-navy">{sessionStats.contactes}</div><div className="text-xs text-quai-muted">Contactés</div></div>
+            <div className="card text-center"><div className="text-2xl font-bold text-amber-600">{sessionStats.pasRep}</div><div className="text-xs text-quai-muted">Sans réponse</div></div>
           </div>
-          <button onClick={loadFile} className="btn-primary">Recharger la file</button>
+          <button onClick={loadFile} className="btn-primary inline-flex items-center gap-2"><Icon name="refresh-cw" size="sm" /> Recharger la file</button>
         </div>
       </div>
     )
@@ -127,24 +127,22 @@ export default function SessionPage() {
   const progress = Math.round((index / file.length) * 100)
 
   return (
-    <div className="flex-1 overflow-y-auto bg-gray-50 p-4">
-      {/* Progress bar */}
+    <div className="flex-1 overflow-y-auto bg-quai-light p-4">
       <div className="max-w-3xl mx-auto mb-4">
-        <div className="flex items-center justify-between text-sm text-gray-500 mb-1">
+        <div className="flex items-center justify-between text-sm text-quai-muted mb-1">
           <span>Contact {index + 1} / {file.length}</span>
           <div className="flex gap-4 text-xs">
-            <span className="text-green-600 font-medium">✅ {sessionStats.rdv} RDV</span>
-            <span className="text-blue-600 font-medium">☎️ {sessionStats.contactes} contactés</span>
-            <span className="text-yellow-600 font-medium">📵 {sessionStats.pasRep} sans réponse</span>
+            <span className="text-emerald-600 font-medium inline-flex items-center gap-1"><Icon name="calendar-check" size="sm" /> {sessionStats.rdv} RDV</span>
+            <span className="text-quai-navy font-medium inline-flex items-center gap-1"><Icon name="phone-call" size="sm" /> {sessionStats.contactes} contactés</span>
+            <span className="text-amber-600 font-medium inline-flex items-center gap-1"><Icon name="phone-off" size="sm" /> {sessionStats.pasRep} sans réponse</span>
           </div>
         </div>
-        <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
-          <div className="h-full bg-blue-500 rounded-full transition-all" style={{ width: `${progress}%` }} />
+        <div className="h-2 bg-quai-border rounded-full overflow-hidden">
+          <div className="h-full bg-quai-gold rounded-full transition-all" style={{ width: `${progress}%` }} />
         </div>
       </div>
 
       <div className="max-w-3xl mx-auto grid grid-cols-1 gap-4">
-        {/* Fiche contact */}
         <div className="card">
           <div className="flex items-start justify-between mb-4">
             <div>
@@ -153,129 +151,117 @@ export default function SessionPage() {
                 <ScoreBadge score={contact.score_priorite} />
                 <PotentielStars potentiel={contact.potentiel} />
               </div>
-              <h2 className="text-2xl font-bold text-gray-900">{contact.prenom} {contact.nom}</h2>
-              {contact.ville && <p className="text-gray-500 text-sm">{contact.ville} {contact.code_postal}</p>}
+              <h2 className="text-2xl font-display font-bold text-quai-navy">{contact.prenom} {contact.nom}</h2>
+              {contact.ville && <p className="text-quai-muted text-sm">{contact.ville} {contact.code_postal}</p>}
             </div>
             <div className="text-right">
               {contact.date_dernier_contact && (
-                <div className="text-xs text-gray-400">
+                <div className="text-xs text-quai-muted">
                   Dernier contact : {format(new Date(contact.date_dernier_contact), 'dd/MM/yyyy')}
                 </div>
               )}
-              <div className="text-xs text-gray-400">{contact.nombre_tentatives} tentative(s)</div>
+              <div className="text-xs text-quai-muted">{contact.nombre_tentatives} tentative(s)</div>
             </div>
           </div>
 
-          {/* Numéro en grand */}
           {contact.telephone && (
-            <div className="bg-blue-50 rounded-xl p-4 mb-4 flex items-center justify-between">
+            <div className="bg-quai-navy rounded-xl p-5 mb-4 flex items-center justify-between">
               <div>
-                <div className="text-xs text-blue-600 font-medium uppercase mb-1">Téléphone</div>
-                <a href={`tel:${contact.telephone}`} className="text-3xl font-bold text-blue-700 hover:text-blue-800">
-                  {contact.telephone}
+                <div className="text-xs text-quai-gold font-medium uppercase tracking-wider mb-1">Téléphone</div>
+                <a href={`tel:${contact.telephone}`} className="text-3xl font-bold text-white hover:text-quai-gold transition-colors inline-flex items-center gap-2">
+                  <Icon name="phone" size="lg" /> {contact.telephone}
                 </a>
               </div>
               {contact.telephone2 && (
                 <div className="text-right">
-                  <div className="text-xs text-blue-600 font-medium uppercase mb-1">Tél. 2</div>
-                  <a href={`tel:${contact.telephone2}`} className="text-lg font-semibold text-blue-600">
-                    {contact.telephone2}
-                  </a>
+                  <div className="text-xs text-quai-gold/80 font-medium uppercase mb-1">Tél. 2</div>
+                  <a href={`tel:${contact.telephone2}`} className="text-lg font-semibold text-white/80 hover:text-white">{contact.telephone2}</a>
                 </div>
               )}
             </div>
           )}
 
           {contact.email && (
-            <div className="text-sm text-gray-600 mb-3">✉️ {contact.email}</div>
+            <div className="text-sm text-quai-muted mb-3 inline-flex items-center gap-1.5"><Icon name="mail" size="sm" /> {contact.email}</div>
           )}
 
           {contact.notes && (
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm text-gray-700 mb-3">
-              <span className="font-medium">📌 Notes : </span>{contact.notes}
+            <div className="bg-quai-gold/10 border border-quai-gold/30 rounded-lg p-3 text-sm text-quai-text mb-3 flex gap-2">
+              <Icon name="pin" size="sm" className="text-quai-gold flex-shrink-0 mt-0.5" />
+              <span><span className="font-medium">Notes : </span>{contact.notes}</span>
             </div>
           )}
 
           {contact.tags && JSON.parse(contact.tags || '[]').length > 0 && (
             <div className="flex flex-wrap gap-1">
               {JSON.parse(contact.tags).map(t => (
-                <span key={t} className="badge bg-gray-100 text-gray-600">{t}</span>
+                <span key={t} className="badge bg-quai-light text-quai-muted border border-quai-border">{t}</span>
               ))}
             </div>
           )}
         </div>
 
-        {/* Script */}
         {scripts.length > 0 && (
           <div className="card">
-            <button onClick={() => setShowScript(v => !v)} className="w-full flex items-center justify-between text-sm font-medium text-gray-700">
-              <span>📝 Script d'appel <span className="kbd ml-1">S</span></span>
-              <span>{showScript ? '▲' : '▼'}</span>
+            <button onClick={() => setShowScript(v => !v)} className="w-full flex items-center justify-between text-sm font-medium text-quai-navy">
+              <span className="inline-flex items-center gap-2"><Icon name="file-text" size="sm" /> Script d'appel <span className="kbd ml-1">S</span></span>
+              <Icon name={showScript ? 'chevron-up' : 'chevron-down'} size="sm" />
             </button>
             {showScript && scripts.map(s => (
-              <div key={s.id} className="mt-3 p-3 bg-gray-50 rounded-lg text-sm text-gray-700 whitespace-pre-wrap border-l-4 border-blue-400">
-                <div className="font-medium text-blue-700 mb-1">{s.titre}</div>
+              <div key={s.id} className="mt-3 p-3 bg-quai-light rounded-lg text-sm text-quai-text whitespace-pre-wrap border-l-4 border-quai-gold">
+                <div className="font-medium text-quai-navy mb-1">{s.titre}</div>
                 {s.contenu}
               </div>
             ))}
           </div>
         )}
 
-        {/* Actions */}
         <div className="card">
-          <h3 className="font-medium text-gray-700 mb-3">Résultat de l'appel</h3>
+          <h3 className="font-medium text-quai-navy mb-3">Résultat de l'appel</h3>
 
-          {/* Boutons statuts */}
           <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mb-4">
             {Object.entries(STATUTS_RELANCE).map(([key, val], i) => (
               <button
                 key={key}
                 onClick={() => setStatutRelance(key)}
-                className={`flex items-center gap-2 p-3 rounded-lg border-2 text-sm font-medium transition-all ${
+                aria-pressed={statutRelance === key}
+                className={`flex items-center gap-2 p-3 rounded-lg border-2 text-sm font-medium transition-all min-h-[44px] ${
                   statutRelance === key
-                    ? 'border-blue-500 bg-blue-50 text-blue-700'
-                    : 'border-gray-200 hover:border-gray-300 text-gray-600'
+                    ? 'border-quai-gold bg-quai-gold/10 text-quai-navy'
+                    : 'border-quai-border hover:border-quai-navy/40 text-quai-muted'
                 }`}
               >
-                <span>{val.icon}</span>
+                <Icon name={val.icon} size="sm" className="flex-shrink-0" />
                 <span className="flex-1 text-left">{val.label}</span>
                 <kbd className="kbd text-xs">{i + 1}</kbd>
               </button>
             ))}
           </div>
 
-          {/* Notes */}
           <textarea
             className="input mb-3 resize-none"
             rows={2}
-            placeholder="Notes rapides (optionnel)..."
+            placeholder="Notes rapides (optionnel)…"
             value={notes}
             onChange={e => setNotes(e.target.value)}
           />
 
-          {/* Prochain contact */}
           {['rappel_planifie', 'contacte', 'a_recontacter'].includes(statutRelance) && (
             <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-600 mb-1">Date de prochain contact</label>
+              <label className="block text-sm font-medium text-quai-muted mb-1">Date de prochain contact</label>
               <input type="date" className="input w-auto" value={prochainContact} onChange={e => setProchainContact(e.target.value)} />
             </div>
           )}
 
-          {/* Boutons d'action */}
           <div className="flex gap-3">
-            <button
-              onClick={() => submit()}
-              disabled={!statutRelance || submitting}
-              className="btn-primary flex-1"
-            >
-              {submitting ? 'Enregistrement...' : 'Enregistrer et suivant →'}
+            <button onClick={() => submit()} disabled={!statutRelance || submitting} className="btn-primary flex-1 inline-flex items-center justify-center gap-2">
+              {submitting ? 'Enregistrement…' : <>Enregistrer et suivant <Icon name="arrow-right" size="sm" /></>}
             </button>
             <button onClick={skip} className="btn-secondary">Passer</button>
           </div>
         </div>
 
-        {/* Raccourcis */}
-        <div className="text-center text-xs text-gray-400">
+        <div className="text-center text-xs text-quai-muted">
           Raccourcis : <kbd className="kbd">1-6</kbd> statut · <kbd className="kbd">S</kbd> script · <kbd className="kbd">→</kbd> passer
         </div>
       </div>

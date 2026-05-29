@@ -13,7 +13,13 @@ export default function LoginPage() {
     try {
       await login(form.email, form.password)
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Email ou mot de passe incorrect')
+      if (err.response) {
+        // Le serveur a répondu (ex. 401) : identifiants invalides
+        toast.error(err.response.data?.error || 'Email ou mot de passe incorrect')
+      } else {
+        // Pas de réponse : serveur injoignable (souvent le backend non démarré)
+        toast.error('Serveur injoignable. Vérifiez que l\'application est bien démarrée (npm run dev / start.sh).')
+      }
     } finally {
       setLoading(false)
     }
@@ -59,8 +65,9 @@ export default function LoginPage() {
           </div>
 
           <div className="mb-8">
-            <h2 className="text-2xl font-semibold text-quai-navy">Connexion</h2>
-            <p className="text-quai-muted text-sm mt-1">Accédez à votre espace de relances</p>
+            <h2 className="text-2xl font-display font-semibold text-quai-navy">Connexion</h2>
+            <div className="mt-2 w-10 h-0.5 bg-quai-gold" />
+            <p className="text-quai-muted text-sm mt-3">Accédez à votre espace de relances</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-5">

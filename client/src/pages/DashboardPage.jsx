@@ -4,6 +4,8 @@ import api from '../utils/api'
 import { CATEGORIES, STATUTS } from '../utils/constants'
 import { format, subDays } from 'date-fns'
 import { fr } from 'date-fns/locale'
+import Icon from '../components/ui/Icon'
+import PageHeader from '../components/ui/PageHeader'
 
 const PIE_COLORS = ['#0D0D2B','#C9A96E','#2d2d6b','#e8c98a','#1a1a4e','#94a3b8']
 
@@ -22,8 +24,8 @@ export default function DashboardPage({ onNavigate }) {
   }, [periode])
 
   if (loading) return (
-    <div className="flex-1 flex items-center justify-center">
-      <div className="text-quai-muted animate-pulse text-sm">Chargement...</div>
+    <div className="flex-1 flex items-center justify-center bg-quai-light">
+      <div className="text-quai-muted animate-pulse text-sm">Chargement…</div>
     </div>
   )
   if (!stats) return null
@@ -31,7 +33,6 @@ export default function DashboardPage({ onNavigate }) {
   const rdvCount = stats.parStatut.find(s => s.statut === 'rdv_obtenu')?.cnt || 0
   const contacteCount = stats.parStatut.find(s => s.statut === 'contacte')?.cnt || 0
   const tauxContact = stats.totalRelances > 0 ? Math.round((contacteCount + rdvCount) / stats.totalRelances * 100) : 0
-  const tauxRdv = (contacteCount + rdvCount) > 0 ? Math.round(rdvCount / (contacteCount + rdvCount) * 100) : 0
 
   const catData = stats.contactsParCategorie.map(c => ({
     name: CATEGORIES[c.categorie]?.label || c.categorie, value: c.cnt
@@ -43,29 +44,21 @@ export default function DashboardPage({ onNavigate }) {
   return (
     <div className="flex-1 overflow-y-auto p-6 bg-quai-light">
       <div className="max-w-6xl mx-auto">
-
-        {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-xl font-semibold text-quai-navy">Vue d'ensemble</h1>
-            <p className="text-quai-muted text-sm">{format(new Date(), "EEEE d MMMM yyyy", { locale: fr })}</p>
-          </div>
-          <select value={periode} onChange={e => setPeriode(Number(e.target.value))} className="input w-auto text-sm">
+        <PageHeader title="Vue d'ensemble" subtitle={format(new Date(), "EEEE d MMMM yyyy", { locale: fr })}>
+          <select value={periode} onChange={e => setPeriode(Number(e.target.value))} className="input w-auto text-sm" aria-label="Période">
             <option value={7}>7 derniers jours</option>
             <option value={30}>30 derniers jours</option>
             <option value={90}>90 derniers jours</option>
           </select>
-        </div>
+        </PageHeader>
 
-        {/* KPIs */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          <KpiCard label="Total contacts" value={stats.totalContacts.toLocaleString('fr')} icon="👥" variant="navy" />
-          <KpiCard label="Relances (période)" value={stats.totalRelances} icon="📞" variant="gold" />
-          <KpiCard label="Taux de contact" value={`${tauxContact}%`} icon="✅" variant="light" />
-          <KpiCard label="RDV obtenus (total)" value={stats.rdvObtenus} icon="🎉" variant="success" onClick={() => onNavigate('contacts')} />
+          <KpiCard label="Total contacts" value={stats.totalContacts.toLocaleString('fr')} icon="users" variant="navy" />
+          <KpiCard label="Relances (période)" value={stats.totalRelances} icon="phone" variant="gold" />
+          <KpiCard label="Taux de contact" value={`${tauxContact}%`} icon="trending-up" variant="light" />
+          <KpiCard label="RDV obtenus (total)" value={stats.rdvObtenus} icon="calendar-check" variant="success" onClick={() => onNavigate('contacts')} />
         </div>
 
-        {/* Activité agents */}
         {stats.parAgent?.length > 0 && (
           <div className="card mb-6">
             <h2 className="font-semibold text-quai-navy mb-4 text-sm uppercase tracking-wider">Activité aujourd'hui</h2>
@@ -84,7 +77,6 @@ export default function DashboardPage({ onNavigate }) {
         )}
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-          {/* Graphique relances */}
           <div className="card">
             <h2 className="font-semibold text-quai-navy mb-4 text-sm uppercase tracking-wider">Relances par jour</h2>
             {parJourData.length > 0 ? (
@@ -99,7 +91,6 @@ export default function DashboardPage({ onNavigate }) {
             ) : <div className="h-48 flex items-center justify-center text-quai-muted text-sm">Aucune donnée sur cette période</div>}
           </div>
 
-          {/* Camembert catégories */}
           <div className="card">
             <h2 className="font-semibold text-quai-navy mb-4 text-sm uppercase tracking-wider">Répartition par catégorie</h2>
             {catData.length > 0 ? (
@@ -116,7 +107,6 @@ export default function DashboardPage({ onNavigate }) {
           </div>
         </div>
 
-        {/* Pipeline */}
         <div className="card">
           <h2 className="font-semibold text-quai-navy mb-4 text-sm uppercase tracking-wider">Pipeline contacts</h2>
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
@@ -147,8 +137,9 @@ function KpiCard({ label, value, icon, variant, onClick }) {
     <div
       className={`rounded-xl p-5 flex items-center gap-4 ${styles[variant]} ${onClick ? 'cursor-pointer hover:opacity-90 transition-opacity' : ''}`}
       onClick={onClick}
+      {...(onClick ? { role: 'button', tabIndex: 0, onKeyDown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick() } } } : {})}
     >
-      <div className="text-3xl">{icon}</div>
+      <Icon name={icon} size="xl" className="opacity-80" />
       <div>
         <div className="text-2xl font-bold leading-tight">{value}</div>
         <div className="text-xs opacity-70 mt-0.5">{label}</div>

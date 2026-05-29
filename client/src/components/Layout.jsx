@@ -1,13 +1,14 @@
 import { useState } from 'react'
 import { useAuth } from '../hooks/useAuth'
+import Icon from './ui/Icon'
 
 const NAV_ITEMS = [
-  { id: 'dashboard', label: 'Tableau de bord', icon: '📊', roles: ['agent', 'manager', 'admin'] },
-  { id: 'session',   label: 'Session relance', icon: '📞', roles: ['agent', 'manager', 'admin'] },
-  { id: 'contacts',  label: 'Contacts',         icon: '👥', roles: ['agent', 'manager', 'admin'] },
-  { id: 'scripts',   label: 'Scripts d\'appel', icon: '📝', roles: ['agent', 'manager', 'admin'] },
-  { id: 'supervision', label: 'Supervision',    icon: '👁', roles: ['manager', 'admin'] },
-  { id: 'admin',     label: 'Administration',   icon: '⚙️', roles: ['admin'] },
+  { id: 'dashboard',  label: 'Tableau de bord', icon: 'layout-dashboard', roles: ['agent', 'manager', 'admin'] },
+  { id: 'session',    label: 'Session relance', icon: 'phone',            roles: ['agent', 'manager', 'admin'] },
+  { id: 'contacts',   label: 'Contacts',        icon: 'users',            roles: ['agent', 'manager', 'admin'] },
+  { id: 'scripts',    label: "Scripts d'appel", icon: 'file-text',        roles: ['agent', 'manager', 'admin'] },
+  { id: 'supervision',label: 'Supervision',     icon: 'eye',              roles: ['manager', 'admin'] },
+  { id: 'admin',      label: 'Administration',  icon: 'settings',         roles: ['admin'] },
 ]
 
 export default function Layout({ page, onNavigate, children }) {
@@ -36,9 +37,10 @@ export default function Layout({ page, onNavigate, children }) {
           )}
           <button
             onClick={() => setCollapsed(!collapsed)}
-            className="text-white/40 hover:text-white p-1 rounded transition-colors ml-auto"
+            aria-label={collapsed ? 'Déplier le menu' : 'Replier le menu'}
+            className="text-white/40 hover:text-white p-1 rounded transition-colors ml-auto focus-visible:outline-2 focus-visible:outline-white"
           >
-            {collapsed ? '▶' : '◀'}
+            <Icon name={collapsed ? 'chevron-right' : 'chevron-left'} size="sm" />
           </button>
         </div>
 
@@ -64,7 +66,7 @@ export default function Layout({ page, onNavigate, children }) {
                   : 'text-white/70 hover:bg-white/10 hover:text-white'
               }`}
             >
-              <span className="text-base flex-shrink-0">{item.icon}</span>
+              <Icon name={item.icon} size="md" className="flex-shrink-0" />
               {!collapsed && <span className="truncate">{item.label}</span>}
             </button>
           ))}
@@ -74,10 +76,10 @@ export default function Layout({ page, onNavigate, children }) {
         <div className="p-2 border-t border-white/10">
           <button
             onClick={logout}
-            title={collapsed ? 'Déconnexion' : ''}
-            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-white/40 hover:text-white hover:bg-white/10 transition-colors"
+            aria-label="Déconnexion"
+            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-white/40 hover:text-white hover:bg-white/10 transition-colors focus-visible:outline-2 focus-visible:outline-white"
           >
-            <span>🚪</span>
+            <Icon name="log-out" size="md" />
             {!collapsed && <span>Déconnexion</span>}
           </button>
         </div>

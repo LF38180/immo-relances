@@ -90,29 +90,28 @@ router.post('/', (req, res) => {
   res.status(201).json({ id: result.lastInsertRowid });
 });
 
-// Modifier
+// Modifier (mise à jour partielle : seules les clés présentes dans le body sont modifiées)
 router.put('/:id', (req, res) => {
-  const {
-    nom, prenom, telephone, telephone2, email, adresse, code_postal, ville,
-    categorie, tags, notes, potentiel, statut, prochain_contact
-  } = req.body;
-
   const contact = db.prepare('SELECT id FROM contacts WHERE id = ?').get(req.params.id);
   if (!contact) return res.status(404).json({ error: 'Contact non trouvé' });
 
-  db.prepare(`
-    UPDATE contacts SET
-      nom = COALESCE(?, nom), prenom = COALESCE(?, prenom), telephone = COALESCE(?, telephone),
-      telephone2 = COALESCE(?, telephone2), email = COALESCE(?, email), adresse = COALESCE(?, adresse),
-      code_postal = COALESCE(?, code_postal), ville = COALESCE(?, ville), categorie = COALESCE(?, categorie),
-      tags = COALESCE(?, tags), notes = COALESCE(?, notes), potentiel = COALESCE(?, potentiel),
-      statut = COALESCE(?, statut), prochain_contact = ?,
-      updated_at = datetime('now')
-    WHERE id = ?
-  `).run(nom, prenom, telephone, telephone2, email, adresse, code_postal, ville, categorie,
-    tags ? (typeof tags === 'string' ? tags : JSON.stringify(tags)) : null,
-    notes, potentiel, statut, prochain_contact || null, req.params.id);
+  const CHAMPS = ['nom','prenom','telephone','telephone2','email','adresse','code_postal',
+    'ville','categorie','tags','notes','potentiel','statut','prochain_contact'];
 
+  const sets = [];
+  const params = [];
+  for (const champ of CHAMPS) {
+    if (!(champ in req.body)) continue;
+    let val = req.body[champ];
+    if (champ === 'tags') val = typeof val === 'string' ? val : JSON.stringify(val);
+    if (champ === 'prochain_contact') val = val || null;
+    sets.push(`${champ} = ?`);
+    params.push(val);
+  }
+  sets.push(`updated_at = datetime('now')`);
+  params.push(req.params.id);
+
+  db.prepare(`UPDATE contacts SET ${sets.join(', ')} WHERE id = ?`).run(...params);
   recalculerScore(req.params.id);
   res.json({ ok: true });
 });
@@ -129,21 +128,24 @@ router.post('/import', (req, res) => {
   if (!Array.isArray(contacts) || contacts.length === 0) return res.status(400).json({ error: 'Données invalides' });
 
   const insert = db.prepare(`
-    INSERT INTO contacts (nom, prenom, telephone, telephone2, email, adresse, code_postal, ville, categorie, notes, potentiel, source_import)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'import_csv')
+    INSERT INTO contacts (nom, prenom, telephone, telephone2, email, adresse, code_postal, ville, categorie, notes, potentiel, statut, prochain_contact, source_import)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'import_csv')
   `);
 
   let importes = 0;
   let erreurs = 0;
+  const STATUTS_OK = ['a_contacter','tente_sans_reponse','rappel_planifie','rdv_obtenu','pas_interesse','a_recontacter','inactif'];
 
   const importMany = db.transaction((rows) => {
     for (const c of rows) {
       if (!c.nom && !c.prenom) { erreurs++; continue; }
       try {
+        const statut = STATUTS_OK.includes(c.statut) ? c.statut : 'a_contacter';
         const result = insert.run(
           c.nom || '', c.prenom || '', c.telephone || '', c.telephone2 || '',
           c.email || '', c.adresse || '', c.code_postal || '', c.ville || '',
-          c.categorie || 'autre', c.notes || '', parseInt(c.potentiel) || 3
+          c.categorie || 'autre', c.notes || '', parseInt(c.potentiel) || 3,
+          statut, c.prochain_contact || null
         );
         recalculerScore(result.lastInsertRowid);
         importes++;
