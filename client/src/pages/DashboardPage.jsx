@@ -137,7 +137,7 @@ function KpiCard({ label, value, icon, variant, onClick }) {
     <div
       className={`rounded-xl p-5 flex items-center gap-4 ${styles[variant]} ${onClick ? 'cursor-pointer hover:opacity-90 transition-opacity' : ''}`}
       onClick={onClick}
-      {...(onClick ? { role: 'button', tabIndex: 0, onKeyDown: (e) => (e.key === 'Enter' || e.key === ' ') && onClick() } : {})}
+      {...(onClick ? { role: 'button', tabIndex: 0, onKeyDown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick() } } } : {})}
     >
       <Icon name={icon} size="xl" className="opacity-80" />
       <div>

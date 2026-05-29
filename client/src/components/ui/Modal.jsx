@@ -19,7 +19,7 @@ export default function Modal({ title, onClose, children, footer, size = 'lg' })
     first?.focus()
 
     const onKey = (e) => {
-      if (e.key === 'Escape') { e.stopPropagation(); onClose(); return }
+      if (e.key === 'Escape') { e.stopImmediatePropagation(); onClose(); return }
       if (e.key === 'Tab') {
         const els = focusable()
         if (els.length === 0) return
