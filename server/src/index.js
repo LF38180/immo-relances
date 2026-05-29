@@ -20,7 +20,8 @@ app.get('/api/health', (_, res) => res.json({ status: 'ok', time: new Date().toI
 
 // En production : servir le build React
 if (isProd) {
-  const clientBuild = path.join(__dirname, '..', '..', 'client', 'dist');
+  // Depuis la racine du projet : client/dist
+  const clientBuild = path.join(process.cwd(), 'client', 'dist');
   app.use(express.static(clientBuild));
   app.get('*', (_, res) => res.sendFile(path.join(clientBuild, 'index.html')));
 }
