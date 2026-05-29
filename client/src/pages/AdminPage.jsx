@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import api from '../utils/api'
 import toast from 'react-hot-toast'
+import Icon from '../components/ui/Icon'
+import PageHeader from '../components/ui/PageHeader'
 
 export default function AdminPage() {
   const [tab, setTab] = useState('users')
@@ -36,15 +38,15 @@ export default function AdminPage() {
   }
 
   return (
-    <div className="flex-1 overflow-y-auto p-6">
+    <div className="flex-1 overflow-y-auto p-6 bg-quai-light">
       <div className="max-w-4xl mx-auto">
-        <h1 className="text-2xl font-bold mb-6">Administration</h1>
+        <PageHeader title="Administration" />
 
-        <div className="flex border-b border-gray-200 mb-6">
-          {['users', 'params'].map(t => (
+        <div className="flex border-b border-quai-border mb-6">
+          {[['users','Utilisateurs','users'],['params','Paramètres','settings']].map(([t, lbl, ic]) => (
             <button key={t} onClick={() => setTab(t)}
-              className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${tab === t ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
-              {t === 'users' ? '👥 Utilisateurs' : '⚙️ Paramètres'}
+              className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors inline-flex items-center gap-2 ${tab === t ? 'border-quai-gold text-quai-navy' : 'border-transparent text-quai-muted hover:text-quai-navy'}`}>
+              <Icon name={ic} size="sm" /> {lbl}
             </button>
           ))}
         </div>
@@ -52,23 +54,23 @@ export default function AdminPage() {
         {tab === 'users' && (
           <div>
             <div className="flex justify-between mb-4">
-              <h2 className="font-semibold text-gray-700">Gestion des utilisateurs</h2>
-              <button onClick={() => setShowNewUser(true)} className="btn-primary btn-sm">+ Nouvel utilisateur</button>
+              <h2 className="font-semibold text-quai-navy">Gestion des utilisateurs</h2>
+              <button onClick={() => setShowNewUser(true)} className="btn-primary btn-sm inline-flex items-center gap-1.5"><Icon name="plus" size="sm" /> Nouvel utilisateur</button>
             </div>
 
             {showNewUser && (
-              <div className="card mb-4 border-2 border-blue-300">
-                <h3 className="font-medium mb-3">Créer un utilisateur</h3>
+              <div className="card mb-4 border-2 border-quai-gold/40">
+                <h3 className="font-medium text-quai-navy mb-3">Créer un utilisateur</h3>
                 <div className="grid grid-cols-2 gap-3 mb-3">
                   {[['Prénom','prenom'],['Nom','nom'],['Email','email'],['Mot de passe','password']].map(([l, k]) => (
                     <div key={k}>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">{l}</label>
+                      <label className="block text-xs font-medium text-quai-muted mb-1">{l}</label>
                       <input type={k === 'password' ? 'password' : 'text'} className="input"
                         value={newUser[k]} onChange={e => setNewUser(u => ({ ...u, [k]: e.target.value }))} />
                     </div>
                   ))}
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Rôle</label>
+                    <label className="block text-xs font-medium text-quai-muted mb-1">Rôle</label>
                     <select className="input" value={newUser.role} onChange={e => setNewUser(u => ({ ...u, role: e.target.value }))}>
                       <option value="agent">Agent</option>
                       <option value="manager">Manager</option>
@@ -85,32 +87,32 @@ export default function AdminPage() {
 
             <div className="card overflow-hidden p-0">
               <table className="w-full text-sm">
-                <thead className="bg-gray-50">
+                <thead className="bg-quai-light">
                   <tr>
-                    <th className="text-left px-4 py-3 font-medium text-gray-600">Nom</th>
-                    <th className="text-left px-4 py-3 font-medium text-gray-600">Email</th>
-                    <th className="text-left px-4 py-3 font-medium text-gray-600">Rôle</th>
-                    <th className="text-left px-4 py-3 font-medium text-gray-600">Statut</th>
-                    <th className="text-left px-4 py-3 font-medium text-gray-600">Actions</th>
+                    <th className="text-left px-4 py-3 font-medium text-quai-muted">Nom</th>
+                    <th className="text-left px-4 py-3 font-medium text-quai-muted">Email</th>
+                    <th className="text-left px-4 py-3 font-medium text-quai-muted">Rôle</th>
+                    <th className="text-left px-4 py-3 font-medium text-quai-muted">Statut</th>
+                    <th className="text-left px-4 py-3 font-medium text-quai-muted">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100">
+                <tbody className="divide-y divide-quai-border">
                   {users.map(u => (
                     <tr key={u.id}>
-                      <td className="px-4 py-3 font-medium">{u.prenom} {u.nom}</td>
-                      <td className="px-4 py-3 text-gray-600">{u.email}</td>
+                      <td className="px-4 py-3 font-medium text-quai-navy">{u.prenom} {u.nom}</td>
+                      <td className="px-4 py-3 text-quai-muted">{u.email}</td>
                       <td className="px-4 py-3">
-                        <span className={`badge ${u.role === 'admin' ? 'bg-red-100 text-red-700' : u.role === 'manager' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
+                        <span className={`badge ${u.role === 'admin' ? 'bg-quai-navy text-white' : u.role === 'manager' ? 'bg-quai-gold/20 text-quai-navy border border-quai-gold/40' : 'bg-quai-light text-quai-muted border border-quai-border'}`}>
                           {u.role}
                         </span>
                       </td>
                       <td className="px-4 py-3">
-                        <span className={`badge ${u.actif ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                        <span className={`badge ${u.actif ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-quai-light text-quai-muted border border-quai-border'}`}>
                           {u.actif ? 'Actif' : 'Inactif'}
                         </span>
                       </td>
                       <td className="px-4 py-3">
-                        <button onClick={() => toggleUser(u)} className="text-xs text-gray-500 hover:text-gray-700">
+                        <button onClick={() => toggleUser(u)} className="text-xs text-quai-navy hover:text-quai-gold font-medium">
                           {u.actif ? 'Désactiver' : 'Activer'}
                         </button>
                       </td>
@@ -124,11 +126,11 @@ export default function AdminPage() {
 
         {tab === 'params' && (
           <div>
-            <h2 className="font-semibold text-gray-700 mb-4">Paramètres de relance</h2>
+            <h2 className="font-semibold text-quai-navy mb-4">Paramètres de relance</h2>
             <div className="card space-y-4">
               <ParamField label="Nombre de relances par jour" cle="relances_par_jour" params={params} setParams={setParams} type="number" />
-              <hr />
-              <h3 className="font-medium text-gray-700">Score de base par catégorie</h3>
+              <hr className="border-quai-border" />
+              <h3 className="font-medium text-quai-navy">Score de base par catégorie</h3>
               {[
                 ['ancien_client', 'Ancien client'],
                 ['prospect_chaud', 'Prospect chaud'],
@@ -139,7 +141,7 @@ export default function AdminPage() {
               ].map(([k, l]) => (
                 <ParamField key={k} label={l} cle={`score_${k}`} params={params} setParams={setParams} type="number" min={0} max={100} />
               ))}
-              <hr />
+              <hr className="border-quai-border" />
               <ParamField label="Délai avant recontact (jours)" cle="delai_recontact_jours" params={params} setParams={setParams} type="number" />
               <button onClick={saveParams} className="btn-primary">Sauvegarder les paramètres</button>
             </div>
@@ -153,7 +155,7 @@ export default function AdminPage() {
 function ParamField({ label, cle, params, setParams, type = 'text', min, max }) {
   return (
     <div className="flex items-center gap-4">
-      <label className="w-48 text-sm font-medium text-gray-600">{label}</label>
+      <label className="w-48 text-sm font-medium text-quai-muted">{label}</label>
       <input
         type={type} min={min} max={max}
         className="input w-32"
