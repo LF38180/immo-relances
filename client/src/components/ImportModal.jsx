@@ -4,6 +4,8 @@ import * as XLSX from 'xlsx'
 import api from '../utils/api'
 import toast from 'react-hot-toast'
 import { CATEGORIES } from '../utils/constants'
+import Modal from './ui/Modal'
+import Icon from './ui/Icon'
 
 const FIELD_MAP = {
   nom: ['nom', 'name', 'last_name', 'lastname', 'surname'],
@@ -104,115 +106,103 @@ export default function ImportModal({ onClose, onImported }) {
     }
   }
 
+  const footer = (
+    <>
+      <button onClick={onClose} className="btn-secondary">Fermer</button>
+      {step === 2 && (
+        <button onClick={doImport} disabled={importing} className="btn-primary">
+          {importing ? 'Import en cours…' : `Importer ${rows.length.toLocaleString('fr')} contacts`}
+        </button>
+      )}
+      {step === 3 && <button onClick={onImported} className="btn-primary">Terminer</button>}
+    </>
+  )
+
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
-        <div className="flex items-center justify-between p-5 border-b">
-          <h2 className="text-lg font-bold">Import de contacts CSV</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
+    <Modal title="Import de contacts" onClose={onClose} footer={footer}>
+      {step === 1 && (
+        <div className="text-center py-8">
+          <Icon name="file-up" size="xl" className="text-quai-navy mx-auto mb-4" />
+          <h3 className="text-lg font-display font-medium text-quai-navy mb-2">Sélectionnez votre fichier</h3>
+          <p className="text-sm text-quai-muted mb-2">Formats acceptés :</p>
+          <div className="flex flex-wrap gap-2 justify-center mb-4">
+            {['.xlsx', '.xls', '.csv', '.ods', '.tsv'].map(f => (
+              <span key={f} className="badge bg-quai-navy/10 text-quai-navy border border-quai-navy/20 text-xs font-mono">{f}</span>
+            ))}
+          </div>
+          <p className="text-xs text-quai-muted mb-4">La première ligne doit contenir les en-têtes de colonnes.</p>
+          <input ref={fileRef} type="file" accept=".csv,.tsv,.txt,.xlsx,.xls,.ods" className="hidden"
+            onChange={e => e.target.files[0] && handleFile(e.target.files[0])} />
+          <button onClick={() => fileRef.current.click()} className="btn-primary">Choisir un fichier</button>
         </div>
+      )}
 
-        <div className="flex-1 overflow-y-auto p-5">
-          {step === 1 && (
-            <div className="text-center py-8">
-              <div className="text-4xl mb-4">📄</div>
-              <h3 className="text-lg font-medium mb-2">Sélectionnez votre fichier CSV</h3>
-              <p className="text-sm text-quai-muted mb-2">Formats acceptés :</p>
-              <div className="flex flex-wrap gap-2 justify-center mb-4">
-                {['.xlsx', '.xls', '.csv', '.ods', '.tsv'].map(f => (
-                  <span key={f} className="badge bg-quai-navy/10 text-quai-navy border border-quai-navy/20 text-xs font-mono">{f}</span>
-                ))}
-              </div>
-              <p className="text-xs text-quai-muted mb-4">La première ligne doit contenir les en-têtes de colonnes.</p>
-              <input ref={fileRef} type="file" accept=".csv,.tsv,.txt,.xlsx,.xls,.ods" className="hidden"
-                onChange={e => e.target.files[0] && handleFile(e.target.files[0])} />
-              <button onClick={() => fileRef.current.click()} className="btn-primary">Choisir un fichier</button>
-            </div>
-          )}
-
-          {step === 2 && (
-            <div>
-              <div className="mb-4 p-3 bg-blue-50 rounded-lg text-sm text-blue-700">
-                📊 {rows.length.toLocaleString('fr')} lignes détectées. Vérifiez le mapping des colonnes.
-              </div>
-
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Catégorie par défaut</label>
-                <select className="input w-auto" value={defaultCategorie} onChange={e => setDefaultCategorie(e.target.value)}>
-                  {Object.entries(CATEGORIES).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+      {step === 2 && (
+        <div>
+          <div className="mb-4 p-3 bg-quai-navy/5 rounded-lg text-sm text-quai-navy inline-flex items-center gap-2">
+            <Icon name="table" size="sm" /> {rows.length.toLocaleString('fr')} lignes détectées. Vérifiez le mapping des colonnes.
+          </div>
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-quai-text mb-1">Catégorie par défaut</label>
+            <select className="input w-auto" value={defaultCategorie} onChange={e => setDefaultCategorie(e.target.value)}>
+              {Object.entries(CATEGORIES).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+            </select>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            {Object.keys(FIELD_MAP).map(field => (
+              <div key={field}>
+                <label className="block text-xs font-medium text-quai-muted mb-1 capitalize">{field}</label>
+                <select className="input" value={mapping[field] || ''} onChange={e => setMapping(m => ({ ...m, [field]: e.target.value || null }))}>
+                  <option value="">— Ignorer —</option>
+                  {headers.map(h => <option key={h} value={h}>{h}</option>)}
                 </select>
               </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                {Object.keys(FIELD_MAP).map(field => (
-                  <div key={field}>
-                    <label className="block text-xs font-medium text-gray-600 mb-1 capitalize">{field}</label>
-                    <select className="input" value={mapping[field] || ''} onChange={e => setMapping(m => ({ ...m, [field]: e.target.value || null }))}>
-                      <option value="">— Ignorer —</option>
-                      {headers.map(h => <option key={h} value={h}>{h}</option>)}
-                    </select>
-                  </div>
-                ))}
-              </div>
-
-              {rows.length > 0 && (
-                <div className="mt-4">
-                  <div className="text-xs font-medium text-gray-500 mb-2">Aperçu (3 premières lignes)</div>
-                  <div className="overflow-x-auto">
-                    <table className="text-xs border-collapse w-full">
-                      <thead>
-                        <tr className="bg-gray-50">
-                          {Object.entries(mapping).filter(([,v]) => v).map(([f, col]) => (
-                            <th key={f} className="border border-gray-200 px-2 py-1 text-left capitalize">{f}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {rows.slice(0, 3).map((row, i) => (
-                          <tr key={i}>
-                            {Object.entries(mapping).filter(([,v]) => v).map(([f, col]) => (
-                              <td key={f} className="border border-gray-200 px-2 py-1 max-w-32 truncate">{row[col]}</td>
-                            ))}
-                          </tr>
+            ))}
+          </div>
+          {rows.length > 0 && (
+            <div className="mt-4">
+              <div className="text-xs font-medium text-quai-muted mb-2">Aperçu (3 premières lignes)</div>
+              <div className="overflow-x-auto">
+                <table className="text-xs border-collapse w-full">
+                  <thead>
+                    <tr className="bg-quai-light">
+                      {Object.entries(mapping).filter(([,v]) => v).map(([f]) => (
+                        <th key={f} className="border border-quai-border px-2 py-1 text-left capitalize">{f}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.slice(0, 3).map((row, i) => (
+                      <tr key={i}>
+                        {Object.entries(mapping).filter(([,v]) => v).map(([f, col]) => (
+                          <td key={f} className="border border-quai-border px-2 py-1 max-w-32 truncate">{row[col]}</td>
                         ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {step === 3 && result && (
-            <div className="text-center py-8">
-              <div className="text-5xl mb-4">✅</div>
-              <h3 className="text-xl font-bold text-gray-900 mb-2">Import terminé</h3>
-              <div className="grid grid-cols-2 gap-4 my-4 max-w-xs mx-auto">
-                <div className="card text-center">
-                  <div className="text-2xl font-bold text-green-600">{result.importes}</div>
-                  <div className="text-xs text-gray-500">Importés</div>
-                </div>
-                <div className="card text-center">
-                  <div className="text-2xl font-bold text-red-500">{result.erreurs}</div>
-                  <div className="text-xs text-gray-500">Erreurs</div>
-                </div>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </div>
           )}
         </div>
+      )}
 
-        <div className="flex justify-between p-5 border-t">
-          <button onClick={onClose} className="btn-secondary">Fermer</button>
-          {step === 2 && (
-            <button onClick={doImport} disabled={importing} className="btn-primary">
-              {importing ? `Import en cours...` : `Importer ${rows.length.toLocaleString('fr')} contacts`}
-            </button>
-          )}
-          {step === 3 && (
-            <button onClick={onImported} className="btn-primary">Terminer</button>
-          )}
+      {step === 3 && result && (
+        <div className="text-center py-8">
+          <Icon name="check-circle-2" size="xl" className="text-emerald-600 mx-auto mb-4" />
+          <h3 className="text-xl font-display font-bold text-quai-navy mb-2">Import terminé</h3>
+          <div className="grid grid-cols-2 gap-4 my-4 max-w-xs mx-auto">
+            <div className="card text-center">
+              <div className="text-2xl font-bold text-emerald-600">{result.importes}</div>
+              <div className="text-xs text-quai-muted">Importés</div>
+            </div>
+            <div className="card text-center">
+              <div className="text-2xl font-bold text-red-600">{result.erreurs}</div>
+              <div className="text-xs text-quai-muted">Erreurs</div>
+            </div>
+          </div>
         </div>
-      </div>
-    </div>
+      )}
+    </Modal>
   )
 }
