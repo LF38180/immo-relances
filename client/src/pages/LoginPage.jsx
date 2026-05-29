@@ -59,8 +59,9 @@ export default function LoginPage() {
           </div>
 
           <div className="mb-8">
-            <h2 className="text-2xl font-semibold text-quai-navy">Connexion</h2>
-            <p className="text-quai-muted text-sm mt-1">Accédez à votre espace de relances</p>
+            <h2 className="text-2xl font-display font-semibold text-quai-navy">Connexion</h2>
+            <div className="mt-2 w-10 h-0.5 bg-quai-gold" />
+            <p className="text-quai-muted text-sm mt-3">Accédez à votre espace de relances</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-5">
