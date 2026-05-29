@@ -13,7 +13,13 @@ export default function LoginPage() {
     try {
       await login(form.email, form.password)
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Email ou mot de passe incorrect')
+      if (err.response) {
+        // Le serveur a répondu (ex. 401) : identifiants invalides
+        toast.error(err.response.data?.error || 'Email ou mot de passe incorrect')
+      } else {
+        // Pas de réponse : serveur injoignable (souvent le backend non démarré)
+        toast.error('Serveur injoignable. Vérifiez que l\'application est bien démarrée (npm run dev / start.sh).')
+      }
     } finally {
       setLoading(false)
     }
