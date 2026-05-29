@@ -1,0 +1,35 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&family=Playfair+Display:wght@400;600&display=swap');
+
+@layer base {
+  body {
+    @apply bg-quai-light text-quai-text font-sans;
+  }
+}
+
+@layer components {
+  /* Boutons */
+  .btn { @apply px-4 py-2 rounded-lg font-medium transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-offset-1 disabled:opacity-50 disabled:cursor-not-allowed text-sm; }
+  .btn-primary { @apply btn bg-quai-navy text-white hover:bg-quai-navymd focus:ring-quai-navy; }
+  .btn-gold { @apply btn bg-quai-gold text-quai-navy hover:bg-quai-goldlt focus:ring-quai-gold font-semibold; }
+  .btn-secondary { @apply btn bg-white text-quai-text border border-quai-border hover:bg-quai-light focus:ring-quai-navy/30; }
+  .btn-danger { @apply btn bg-red-600 text-white hover:bg-red-700 focus:ring-red-500; }
+  .btn-sm { @apply px-3 py-1.5 text-xs rounded-md; }
+  .btn-lg { @apply px-6 py-3 text-base; }
+
+  /* Inputs */
+  .input { @apply w-full px-3 py-2 border border-quai-border rounded-lg focus:outline-none focus:ring-2 focus:ring-quai-navy/40 focus:border-quai-navy bg-white text-quai-text text-sm placeholder:text-quai-muted/60; }
+
+  /* Cards */
+  .card { @apply bg-white rounded-xl shadow-sm border border-quai-border p-4; }
+  .card-navy { @apply bg-quai-navy rounded-xl p-4 text-white; }
+
+  /* Badges */
+  .badge { @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium; }
+
+  /* Kbd */
+  .kbd { @apply inline-flex items-center px-1.5 py-0.5 bg-quai-light border border-quai-border rounded text-xs font-mono text-quai-muted; }
+}
