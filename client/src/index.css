@@ -32,4 +32,20 @@
 
   /* Kbd */
   .kbd { @apply inline-flex items-center px-1.5 py-0.5 bg-quai-light border border-quai-border rounded text-xs font-mono text-quai-muted; }
+
+  .btn-ghost { @apply btn bg-transparent text-quai-muted hover:bg-quai-navy/5 hover:text-quai-navy focus:ring-quai-navy/30; }
+
+  .card-premium { @apply bg-white rounded-xl shadow-sm border border-quai-border p-5 transition-shadow hover:shadow-md; }
+
+  .modal-panel { animation: modal-in 180ms ease-out; }
+  .modal-scrim { animation: fade-in 150ms ease-out; }
 }
+
+@keyframes modal-in { from { opacity: 0; transform: translateY(8px) scale(0.98); } to { opacity: 1; transform: none; } }
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+
+:focus-visible { outline: 2px solid #0D0D2B; outline-offset: 2px; }
