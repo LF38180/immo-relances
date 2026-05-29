@@ -1,6 +1,10 @@
 const jwt = require('jsonwebtoken');
 
-const SECRET = process.env.JWT_SECRET || 'immo-relances-secret-2024';
+const isProd = process.env.NODE_ENV === 'production';
+const SECRET = process.env.JWT_SECRET || (isProd ? null : 'immo-relances-dev-secret');
+if (!SECRET) {
+  throw new Error('JWT_SECRET est obligatoire en production. Définissez la variable d\'environnement JWT_SECRET.');
+}
 
 function signToken(user) {
   return jwt.sign({ id: user.id, role: user.role, email: user.email }, SECRET, { expiresIn: '8h' });
