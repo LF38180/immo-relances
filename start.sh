@@ -21,7 +21,7 @@ fi
 
 echo ""
 echo "✅ Application disponible sur : http://localhost:5173"
-echo "   Comptes : agent@agence.fr/agent123 · manager@agence.fr/manager123 · admin@agence.fr/admin123"
+echo "   Comptes : agent@lequai-immobilier.com/agent123 · manager@lequai-immobilier.com/manager123 · admin@lequai-immobilier.com/admin123"
 echo ""
 echo "▶  Ctrl+C pour arrêter"
 echo ""
