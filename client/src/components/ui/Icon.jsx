@@ -17,10 +17,12 @@ const ALIASES = {
  */
 export default function Icon({ name, size = 'md', label, className = '', strokeWidth = 1.75, ...rest }) {
   const aliased = ALIASES[name] || name
-  const pascal = aliased.includes('-')
-    ? aliased.split('-').map(s => s.charAt(0).toUpperCase() + s.slice(1)).join('')
-    : aliased
-  const LucideIcon = icons[pascal] || icons[aliased] || icons.Circle
+  // kebab-case ou mot simple -> PascalCase (ex: "phone-off" -> "PhoneOff", "star" -> "Star")
+  const pascal = aliased
+    .split('-')
+    .map(s => s.charAt(0).toUpperCase() + s.slice(1))
+    .join('')
+  const LucideIcon = icons[pascal] || icons.Circle
   const px = SIZES[size] || size
   return (
     <LucideIcon
