@@ -42,7 +42,7 @@ export default function DashboardPage({ onNavigate }) {
   }))
 
   return (
-    <div className="flex-1 overflow-y-auto p-6 bg-quai-light">
+    <div className="flex-1 overflow-y-auto p-4 md:p-6 pb-24 md:pb-6 bg-quai-light">
       <div className="max-w-6xl mx-auto">
         <PageHeader title="Vue d'ensemble" subtitle={format(new Date(), "EEEE d MMMM yyyy", { locale: fr })}>
           <select value={periode} onChange={e => setPeriode(Number(e.target.value))} className="input w-auto text-sm" aria-label="Période">
@@ -52,7 +52,7 @@ export default function DashboardPage({ onNavigate }) {
           </select>
         </PageHeader>
 
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           <KpiCard label="Total contacts" value={stats.totalContacts.toLocaleString('fr')} icon="users" variant="navy" />
           <KpiCard label="Relances (période)" value={stats.totalRelances} icon="phone" variant="gold" />
           <KpiCard label="Taux de contact" value={`${tauxContact}%`} icon="trending-up" variant="light" />
@@ -62,7 +62,7 @@ export default function DashboardPage({ onNavigate }) {
         {stats.parAgent?.length > 0 && (
           <div className="card mb-6">
             <h2 className="font-semibold text-quai-navy mb-4 text-sm uppercase tracking-wider">Activité aujourd'hui</h2>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
               {stats.parAgent.map(a => (
                 <div key={a.id} className="text-center p-4 bg-quai-light rounded-xl border border-quai-border">
                   <div className="w-10 h-10 bg-quai-navy rounded-full flex items-center justify-center text-white text-sm font-bold mx-auto mb-2">
@@ -109,7 +109,7 @@ export default function DashboardPage({ onNavigate }) {
 
         <div className="card">
           <h2 className="font-semibold text-quai-navy mb-4 text-sm uppercase tracking-wider">Pipeline contacts</h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-3">
             {stats.contactsParStatut.map(s => {
               const info = STATUTS[s.statut] || { label: s.statut, color: 'bg-quai-light text-quai-muted' }
               return (

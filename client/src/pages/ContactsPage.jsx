@@ -60,7 +60,7 @@ export default function ContactsPage() {
   const pages = Math.ceil(total / LIMIT)
 
   return (
-    <div className="flex-1 overflow-hidden flex flex-col">
+    <div className="flex-1 overflow-hidden flex flex-col pb-24 md:pb-0">
       <div className="bg-white border-b border-quai-border p-4">
         <div className="flex flex-col lg:flex-row lg:flex-wrap gap-3 lg:items-center">
           <input
@@ -99,6 +99,7 @@ export default function ContactsPage() {
         {loading && contacts.length === 0 ? (
           <div className="flex items-center justify-center h-32 text-quai-muted animate-pulse">Chargement…</div>
         ) : (
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-quai-light border-b border-quai-border sticky top-0">
               <tr>
@@ -142,6 +143,7 @@ export default function ContactsPage() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 

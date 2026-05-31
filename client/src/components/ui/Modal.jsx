@@ -39,7 +39,7 @@ export default function Modal({ title, onClose, children, footer, size = 'lg' })
 
   return (
     <div
-      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 modal-scrim"
+      className="fixed inset-0 bg-black/50 flex items-center justify-center z-[1400] p-2 md:p-4 modal-scrim"
       onClick={e => e.target === e.currentTarget && onClose()}
     >
       <div
