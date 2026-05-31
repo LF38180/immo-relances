@@ -49,3 +49,7 @@
 }
 
 :focus-visible { outline: 2px solid #0D0D2B; outline-offset: 2px; }
+
+/* Masque la scrollbar tout en gardant le défilement (barre d'onglets mobile) */
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }

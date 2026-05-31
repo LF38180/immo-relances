@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useAuth } from '../hooks/useAuth'
 import Icon from './ui/Icon'
+import BottomTabBar from './BottomTabBar'
 
 const NAV_ITEMS = [
   { id: 'dashboard',  label: 'Tableau de bord', icon: 'layout-dashboard', roles: ['agent', 'manager', 'admin'] },
@@ -102,16 +103,8 @@ export default function Layout({ page, onNavigate, children }) {
         </div>
         {children}
 
-        {/* Barre d'onglets basse : MOBILE uniquement */}
-        <nav className="md:hidden fixed bottom-0 inset-x-0 z-[1300] bg-quai-navy border-t border-white/10 flex justify-around items-stretch pb-[env(safe-area-inset-bottom)]">
-          {visibleNav.map(item => (
-            <button key={item.id} onClick={() => onNavigate(item.id)} aria-label={item.label}
-              className={`flex-1 flex flex-col items-center justify-center gap-0.5 py-2 min-h-[56px] text-[10px] transition ${page === item.id ? 'text-quai-gold font-semibold' : 'text-white/70'}`}>
-              <Icon name={item.icon} size="md" />
-              <span className="truncate max-w-full px-0.5">{item.label}</span>
-            </button>
-          ))}
-        </nav>
+        {/* Barre d'onglets basse défilable : MOBILE uniquement */}
+        <BottomTabBar items={visibleNav} active={page} onSelect={onNavigate} />
       </main>
     </div>
   )
