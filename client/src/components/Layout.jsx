@@ -20,7 +20,7 @@ export default function Layout({ page, onNavigate, children }) {
   return (
     <div className="flex h-screen bg-quai-light overflow-hidden">
       {/* Sidebar */}
-      <aside className={`${collapsed ? 'w-16' : 'w-60'} flex-shrink-0 bg-quai-navy flex flex-col transition-all duration-200`}>
+      <aside className={`${collapsed ? 'w-16' : 'w-60'} hidden md:flex flex-shrink-0 bg-quai-navy flex-col transition-all duration-200`}>
 
         {/* Logo */}
         <div className={`flex items-center justify-between border-b border-white/10 ${collapsed ? 'p-3' : 'p-4'}`}>
@@ -88,15 +88,30 @@ export default function Layout({ page, onNavigate, children }) {
       {/* Contenu principal */}
       <main className="flex-1 overflow-hidden flex flex-col">
         {/* Topbar */}
-        <div className="bg-white border-b border-quai-border px-6 py-3 flex items-center justify-between flex-shrink-0">
+        <div className="bg-white border-b border-quai-border px-4 md:px-6 py-3 flex items-center justify-between flex-shrink-0">
           <h1 className="text-lg font-semibold text-quai-navy">
             {NAV_ITEMS.find(n => n.id === page)?.label || 'ImmoRelances'}
           </h1>
-          <div className="text-xs text-quai-muted">
-            Le Quai de l'Immobilier — Gestion des relances
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-quai-muted hidden md:inline">Le Quai de l'Immobilier — Gestion des relances</span>
+            <button onClick={logout} aria-label="Déconnexion"
+              className="md:hidden text-quai-muted hover:text-quai-navy p-1.5">
+              <Icon name="log-out" size="md" />
+            </button>
           </div>
         </div>
         {children}
+
+        {/* Barre d'onglets basse : MOBILE uniquement */}
+        <nav className="md:hidden fixed bottom-0 inset-x-0 z-[1300] bg-quai-navy border-t border-white/10 flex justify-around items-stretch pb-[env(safe-area-inset-bottom)]">
+          {visibleNav.map(item => (
+            <button key={item.id} onClick={() => onNavigate(item.id)} aria-label={item.label}
+              className={`flex-1 flex flex-col items-center justify-center gap-0.5 py-2 min-h-[56px] text-[10px] transition ${page === item.id ? 'text-quai-gold font-semibold' : 'text-white/70'}`}>
+              <Icon name={item.icon} size="md" />
+              <span className="truncate max-w-full px-0.5">{item.label}</span>
+            </button>
+          ))}
+        </nav>
       </main>
     </div>
   )
