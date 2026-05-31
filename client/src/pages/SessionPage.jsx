@@ -127,11 +127,11 @@ export default function SessionPage() {
   const progress = Math.round((index / file.length) * 100)
 
   return (
-    <div className="flex-1 overflow-y-auto bg-quai-light p-4">
+    <div className="flex-1 overflow-y-auto bg-quai-light p-4 pb-24 md:pb-6">
       <div className="max-w-3xl mx-auto mb-4">
         <div className="flex items-center justify-between text-sm text-quai-muted mb-1">
           <span>Contact {index + 1} / {file.length}</span>
-          <div className="flex gap-4 text-xs">
+          <div className="flex flex-wrap gap-2 text-xs">
             <span className="text-emerald-600 font-medium inline-flex items-center gap-1"><Icon name="calendar-check" size="sm" /> {sessionStats.rdv} RDV</span>
             <span className="text-quai-navy font-medium inline-flex items-center gap-1"><Icon name="phone-call" size="sm" /> {sessionStats.contactes} contactés</span>
             <span className="text-amber-600 font-medium inline-flex items-center gap-1"><Icon name="phone-off" size="sm" /> {sessionStats.pasRep} sans réponse</span>
@@ -144,9 +144,9 @@ export default function SessionPage() {
 
       <div className="max-w-3xl mx-auto grid grid-cols-1 gap-4">
         <div className="card">
-          <div className="flex items-start justify-between mb-4">
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 mb-4">
             <div>
-              <div className="flex items-center gap-2 mb-1">
+              <div className="flex flex-wrap items-center gap-2 mb-1">
                 <CategorieBadge categorie={contact.categorie} />
                 <ScoreBadge score={contact.score_priorite} />
                 <PotentielStars potentiel={contact.potentiel} />
@@ -154,13 +154,11 @@ export default function SessionPage() {
               <h2 className="text-2xl font-display font-bold text-quai-navy">{contact.prenom} {contact.nom}</h2>
               {contact.ville && <p className="text-quai-muted text-sm">{contact.ville} {contact.code_postal}</p>}
             </div>
-            <div className="text-right">
+            <div className="sm:text-right text-xs text-quai-muted">
               {contact.date_dernier_contact && (
-                <div className="text-xs text-quai-muted">
-                  Dernier contact : {format(new Date(contact.date_dernier_contact), 'dd/MM/yyyy')}
-                </div>
+                <div>Dernier contact : {format(new Date(contact.date_dernier_contact), 'dd/MM/yyyy')}</div>
               )}
-              <div className="text-xs text-quai-muted">{contact.nombre_tentatives} tentative(s)</div>
+              <div>{contact.nombre_tentatives} tentative(s)</div>
             </div>
           </div>
 
@@ -168,7 +166,7 @@ export default function SessionPage() {
             <div className="bg-quai-navy rounded-xl p-5 mb-4 flex items-center justify-between">
               <div>
                 <div className="text-xs text-quai-gold font-medium uppercase tracking-wider mb-1">Téléphone</div>
-                <a href={`tel:${contact.telephone}`} className="text-3xl font-bold text-white hover:text-quai-gold transition-colors inline-flex items-center gap-2">
+                <a href={`tel:${contact.telephone}`} className="text-2xl md:text-3xl font-bold text-white hover:text-quai-gold transition-colors inline-flex items-center gap-2">
                   <Icon name="phone" size="lg" /> {contact.telephone}
                 </a>
               </div>

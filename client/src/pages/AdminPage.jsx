@@ -38,7 +38,7 @@ export default function AdminPage() {
   }
 
   return (
-    <div className="flex-1 overflow-y-auto p-6 bg-quai-light">
+    <div className="flex-1 overflow-y-auto p-4 md:p-6 pb-24 md:pb-6 bg-quai-light">
       <div className="max-w-4xl mx-auto">
         <PageHeader title="Administration" />
 
@@ -61,7 +61,7 @@ export default function AdminPage() {
             {showNewUser && (
               <div className="card mb-4 border-2 border-quai-gold/40">
                 <h3 className="font-medium text-quai-navy mb-3">Créer un utilisateur</h3>
-                <div className="grid grid-cols-2 gap-3 mb-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
                   {[['Prénom','prenom'],['Nom','nom'],['Email','email'],['Mot de passe','password']].map(([l, k]) => (
                     <div key={k}>
                       <label className="block text-xs font-medium text-quai-muted mb-1">{l}</label>
@@ -86,6 +86,7 @@ export default function AdminPage() {
             )}
 
             <div className="card overflow-hidden p-0">
+              <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-quai-light">
                   <tr>
@@ -120,6 +121,7 @@ export default function AdminPage() {
                   ))}
                 </tbody>
               </table>
+              </div>
             </div>
           </div>
         )}
@@ -154,11 +156,11 @@ export default function AdminPage() {
 
 function ParamField({ label, cle, params, setParams, type = 'text', min, max }) {
   return (
-    <div className="flex items-center gap-4">
-      <label className="w-48 text-sm font-medium text-quai-muted">{label}</label>
+    <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+      <label className="sm:w-48 text-sm font-medium text-quai-muted">{label}</label>
       <input
         type={type} min={min} max={max}
-        className="input w-32"
+        className="input w-full sm:w-32"
         value={params[cle] || ''}
         onChange={e => setParams(p => ({ ...p, [cle]: e.target.value }))}
       />

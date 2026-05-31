@@ -52,7 +52,7 @@ export default function ScriptsPage() {
   }, {})
 
   return (
-    <div className="flex-1 overflow-y-auto p-6 bg-quai-light">
+    <div className="flex-1 overflow-y-auto p-4 md:p-6 pb-24 md:pb-6 bg-quai-light">
       <div className="max-w-4xl mx-auto">
         <PageHeader title="Scripts d'appel">
           <select className="input w-auto" value={filtre} onChange={e => setFiltre(e.target.value)} aria-label="Filtrer par catégorie">
@@ -69,7 +69,7 @@ export default function ScriptsPage() {
         {showNew && (
           <div className="card mb-6 border-2 border-quai-gold/40">
             <h3 className="font-semibold text-quai-navy mb-3">{editId ? 'Modifier le script' : 'Nouveau script'}</h3>
-            <div className="grid grid-cols-2 gap-3 mb-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
               <div>
                 <label className="block text-xs font-medium text-quai-muted mb-1">Catégorie</label>
                 <select className="input" value={form.categorie} onChange={e => setForm(f => ({ ...f, categorie: e.target.value }))}>

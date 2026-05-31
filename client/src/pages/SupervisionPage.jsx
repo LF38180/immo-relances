@@ -33,7 +33,7 @@ export default function SupervisionPage() {
   if (loading) return <div className="flex-1 flex items-center justify-center bg-quai-light text-quai-muted animate-pulse">Chargement…</div>
 
   return (
-    <div className="flex-1 overflow-y-auto p-6 bg-quai-light">
+    <div className="flex-1 overflow-y-auto p-4 md:p-6 pb-24 md:pb-6 bg-quai-light">
       <div className="max-w-5xl mx-auto">
         <PageHeader title="Supervision" subtitle="Actualisation automatique toutes les 30 secondes">
           <select className="input w-auto" value={agentId} onChange={e => setAgentId(e.target.value)} aria-label="Filtrer par agent">
@@ -91,7 +91,7 @@ export default function SupervisionPage() {
         {stats && (
           <>
             <h2 className="font-semibold text-quai-navy mb-3">Statistiques 30 derniers jours</h2>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mb-6">
               <StatCard label="Total relances" value={stats.totalRelances} />
               <StatCard label="RDV obtenus (total)" value={stats.rdvObtenus} />
               <StatCard label="Total contacts" value={stats.totalContacts?.toLocaleString('fr')} />
