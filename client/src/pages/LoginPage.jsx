@@ -39,9 +39,12 @@ export default function LoginPage() {
           <img
             src="https://img.netty.fr/logo/company55382byt/2/logo_web.png"
             alt="Le Quai de l'Immobilier"
-            className="h-24 lg:h-28 w-auto object-contain mx-auto mb-6 lg:mb-8"
+            className="h-24 lg:h-28 w-auto object-contain mx-auto mb-5 lg:mb-6"
           />
-          <p className="text-white/60 text-sm italic max-w-xs mx-auto leading-relaxed">
+          <h1 className="font-display text-3xl lg:text-4xl font-semibold text-white tracking-tight">
+            Immo<span className="text-quai-gold">Relances</span>
+          </h1>
+          <p className="text-white/60 text-sm italic max-w-xs mx-auto leading-relaxed mt-5">
             "Le symbole d'un départ, d'une rencontre, d'une destination"
           </p>
           <div className="mt-6 lg:mt-8 w-12 h-0.5 bg-quai-gold mx-auto" />
