@@ -39,8 +39,8 @@ export default function App() {
   return (
     <AuthProvider>
       <Toaster position="top-right" toastOptions={{
-        style: { borderRadius: '12px', background: '#0D0D2B', color: '#fff', fontSize: '14px' },
-        success: { iconTheme: { primary: '#C9A96E', secondary: '#0D0D2B' }, style: { background: '#0D0D2B', color: '#fff' } },
+        style: { borderRadius: '12px', background: '#080432', color: '#fff', fontSize: '14px' },
+        success: { iconTheme: { primary: '#B6A997', secondary: '#080432' }, style: { background: '#080432', color: '#fff' } },
         error: { style: { background: '#7f1d1d', color: '#fff' } },
         duration: 3500,
       }} />
