@@ -19,6 +19,18 @@ const FIELD_MAP = {
   categorie: ['categorie', 'catégorie', 'category', 'type'],
   notes: ['notes', 'note', 'commentaire', 'remarque', 'observation'],
   potentiel: ['potentiel', 'score', 'note_contact'],
+  source: ['source', 'origine', 'provenance'],
+  conseiller: ['conseiller', 'agent', 'négociateur', 'negociateur', 'responsable', 'assigné', 'assigne'],
+  date_estimation: ['date estimation', 'date création', 'date creation', 'date', 'créé le', 'cree le'],
+  photo_url: ['photo', 'image', 'url photo', 'lien photo', 'photo_url'],
+}
+
+const FIELD_LABELS = {
+  nom: 'Nom', prenom: 'Prénom', telephone: 'Téléphone', telephone2: 'Téléphone 2',
+  email: 'Email', adresse: 'Adresse', code_postal: 'Code postal', ville: 'Ville',
+  categorie: 'Catégorie', notes: 'Notes', potentiel: 'Potentiel',
+  source: 'Source', conseiller: 'Conseiller en charge', date_estimation: "Date d'estimation",
+  photo_url: 'Photo (URL)',
 }
 
 function guessMapping(headers) {
@@ -151,7 +163,7 @@ export default function ImportModal({ onClose, onImported }) {
           <div className="grid grid-cols-2 gap-3">
             {Object.keys(FIELD_MAP).map(field => (
               <div key={field}>
-                <label className="block text-xs font-medium text-quai-muted mb-1 capitalize">{field}</label>
+                <label className="block text-xs font-medium text-quai-muted mb-1">{FIELD_LABELS[field] || field}</label>
                 <select className="input" value={mapping[field] || ''} onChange={e => setMapping(m => ({ ...m, [field]: e.target.value || null }))}>
                   <option value="">— Ignorer —</option>
                   {headers.map(h => <option key={h} value={h}>{h}</option>)}
@@ -167,7 +179,7 @@ export default function ImportModal({ onClose, onImported }) {
                   <thead>
                     <tr className="bg-quai-light">
                       {Object.entries(mapping).filter(([,v]) => v).map(([f]) => (
-                        <th key={f} className="border border-quai-border px-2 py-1 text-left capitalize">{f}</th>
+                        <th key={f} className="border border-quai-border px-2 py-1 text-left">{FIELD_LABELS[f] || f}</th>
                       ))}
                     </tr>
                   </thead>
@@ -201,6 +213,12 @@ export default function ImportModal({ onClose, onImported }) {
               <div className="text-xs text-quai-muted">Erreurs</div>
             </div>
           </div>
+          {(result.conseillers_non_reconnus > 0 || result.dates_ignorees > 0) && (
+            <div className="text-xs text-quai-muted mt-2 space-y-1">
+              {result.conseillers_non_reconnus > 0 && <div>{result.conseillers_non_reconnus} conseiller(s) non reconnu(s) — contacts laissés non attribués.</div>}
+              {result.dates_ignorees > 0 && <div>{result.dates_ignorees} date(s) d'estimation illisible(s) — ignorée(s).</div>}
+            </div>
+          )}
         </div>
       )}
     </Modal>
