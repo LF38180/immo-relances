@@ -3,6 +3,10 @@ const { db, recalculerScore } = require('../database');
 const { normaliserDate, resoudreConseiller } = require('../utils/import-helpers');
 const { requireAuth } = require('../auth');
 
+const CHAMPS_UPDATE = ['nom','prenom','telephone','telephone2','email','adresse','code_postal',
+  'ville','categorie','tags','notes','potentiel','statut','prochain_contact',
+  'source_import','assigned_to','date_estimation','photo_url'];
+
 const router = express.Router();
 router.use(requireAuth);
 
@@ -18,13 +22,13 @@ router.get('/', (req, res) => {
   const params = [];
 
   if (search) {
-    conditions.push(`(nom LIKE ? OR prenom LIKE ? OR telephone LIKE ? OR email LIKE ? OR ville LIKE ?)`);
+    conditions.push(`(contacts.nom LIKE ? OR prenom LIKE ? OR telephone LIKE ? OR email LIKE ? OR ville LIKE ?)`);
     const s = `%${search}%`;
     params.push(s, s, s, s, s);
   }
-  if (categorie) { conditions.push('categorie = ?'); params.push(categorie); }
-  if (statut) { conditions.push('statut = ?'); params.push(statut); }
-  if (tag) { conditions.push(`tags LIKE ?`); params.push(`%"${tag}"%`); }
+  if (categorie) { conditions.push('contacts.categorie = ?'); params.push(categorie); }
+  if (statut) { conditions.push('contacts.statut = ?'); params.push(statut); }
+  if (tag) { conditions.push(`contacts.tags LIKE ?`); params.push(`%"${tag}"%`); }
 
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
   const validSorts = ['score_priorite', 'nom', 'date_dernier_contact', 'prochain_contact', 'created_at', 'categorie', 'statut'];
@@ -32,7 +36,7 @@ router.get('/', (req, res) => {
   const sortOrder = order === 'ASC' ? 'ASC' : 'DESC';
 
   const total = db.prepare(`SELECT COUNT(*) as cnt FROM contacts ${where}`).get(...params).cnt;
-  const contacts = db.prepare(`SELECT * FROM contacts ${where} ORDER BY ${sortCol} ${sortOrder} LIMIT ? OFFSET ?`).all(...params, parseInt(limit), offset);
+  const contacts = db.prepare(`SELECT contacts.*, u.nom AS assigned_nom, u.prenom AS assigned_prenom FROM contacts LEFT JOIN users u ON u.id = contacts.assigned_to ${where} ORDER BY contacts.${sortCol} ${sortOrder} LIMIT ? OFFSET ?`).all(...params, parseInt(limit), offset);
 
   res.json({ contacts, total, page: parseInt(page), limit: parseInt(limit) });
 });
@@ -61,7 +65,11 @@ router.get('/file-relances', (req, res) => {
 
 // Un contact
 router.get('/:id', (req, res) => {
-  const contact = db.prepare('SELECT * FROM contacts WHERE id = ?').get(req.params.id);
+  const contact = db.prepare(`
+    SELECT contacts.*, u.nom AS assigned_nom, u.prenom AS assigned_prenom
+    FROM contacts LEFT JOIN users u ON u.id = contacts.assigned_to
+    WHERE contacts.id = ?
+  `).get(req.params.id);
   if (!contact) return res.status(404).json({ error: 'Contact non trouvé' });
 
   const relances = db.prepare(`
@@ -96,8 +104,7 @@ router.put('/:id', (req, res) => {
   const contact = db.prepare('SELECT id FROM contacts WHERE id = ?').get(req.params.id);
   if (!contact) return res.status(404).json({ error: 'Contact non trouvé' });
 
-  const CHAMPS = ['nom','prenom','telephone','telephone2','email','adresse','code_postal',
-    'ville','categorie','tags','notes','potentiel','statut','prochain_contact'];
+  const CHAMPS = CHAMPS_UPDATE;
 
   const sets = [];
   const params = [];
@@ -106,6 +113,9 @@ router.put('/:id', (req, res) => {
     let val = req.body[champ];
     if (champ === 'tags') val = typeof val === 'string' ? val : JSON.stringify(val);
     if (champ === 'prochain_contact') val = val || null;
+    if (champ === 'assigned_to') val = val || null;
+    if (champ === 'date_estimation') val = val || null;
+    if (champ === 'photo_url') val = val || null;
     sets.push(`${champ} = ?`);
     params.push(val);
   }
@@ -195,3 +205,4 @@ router.get('/export/csv', (req, res) => {
 
 module.exports = router;
 module.exports.importerContacts = importerContacts;
+module.exports.CHAMPS_UPDATE = CHAMPS_UPDATE;

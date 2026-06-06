@@ -86,3 +86,20 @@ test('importerContacts : source colonne, conseiller, date normalisée', () => {
   const c2 = db.prepare("SELECT * FROM contacts WHERE nom='Test2'").get()
   assert.strictEqual(c2.source_import, 'import_csv')
 })
+
+test('PUT champs : assigned_to, date_estimation, photo_url, source_import dans CHAMPS_UPDATE', () => {
+  const CHAMPS = require('../src/routes/contactRoutes').CHAMPS_UPDATE
+  assert.ok(CHAMPS.includes('source_import'))
+  assert.ok(CHAMPS.includes('assigned_to'))
+  assert.ok(CHAMPS.includes('date_estimation'))
+  assert.ok(CHAMPS.includes('photo_url'))
+})
+
+test('GET détail renvoie le nom du conseiller (join users)', () => {
+  const c = db.prepare(`
+    SELECT contacts.*, u.nom AS assigned_nom, u.prenom AS assigned_prenom
+    FROM contacts LEFT JOIN users u ON u.id = contacts.assigned_to
+    WHERE contacts.nom = 'Test1'
+  `).get()
+  assert.ok(c.assigned_prenom, 'assigned_prenom manquant')
+})
