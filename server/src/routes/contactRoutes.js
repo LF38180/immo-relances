@@ -1,5 +1,6 @@
 const express = require('express');
 const { db, recalculerScore } = require('../database');
+const { normaliserDate, resoudreConseiller } = require('../utils/import-helpers');
 const { requireAuth } = require('../auth');
 
 const router = express.Router();
@@ -122,30 +123,41 @@ router.delete('/:id', (req, res) => {
   res.json({ ok: true });
 });
 
-// Import CSV en masse
-router.post('/import', (req, res) => {
-  const { contacts } = req.body;
-  if (!Array.isArray(contacts) || contacts.length === 0) return res.status(400).json({ error: 'Données invalides' });
-
+// Logique d'import factorée (testable sans HTTP).
+function importerContacts(contacts, users) {
   const insert = db.prepare(`
-    INSERT INTO contacts (nom, prenom, telephone, telephone2, email, adresse, code_postal, ville, categorie, notes, potentiel, statut, prochain_contact, source_import)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'import_csv')
+    INSERT INTO contacts (nom, prenom, telephone, telephone2, email, adresse, code_postal, ville, categorie, notes, potentiel, statut, prochain_contact, source_import, assigned_to, date_estimation, photo_url)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
-  let importes = 0;
-  let erreurs = 0;
   const STATUTS_OK = ['a_contacter','tente_sans_reponse','rappel_planifie','rdv_obtenu','pas_interesse','a_recontacter','inactif'];
+  let importes = 0, erreurs = 0, dates_ignorees = 0;
+  const conseillersInconnus = new Set();
 
   const importMany = db.transaction((rows) => {
     for (const c of rows) {
       if (!c.nom && !c.prenom) { erreurs++; continue; }
       try {
         const statut = STATUTS_OK.includes(c.statut) ? c.statut : 'a_contacter';
+        const source = (c.source && String(c.source).trim()) ? String(c.source).trim() : 'import_csv';
+
+        let assignedTo = null;
+        if (c.conseiller && String(c.conseiller).trim()) {
+          assignedTo = resoudreConseiller(c.conseiller, users);
+          if (assignedTo == null) conseillersInconnus.add(String(c.conseiller).trim());
+        }
+
+        let dateEstim = null;
+        if (c.date_estimation && String(c.date_estimation).trim()) {
+          dateEstim = normaliserDate(c.date_estimation);
+          if (dateEstim == null) dates_ignorees++;
+        }
+
         const result = insert.run(
           c.nom || '', c.prenom || '', c.telephone || '', c.telephone2 || '',
           c.email || '', c.adresse || '', c.code_postal || '', c.ville || '',
           c.categorie || 'autre', c.notes || '', parseInt(c.potentiel) || 3,
-          statut, c.prochain_contact || null
+          statut, c.prochain_contact || null, source, assignedTo, dateEstim, c.photo_url || null
         );
         recalculerScore(result.lastInsertRowid);
         importes++;
@@ -154,7 +166,15 @@ router.post('/import', (req, res) => {
   });
 
   importMany(contacts);
-  res.json({ importes, erreurs });
+  return { importes, erreurs, conseillers_non_reconnus: conseillersInconnus.size, dates_ignorees };
+}
+
+// Import CSV en masse
+router.post('/import', (req, res) => {
+  const { contacts } = req.body;
+  if (!Array.isArray(contacts) || contacts.length === 0) return res.status(400).json({ error: 'Données invalides' });
+  const users = db.prepare('SELECT id, nom, prenom, email FROM users WHERE actif = 1').all();
+  res.json(importerContacts(contacts, users));
 });
 
 // Export
@@ -174,3 +194,4 @@ router.get('/export/csv', (req, res) => {
 });
 
 module.exports = router;
+module.exports.importerContacts = importerContacts;
