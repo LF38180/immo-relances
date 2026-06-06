@@ -14,7 +14,9 @@ export default function ContactModal({ contact, onClose, onSaved }) {
     nom: '', prenom: '', telephone: '', telephone2: '', email: '',
     adresse: '', code_postal: '', ville: '', categorie: 'autre',
     notes: '', potentiel: 3, statut: 'a_contacter', prochain_contact: '', tags: '',
+    source_import: '', assigned_to: '', date_estimation: '', photo_url: '',
   })
+  const [users, setUsers] = useState([])
   const [relances, setRelances] = useState([])
   const [tab, setTab] = useState('infos')
   const [saving, setSaving] = useState(false)
@@ -24,10 +26,14 @@ export default function ContactModal({ contact, onClose, onSaved }) {
   useEffect(() => {
     if (contact) {
       const tags = (() => { try { return JSON.parse(contact.tags || '[]').join(', ') } catch { return '' } })()
-      setForm({ ...contact, tags, prochain_contact: contact.prochain_contact?.slice(0, 10) || '' })
+      setForm({ ...contact, tags, prochain_contact: contact.prochain_contact?.slice(0, 10) || '', date_estimation: contact.date_estimation?.slice(0, 10) || '', assigned_to: contact.assigned_to || '' })
       api.get(`/relances/contact/${contact.id}`).then(r => setRelances(r.data))
     }
   }, [contact?.id])
+
+  useEffect(() => {
+    api.get('/admin/users').then(r => setUsers(r.data)).catch(() => setUsers([]))
+  }, [])
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
@@ -124,6 +130,26 @@ export default function ContactModal({ contact, onClose, onSaved }) {
             <div>
               <label className="block text-xs font-medium text-quai-muted mb-1">Prochain contact</label>
               <input type="date" className="input" value={form.prochain_contact} onChange={e => set('prochain_contact', e.target.value)} />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-quai-muted mb-1">Conseiller en charge</label>
+              <select className="input" value={form.assigned_to || ''} onChange={e => set('assigned_to', e.target.value || null)}>
+                <option value="">— Non attribué —</option>
+                {users.map(u => <option key={u.id} value={u.id}>{u.prenom} {u.nom}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-quai-muted mb-1">Date d'estimation</label>
+              <input type="date" className="input" value={form.date_estimation || ''} onChange={e => set('date_estimation', e.target.value)} />
+            </div>
+            <Field label="Source" value={form.source_import} onChange={v => set('source_import', v)} />
+            <div>
+              <label className="block text-xs font-medium text-quai-muted mb-1">Photo (URL)</label>
+              <input className="input" value={form.photo_url || ''} onChange={e => set('photo_url', e.target.value)} placeholder="https://…" />
+              {form.photo_url && (
+                <img src={form.photo_url} alt="Aperçu" className="mt-2 h-16 w-16 object-cover rounded-lg border border-quai-border"
+                  onError={e => { e.currentTarget.style.display = 'none' }} />
+              )}
             </div>
             <div className="col-span-2">
               <label className="block text-xs font-medium text-quai-muted mb-1">Tags (séparés par virgule)</label>
