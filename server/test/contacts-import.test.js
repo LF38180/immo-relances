@@ -39,6 +39,11 @@ test('normaliserDate illisible -> null', () => {
   assert.strictEqual(normaliserDate(''), null)
   assert.strictEqual(normaliserDate(null), null)
 })
+test('normaliserDate jour invalide -> null', () => {
+  assert.strictEqual(normaliserDate('31/02/2026'), null)
+  assert.strictEqual(normaliserDate('30/02/2026'), null)
+  assert.strictEqual(normaliserDate('29/02/2026'), null) // 2026 pas bissextile
+})
 
 const { resoudreConseiller } = require('../src/utils/import-helpers')
 
@@ -102,4 +107,17 @@ test('GET détail renvoie le nom du conseiller (join users)', () => {
     WHERE contacts.nom = 'Test1'
   `).get()
   assert.ok(c.assigned_prenom, 'assigned_prenom manquant')
+})
+
+test('POST create : INSERT accepte assigned_to/date_estimation/photo_url', () => {
+  // Réplique l'INSERT du POST / (16 colonnes) pour valider le schéma
+  const r = db.prepare(`
+    INSERT INTO contacts (nom, prenom, telephone, telephone2, email, adresse, code_postal, ville, categorie, tags, notes, potentiel, source_import, assigned_to, date_estimation, photo_url)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run('CreateTest', 'P', '', '', '', '', '', '', 'autre', '[]', '', 3, 'manuel', 2, '2026-03-01', 'https://x/p.jpg')
+  const c = db.prepare("SELECT * FROM contacts WHERE id = ?").get(r.lastInsertRowid)
+  assert.strictEqual(c.assigned_to, 2)
+  assert.strictEqual(c.date_estimation, '2026-03-01')
+  assert.strictEqual(c.photo_url, 'https://x/p.jpg')
+  assert.strictEqual(c.source_import, 'manuel')
 })

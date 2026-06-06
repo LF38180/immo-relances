@@ -23,7 +23,10 @@ function normaliserDate(v) {
   if (m) {
     const jj = m[1].padStart(2, '0');
     const mm = m[2].padStart(2, '0');
-    if (+mm >= 1 && +mm <= 12 && +jj >= 1 && +jj <= 31) return `${m[3]}-${mm}-${jj}`;
+    const iso = `${m[3]}-${mm}-${jj}`;
+    // Valide le jour réel du mois (rejette 31/02, 30/02, etc.)
+    const d = new Date(`${iso}T00:00:00Z`);
+    if (!isNaN(d.getTime()) && d.toISOString().slice(0, 10) === iso) return iso;
   }
 
   return null;

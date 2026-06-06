@@ -86,15 +86,17 @@ router.get('/:id', (req, res) => {
 router.post('/', (req, res) => {
   const {
     nom, prenom, telephone, telephone2, email, adresse, code_postal, ville,
-    categorie = 'autre', tags = '[]', notes, potentiel = 3, source_import
+    categorie = 'autre', tags = '[]', notes, potentiel = 3, source_import,
+    assigned_to, date_estimation, photo_url
   } = req.body;
   if (!nom) return res.status(400).json({ error: 'Nom requis' });
 
   const result = db.prepare(`
-    INSERT INTO contacts (nom, prenom, telephone, telephone2, email, adresse, code_postal, ville, categorie, tags, notes, potentiel, source_import)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO contacts (nom, prenom, telephone, telephone2, email, adresse, code_postal, ville, categorie, tags, notes, potentiel, source_import, assigned_to, date_estimation, photo_url)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(nom, prenom, telephone, telephone2, email, adresse, code_postal, ville, categorie,
-    typeof tags === 'string' ? tags : JSON.stringify(tags), notes, potentiel, source_import);
+    typeof tags === 'string' ? tags : JSON.stringify(tags), notes, potentiel, source_import,
+    assigned_to ? parseInt(assigned_to, 10) : null, date_estimation || null, photo_url || null);
 
   recalculerScore(result.lastInsertRowid);
   res.status(201).json({ id: result.lastInsertRowid });
@@ -114,7 +116,7 @@ router.put('/:id', (req, res) => {
     let val = req.body[champ];
     if (champ === 'tags') val = typeof val === 'string' ? val : JSON.stringify(val);
     if (champ === 'prochain_contact') val = val || null;
-    if (champ === 'assigned_to') val = val || null;
+    if (champ === 'assigned_to') val = val ? parseInt(val, 10) : null;
     if (champ === 'date_estimation') val = val || null;
     if (champ === 'photo_url') val = val || null;
     sets.push(`${champ} = ?`);

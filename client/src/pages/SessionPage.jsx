@@ -194,7 +194,7 @@ export default function SessionPage() {
               {contact.source_import && (
                 <span className="inline-flex items-center gap-1.5"><Icon name="tag" size="sm" /> {contact.source_import}</span>
               )}
-              {contact.photo_url && (
+              {contact.photo_url && /^https?:\/\//i.test(contact.photo_url) && (
                 <a href={contact.photo_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-quai-navy hover:underline">
                   <img src={contact.photo_url} alt="" className="h-8 w-8 object-cover rounded border border-quai-border"
                     onError={e => { e.currentTarget.outerHTML = '<span class=\"inline-flex items-center gap-1\">Voir la photo</span>' }} />
