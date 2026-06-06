@@ -29,4 +29,22 @@ function normaliserDate(v) {
   return null;
 }
 
-module.exports = { normaliserDate };
+function norm(s) {
+  // ̀-ͯ = combining diacritical marks (accents)
+  return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim().replace(/\s+/g, ' ');
+}
+
+// Résout un nom de conseiller vers users.id. null si pas de match.
+function resoudreConseiller(valeur, users) {
+  const v = norm(valeur);
+  if (!v) return null;
+  for (const u of users) {
+    const prenomNom = norm(`${u.prenom} ${u.nom}`);
+    const nomPrenom = norm(`${u.nom} ${u.prenom}`);
+    const email = norm(u.email);
+    if (v === prenomNom || v === nomPrenom || v === email) return u.id;
+  }
+  return null;
+}
+
+module.exports = { normaliserDate, resoudreConseiller };
