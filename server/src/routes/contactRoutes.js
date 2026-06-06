@@ -22,7 +22,7 @@ router.get('/', (req, res) => {
   const params = [];
 
   if (search) {
-    conditions.push(`(contacts.nom LIKE ? OR prenom LIKE ? OR telephone LIKE ? OR email LIKE ? OR ville LIKE ?)`);
+    conditions.push(`(contacts.nom LIKE ? OR contacts.prenom LIKE ? OR contacts.telephone LIKE ? OR contacts.email LIKE ? OR contacts.ville LIKE ?)`);
     const s = `%${search}%`;
     params.push(s, s, s, s, s);
   }
