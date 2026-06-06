@@ -50,13 +50,14 @@ router.get('/file-relances', (req, res) => {
 
   // Contacts à contacter ou dont le prochain_contact est passé/aujourd'hui
   const contacts = db.prepare(`
-    SELECT * FROM contacts
-    WHERE statut NOT IN ('pas_interesse', 'inactif')
+    SELECT contacts.*, u.nom AS assigned_nom, u.prenom AS assigned_prenom
+    FROM contacts LEFT JOIN users u ON u.id = contacts.assigned_to
+    WHERE contacts.statut NOT IN ('pas_interesse', 'inactif')
     AND (
-      statut = 'a_contacter'
-      OR (statut IN ('tente_sans_reponse', 'rappel_planifie', 'a_recontacter') AND (prochain_contact IS NULL OR prochain_contact <= ?))
+      contacts.statut = 'a_contacter'
+      OR (contacts.statut IN ('tente_sans_reponse', 'rappel_planifie', 'a_recontacter') AND (contacts.prochain_contact IS NULL OR contacts.prochain_contact <= ?))
     )
-    ORDER BY score_priorite DESC, prochain_contact ASC NULLS LAST
+    ORDER BY contacts.score_priorite DESC, contacts.prochain_contact ASC NULLS LAST
     LIMIT ?
   `).all(today, limit);
 
