@@ -183,6 +183,26 @@ export default function SessionPage() {
             <div className="text-sm text-quai-muted mb-3 inline-flex items-center gap-1.5"><Icon name="mail" size="sm" /> {contact.email}</div>
           )}
 
+          {(contact.source_import || contact.assigned_prenom || contact.date_estimation || contact.photo_url) && (
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-quai-muted mb-3">
+              {contact.assigned_prenom && (
+                <span className="inline-flex items-center gap-1.5"><Icon name="user" size="sm" /> {contact.assigned_prenom} {contact.assigned_nom}</span>
+              )}
+              {contact.date_estimation && (
+                <span className="inline-flex items-center gap-1.5"><Icon name="calendar" size="sm" /> Estimation : {contact.date_estimation.slice(0, 10).split('-').reverse().join('/')}</span>
+              )}
+              {contact.source_import && (
+                <span className="inline-flex items-center gap-1.5"><Icon name="tag" size="sm" /> {contact.source_import}</span>
+              )}
+              {contact.photo_url && (
+                <a href={contact.photo_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-quai-navy hover:underline">
+                  <img src={contact.photo_url} alt="" className="h-8 w-8 object-cover rounded border border-quai-border"
+                    onError={e => { e.currentTarget.outerHTML = '<span class=\"inline-flex items-center gap-1\">Voir la photo</span>' }} />
+                </a>
+              )}
+            </div>
+          )}
+
           {contact.notes && (
             <div className="bg-quai-gold/10 border border-quai-gold/30 rounded-lg p-3 text-sm text-quai-text mb-3 flex gap-2">
               <Icon name="pin" size="sm" className="text-quai-gold flex-shrink-0 mt-0.5" />
