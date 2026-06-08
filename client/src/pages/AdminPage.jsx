@@ -3,13 +3,29 @@ import api from '../utils/api'
 import toast from 'react-hot-toast'
 import Icon from '../components/ui/Icon'
 import PageHeader from '../components/ui/PageHeader'
+import { useAuth } from '../hooks/useAuth'
 
 export default function AdminPage() {
+  const { user } = useAuth()
+  const estAdmin = user?.role === 'admin'
   const [tab, setTab] = useState('users')
   const [users, setUsers] = useState([])
   const [params, setParams] = useState({})
   const [newUser, setNewUser] = useState({ nom: '', prenom: '', email: '', password: '', role: 'agent' })
   const [showNewUser, setShowNewUser] = useState(false)
+  const [confirmEffacer, setConfirmEffacer] = useState('')
+  const [effacement, setEffacement] = useState(false)
+
+  const effacerTousContacts = async () => {
+    if (confirmEffacer !== 'EFFACER' || effacement) return
+    setEffacement(true)
+    try {
+      const r = await api.delete('/contacts/all')
+      toast.success(`${r.data.supprimes} contact(s) effacé(s)`)
+      setConfirmEffacer('')
+    } catch { toast.error('Erreur (réservé admin)') }
+    finally { setEffacement(false) }
+  }
 
   useEffect(() => {
     api.get('/admin/users').then(r => setUsers(r.data))
@@ -43,7 +59,7 @@ export default function AdminPage() {
         <PageHeader title="Administration" />
 
         <div className="flex border-b border-quai-border mb-6">
-          {[['users','Utilisateurs','users'],['params','Paramètres','settings']].map(([t, lbl, ic]) => (
+          {[['users','Utilisateurs','users'],['params','Paramètres','settings'],...(estAdmin ? [['donnees','Données','database']] : [])].map(([t, lbl, ic]) => (
             <button key={t} onClick={() => setTab(t)}
               className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors inline-flex items-center gap-2 ${tab === t ? 'border-quai-gold text-quai-navy' : 'border-transparent text-quai-muted hover:text-quai-navy'}`}>
               <Icon name={ic} size="sm" /> {lbl}
@@ -146,6 +162,28 @@ export default function AdminPage() {
               <hr className="border-quai-border" />
               <ParamField label="Délai avant recontact (jours)" cle="delai_recontact_jours" params={params} setParams={setParams} type="number" />
               <button onClick={saveParams} className="btn-primary">Sauvegarder les paramètres</button>
+            </div>
+          </div>
+        )}
+
+        {tab === 'donnees' && estAdmin && (
+          <div>
+            <h2 className="font-semibold text-quai-navy mb-4">Données</h2>
+            <div className="card border-2 border-red-200">
+              <div className="flex items-start gap-3 mb-3">
+                <Icon name="alert-triangle" size="md" className="text-red-600 flex-shrink-0 mt-0.5" />
+                <div>
+                  <h3 className="font-medium text-quai-navy">Effacer tous les contacts</h3>
+                  <p className="text-sm text-quai-muted">Supprime définitivement la totalité des contacts et leur historique de relances. Action irréversible. Utile avant un ré-import propre.</p>
+                </div>
+              </div>
+              <label className="block text-xs font-medium text-quai-muted mb-1">Tapez <span className="font-mono font-bold">EFFACER</span> pour confirmer</label>
+              <div className="flex gap-2">
+                <input className="input w-48" value={confirmEffacer} onChange={e => setConfirmEffacer(e.target.value)} placeholder="EFFACER" />
+                <button onClick={effacerTousContacts} disabled={confirmEffacer !== 'EFFACER' || effacement} className="btn-danger inline-flex items-center gap-1.5">
+                  <Icon name="trash-2" size="sm" /> {effacement ? 'Effacement…' : 'Effacer tous les contacts'}
+                </button>
+              </div>
             </div>
           </div>
         )}
