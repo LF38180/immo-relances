@@ -151,3 +151,36 @@ test('POST create : INSERT accepte assigned_to/date_estimation/photo_url', () =>
   assert.strictEqual(c.photo_url, 'https://x/p.jpg')
   assert.strictEqual(c.source_import, 'manuel')
 })
+
+test('import doublon par telephone : fusionne, ne cree pas de 2e fiche', () => {
+  const users = db.prepare('SELECT id, nom, prenom, email FROM users').all()
+  const imp = { id: 1, role: 'admin' }
+  importerContacts([{ nom: 'DupTel', telephone: '06 11 22 33 44', email: '' }], users, imp, 1)
+  const r = importerContacts([{ nom: 'DupTel', telephone: '0611223344', ville: 'Lyon' }], users, imp, 1)
+  assert.strictEqual(r.fusionnes, 1, 'devrait fusionner')
+  assert.strictEqual(r.importes, 0, 'ne devrait pas creer')
+  const rows = db.prepare("SELECT * FROM contacts WHERE nom='DupTel'").all()
+  assert.strictEqual(rows.length, 1, 'une seule fiche')
+  assert.strictEqual(rows[0].ville, 'Lyon', 'champ vide complete')
+})
+
+test('import doublon par email : fusionne', () => {
+  const users = db.prepare('SELECT id, nom, prenom, email FROM users').all()
+  const imp = { id: 1, role: 'admin' }
+  importerContacts([{ nom: 'DupMail', email: 'X@Test.fr' }], users, imp, 1)
+  const r = importerContacts([{ nom: 'DupMail', email: 'x@test.fr', telephone: '0700000000' }], users, imp, 1)
+  assert.strictEqual(r.fusionnes, 1)
+  const rows = db.prepare("SELECT * FROM contacts WHERE nom='DupMail'").all()
+  assert.strictEqual(rows.length, 1)
+  assert.strictEqual(rows[0].telephone, '0700000000')
+})
+
+test('import multi-biens meme proprio : notes cumulees', () => {
+  const users = db.prepare('SELECT id, nom, prenom, email FROM users').all()
+  const imp = { id: 1, role: 'admin' }
+  importerContacts([{ nom: 'MultiBien', telephone: '0655555555', notes: 'Réf A-1 · Prix 200 000 €' }], users, imp, 1)
+  importerContacts([{ nom: 'MultiBien', telephone: '0655555555', notes: 'Réf B-2 · Prix 300 000 €' }], users, imp, 1)
+  const c = db.prepare("SELECT * FROM contacts WHERE nom='MultiBien'").get()
+  assert.ok(c.notes.includes('A-1'), 'bien 1 present')
+  assert.ok(c.notes.includes('B-2'), 'bien 2 present (cumule)')
+})
