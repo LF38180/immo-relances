@@ -6,7 +6,7 @@ import toast from 'react-hot-toast'
 import { CATEGORIES } from '../utils/constants'
 import Modal from './ui/Modal'
 import Icon from './ui/Icon'
-import { detecterFormat, bienVersContact, categorieModelo, nettoyerNomContact } from '../utils/modelo-import'
+import { detecterFormat, bienVersContact, categorieModelo, nettoyerNomContact, extraireCivilite } from '../utils/modelo-import'
 import { useAuth } from '../hooks/useAuth'
 
 const FIELD_MAP = {
@@ -25,6 +25,7 @@ const FIELD_MAP = {
   conseiller: ['conseiller', 'agent', 'négociateur', 'negociateur', 'responsable', 'assigné', 'assigne', 'suivi par'],
   date_estimation: ['date estimation', 'date création', 'date creation', 'date', 'créé le', 'cree le', 'création', 'creation'],
   photo_url: ['photo', 'image', 'url photo', 'lien photo', 'photo_url', 'photo principale'],
+  civilite: ['civilite', 'civilité', 'titre', 'qualite', 'qualité'],
 }
 
 const FIELD_LABELS = {
@@ -32,7 +33,7 @@ const FIELD_LABELS = {
   email: 'Email', adresse: 'Adresse', code_postal: 'Code postal', ville: 'Ville',
   categorie: 'Catégorie', notes: 'Notes', potentiel: 'Potentiel',
   source: 'Source', conseiller: 'Conseiller en charge', date_estimation: "Date d'estimation",
-  photo_url: 'Photo (URL)',
+  photo_url: 'Photo (URL)', civilite: 'Civilité',
 }
 
 function guessMapping(headers) {
@@ -139,6 +140,10 @@ export default function ImportModal({ onClose, onImported }) {
       }
       // Nettoie les titres parasites en tête de nom ("et Mme. GRIS" -> "GRIS"), couples Modelo
       if (formatDetecte === 'contact' && c.nom) {
+        if (!c.civilite) {
+          const civ = extraireCivilite(c.nom)
+          if (civ) c.civilite = civ
+        }
         c.nom = nettoyerNomContact(c.nom)
       }
       return c

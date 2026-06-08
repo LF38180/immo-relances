@@ -121,7 +121,7 @@ export default function ContactsPage() {
                   className="hover:bg-quai-light cursor-pointer transition-colors"
                 >
                   <td className="px-4 py-3">
-                    <div className="font-medium text-quai-navy">{c.prenom} {c.nom}</div>
+                    <div className="font-medium text-quai-navy">{c.civilite ? c.civilite + ' ' : ''}{c.prenom} {c.nom}</div>
                     {c.email && <div className="text-xs text-quai-muted">{c.email}</div>}
                   </td>
                   <td className="px-4 py-3 font-mono text-quai-text">{c.telephone}</td>
