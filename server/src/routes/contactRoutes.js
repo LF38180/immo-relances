@@ -5,7 +5,7 @@ const { requireAuth } = require('../auth');
 
 const CHAMPS_UPDATE = ['nom','prenom','telephone','telephone2','email','adresse','code_postal',
   'ville','categorie','tags','notes','potentiel','statut','prochain_contact',
-  'source_import','assigned_to','date_estimation','photo_url','suivi_par_origine'];
+  'source_import','assigned_to','date_estimation','photo_url','suivi_par_origine','civilite'];
 
 const router = express.Router();
 router.use(requireAuth);
@@ -87,17 +87,17 @@ router.post('/', (req, res) => {
   const {
     nom, prenom, telephone, telephone2, email, adresse, code_postal, ville,
     categorie = 'autre', tags = '[]', notes, potentiel = 3, source_import,
-    assigned_to, date_estimation, photo_url, suivi_par_origine
+    assigned_to, date_estimation, photo_url, suivi_par_origine, civilite
   } = req.body;
   if (!nom) return res.status(400).json({ error: 'Nom requis' });
 
   const result = db.prepare(`
-    INSERT INTO contacts (nom, prenom, telephone, telephone2, email, adresse, code_postal, ville, categorie, tags, notes, potentiel, source_import, assigned_to, date_estimation, photo_url, suivi_par_origine)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO contacts (nom, prenom, telephone, telephone2, email, adresse, code_postal, ville, categorie, tags, notes, potentiel, source_import, assigned_to, date_estimation, photo_url, suivi_par_origine, civilite)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(nom, prenom, telephone, telephone2, email, adresse, code_postal, ville, categorie,
     typeof tags === 'string' ? tags : JSON.stringify(tags), notes, potentiel, source_import,
     assigned_to ? parseInt(assigned_to, 10) : null, date_estimation || null, photo_url || null,
-    suivi_par_origine || null);
+    suivi_par_origine || null, civilite || null);
 
   recalculerScore(result.lastInsertRowid);
   res.status(201).json({ id: result.lastInsertRowid });
@@ -140,8 +140,8 @@ router.delete('/:id', (req, res) => {
 // Logique d'import factorée (testable sans HTTP).
 function importerContacts(contacts, users, importeur, assignedToChoisi) {
   const insert = db.prepare(`
-    INSERT INTO contacts (nom, prenom, telephone, telephone2, email, adresse, code_postal, ville, categorie, notes, potentiel, statut, prochain_contact, source_import, assigned_to, date_estimation, photo_url, suivi_par_origine)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO contacts (nom, prenom, telephone, telephone2, email, adresse, code_postal, ville, categorie, notes, potentiel, statut, prochain_contact, source_import, assigned_to, date_estimation, photo_url, suivi_par_origine, civilite)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const STATUTS_OK = ['a_contacter','tente_sans_reponse','rappel_planifie','rdv_obtenu','pas_interesse','a_recontacter','inactif'];
@@ -174,7 +174,7 @@ function importerContacts(contacts, users, importeur, assignedToChoisi) {
           c.email || '', c.adresse || '', c.code_postal || '', c.ville || '',
           c.categorie || 'autre', c.notes || '', parseInt(c.potentiel) || 3,
           statut, c.prochain_contact || null, source, assignedTo,
-          dateEstim, c.photo_url || null, suiviParOrigine
+          dateEstim, c.photo_url || null, suiviParOrigine, (c.civilite || null)
         );
         recalculerScore(result.lastInsertRowid);
         importes++;

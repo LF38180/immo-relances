@@ -23,6 +23,11 @@ test('migration ajoute suivi_par_origine', () => {
   assert.ok(cols.includes('suivi_par_origine'), 'suivi_par_origine absente')
 })
 
+test('migration ajoute civilite', () => {
+  const cols = db.prepare("PRAGMA table_info(contacts)").all().map(c => c.name)
+  assert.ok(cols.includes('civilite'), 'civilite absente')
+})
+
 const { normaliserDate } = require('../src/utils/import-helpers')
 
 test('normaliserDate ISO inchangée', () => {

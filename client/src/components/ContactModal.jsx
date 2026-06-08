@@ -12,7 +12,7 @@ import PhotoCarousel from './PhotoCarousel'
 export default function ContactModal({ contact, onClose, onSaved }) {
   const isNew = !contact
   const [form, setForm] = useState({
-    nom: '', prenom: '', telephone: '', telephone2: '', email: '',
+    nom: '', prenom: '', civilite: '', telephone: '', telephone2: '', email: '',
     adresse: '', code_postal: '', ville: '', categorie: 'autre',
     notes: '', potentiel: 3, statut: 'a_contacter', prochain_contact: '', tags: '',
     source_import: '', assigned_to: '', date_estimation: '', photo_url: '', suivi_par_origine: '',
@@ -81,7 +81,7 @@ export default function ContactModal({ contact, onClose, onSaved }) {
 
   return (
     <>
-      <Modal title={isNew ? 'Nouveau contact' : `${contact.prenom} ${contact.nom}`} onClose={onClose} footer={footer}>
+      <Modal title={isNew ? 'Nouveau contact' : `${contact.civilite ? contact.civilite + ' ' : ''}${contact.prenom || ''} ${contact.nom}`.trim()} onClose={onClose} footer={footer}>
         {!isNew && (
           <div className="flex items-center gap-2 mb-4">
             <CategorieBadge categorie={contact.categorie} />
@@ -102,6 +102,8 @@ export default function ContactModal({ contact, onClose, onSaved }) {
 
         {tab === 'infos' ? (
           <div className="grid grid-cols-2 gap-4">
+            <Field label="Civilité" value={form.civilite} onChange={v => set('civilite', v)} />
+            <div />
             <Field label="Prénom" value={form.prenom} onChange={v => set('prenom', v)} autoComplete="given-name" />
             <Field label="Nom *" value={form.nom} onChange={v => set('nom', v)} autoComplete="family-name" />
             <Field label="Téléphone" value={form.telephone} onChange={v => set('telephone', v)} type="tel" autoComplete="tel" />

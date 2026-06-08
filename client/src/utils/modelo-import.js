@@ -6,17 +6,42 @@ export function detecterFormat(headers) {
   return 'contact'
 }
 
-// Tokens de tête à retirer : civilités + conjonctions de couple.
-// "M. Michaël MERCYANO" -> { prenom: 'Michaël', nom: 'MERCYANO' }
-// "M. et Mme. GRIS"     -> { prenom: '', nom: 'GRIS' } (couple : pas de prénom)
-const TITRES = new Set(['m.', 'm', 'mr', 'mme', 'mme.', 'mlle', 'mlle.', 'mr.', 'et', '&', 'ses', 'consorts'])
+// Tokens de tête à retirer du nom. CIVILITES = vrais titres (forment la civilité) ;
+// les suffixes 'ses'/'consorts' sont retirés du nom mais ne font PAS partie de la civilité.
+const CIVILITES = new Set(['m.', 'm', 'mr', 'mr.', 'mme', 'mme.', 'mlle', 'mlle.', 'et', '&'])
+const TITRES = new Set([...CIVILITES, 'ses', 'consorts'])
+
+// Forme d'affichage normalisée d'un token civilité.
+function formatCivToken(t) {
+  const l = t.toLowerCase()
+  if (l === 'm.' || l === 'm' || l === 'mr' || l === 'mr.') return 'M.'
+  if (l === 'mme' || l === 'mme.') return 'Mme'
+  if (l === 'mlle' || l === 'mlle.') return 'Mlle'
+  if (l === 'et') return 'et'
+  if (l === '&') return 'et'
+  return t
+}
+
+// Extrait la civilité de tête d'une chaîne ("M. et Mme. GRIS" -> "M. et Mme", "Mme. RAMSTEINER" -> "Mme").
+export function extraireCivilite(s) {
+  const parts = String(s || '').trim().split(/\s+/).filter(Boolean)
+  const civ = []
+  for (const p of parts) {
+    if (CIVILITES.has(p.toLowerCase())) civ.push(formatCivToken(p))
+    else break
+  }
+  return civ.join(' ')
+}
+
+// "M. Michaël MERCYANO" -> { civilite: 'M.', prenom: 'Michaël', nom: 'MERCYANO' }
+// "M. et Mme. GRIS"     -> { civilite: 'M. et Mme', prenom: '', nom: 'GRIS' } (couple : pas de prénom)
 export function splitNomComplet(s) {
+  const civilite = extraireCivilite(s)
   let parts = String(s || '').trim().split(/\s+/).filter(Boolean)
-  // Retire tous les titres/conjonctions en tête (gère "M. et Mme.", "M et Mme", etc.)
   while (parts.length && TITRES.has(parts[0].toLowerCase())) parts = parts.slice(1)
-  if (parts.length === 0) return { prenom: '', nom: '' }
-  if (parts.length === 1) return { prenom: '', nom: parts[0] }
-  return { prenom: parts[0], nom: parts.slice(1).join(' ') }
+  if (parts.length === 0) return { civilite, prenom: '', nom: '' }
+  if (parts.length === 1) return { civilite, prenom: '', nom: parts[0] }
+  return { civilite, prenom: parts[0], nom: parts.slice(1).join(' ') }
 }
 
 // Retire les titres/conjonctions en tête d'un nom, sans séparer prénom.
@@ -38,7 +63,7 @@ function prixPropre(v) {
 
 // Transforme une ligne d'export BIEN en objet contact (propriétaire vendeur).
 export function bienVersContact(row) {
-  const { prenom, nom } = splitNomComplet(row['Nom, Prenom'])
+  const { civilite, prenom, nom } = splitNomComplet(row['Nom, Prenom'])
   const ref = String(row['Référence'] || '').trim()
 
   const bits = []
@@ -62,7 +87,7 @@ export function bienVersContact(row) {
   }
 
   return {
-    prenom, nom,
+    civilite, prenom, nom,
     email: row['E-mail'] || '',
     telephone: row['Tél. port.'] || '',
     telephone2: row['Tél. fixe'] || '',

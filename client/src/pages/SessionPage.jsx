@@ -184,7 +184,7 @@ export default function SessionPage() {
                 <ScoreBadge score={contact.score_priorite} />
                 <PotentielStars potentiel={contact.potentiel} />
               </div>
-              <h2 className="text-2xl font-display font-bold text-quai-navy">{contact.prenom} {contact.nom}</h2>
+              <h2 className="text-2xl font-display font-bold text-quai-navy">{contact.civilite ? contact.civilite + ' ' : ''}{contact.prenom} {contact.nom}</h2>
               {contact.ville && <p className="text-quai-muted text-sm">{contact.ville} {contact.code_postal}</p>}
             </div>
             <div className="sm:text-right text-xs text-quai-muted">
