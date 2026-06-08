@@ -23,6 +23,8 @@ export default function ContactModal({ contact, onClose, onSaved }) {
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [confirmDel, setConfirmDel] = useState(false)
+  const [nouvelleNote, setNouvelleNote] = useState('')
+  const [ajoutNote, setAjoutNote] = useState(false)
 
   useEffect(() => {
     if (contact) {
@@ -52,6 +54,19 @@ export default function ContactModal({ contact, onClose, onSaved }) {
       onSaved()
     } catch { toast.error('Erreur lors de la sauvegarde') }
     finally { setSaving(false) }
+  }
+
+  const ajouterNote = async () => {
+    if (!nouvelleNote.trim() || ajoutNote) return
+    setAjoutNote(true)
+    try {
+      await api.post('/relances/note', { contact_id: contact.id, notes: nouvelleNote.trim() })
+      setNouvelleNote('')
+      const r = await api.get(`/relances/contact/${contact.id}`)
+      setRelances(r.data)
+      toast.success('Note ajoutée')
+    } catch { toast.error('Erreur') }
+    finally { setAjoutNote(false) }
   }
 
   const del = async () => {
@@ -168,15 +183,24 @@ export default function ContactModal({ contact, onClose, onSaved }) {
           </div>
         ) : (
           <div className="space-y-3">
+            <div className="mb-4 flex gap-2">
+              <input className="input flex-1" placeholder="Ajouter une note à l'historique…" value={nouvelleNote}
+                onChange={e => setNouvelleNote(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') ajouterNote() }} />
+              <button onClick={ajouterNote} disabled={ajoutNote || !nouvelleNote.trim()} className="btn-primary btn-sm">Ajouter</button>
+            </div>
             {relances.length === 0 && <div className="text-center text-quai-muted py-8">Aucune relance enregistrée</div>}
             {relances.map(r => {
-              const s = STATUTS_RELANCE[r.statut] || { label: r.statut, icon: 'circle', color: 'bg-quai-light text-quai-muted' }
+              const isNote = r.type === 'note'
+              const s = isNote ? null : (STATUTS_RELANCE[r.statut] || { label: r.statut, icon: 'circle', color: 'bg-quai-light text-quai-muted' })
               return (
                 <div key={r.id} className="flex gap-3 p-3 bg-quai-light rounded-lg border border-quai-border">
-                  <Icon name={s.icon} size="md" className="text-quai-navy flex-shrink-0 mt-0.5" />
+                  <Icon name={isNote ? 'pencil' : s.icon} size="md" className="text-quai-navy flex-shrink-0 mt-0.5" />
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1 flex-wrap">
-                      <span className={`badge ${s.color}`}>{s.label}</span>
+                      {isNote
+                        ? <span className="badge bg-quai-gold/15 text-quai-navy border border-quai-gold/30">Note</span>
+                        : <span className={`badge ${s.color}`}>{s.label}</span>
+                      }
                       <span className="text-xs text-quai-muted">{format(new Date(r.created_at), 'dd/MM/yyyy HH:mm')}</span>
                       <span className="text-xs text-quai-muted">par {r.agent_prenom} {r.agent_nom}</span>
                     </div>

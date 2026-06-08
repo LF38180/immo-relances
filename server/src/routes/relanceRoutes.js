@@ -43,6 +43,17 @@ function mapRelanceToContactStatut(statut) {
   return map[statut] || 'a_contacter';
 }
 
+// Ajouter une note manuelle a l'historique (ne change pas le statut du contact)
+router.post('/note', (req, res) => {
+  const { contact_id, notes } = req.body;
+  if (!contact_id || !notes || !String(notes).trim()) return res.status(400).json({ error: 'contact_id et notes requis' });
+  const result = db.prepare(`
+    INSERT INTO relances (contact_id, agent_id, statut, notes, type)
+    VALUES (?, ?, 'contacte', ?, 'note')
+  `).run(contact_id, req.user.id, String(notes).trim());
+  res.status(201).json({ id: result.lastInsertRowid });
+});
+
 // Historique relances d'un contact
 router.get('/contact/:id', (req, res) => {
   const relances = db.prepare(`
@@ -64,18 +75,18 @@ router.get('/stats', (req, res) => {
 
   const totalRelances = db.prepare(`
     SELECT COUNT(*) as cnt FROM relances r
-    WHERE DATE(r.created_at) BETWEEN ? AND ? ${agentFilter}
+    WHERE DATE(r.created_at) BETWEEN ? AND ? AND r.type = 'appel' ${agentFilter}
   `).get(dateDebut, dateFin, ...agentParam).cnt;
 
   const parStatut = db.prepare(`
     SELECT statut, COUNT(*) as cnt FROM relances r
-    WHERE DATE(r.created_at) BETWEEN ? AND ? ${agentFilter}
+    WHERE DATE(r.created_at) BETWEEN ? AND ? AND r.type = 'appel' ${agentFilter}
     GROUP BY statut
   `).all(dateDebut, dateFin, ...agentParam);
 
   const parJour = db.prepare(`
     SELECT DATE(r.created_at) as jour, COUNT(*) as cnt FROM relances r
-    WHERE DATE(r.created_at) BETWEEN ? AND ? ${agentFilter}
+    WHERE DATE(r.created_at) BETWEEN ? AND ? AND r.type = 'appel' ${agentFilter}
     GROUP BY DATE(r.created_at) ORDER BY jour
   `).all(dateDebut, dateFin, ...agentParam);
 
@@ -95,7 +106,7 @@ router.get('/stats', (req, res) => {
   const today = new Date().toISOString().slice(0, 10);
   const parAgent = db.prepare(`
     SELECT u.nom, u.prenom, u.id, COUNT(r.id) as relances_jour
-    FROM users u LEFT JOIN relances r ON r.agent_id = u.id AND DATE(r.created_at) = ?
+    FROM users u LEFT JOIN relances r ON r.agent_id = u.id AND DATE(r.created_at) = ? AND r.type = 'appel'
     WHERE u.role = 'agent' AND u.actif = 1 GROUP BY u.id
   `).all(today);
 
