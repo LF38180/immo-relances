@@ -5,6 +5,7 @@ import { STATUTS_RELANCE } from '../utils/constants'
 import { CategorieBadge, ScoreBadge, PotentielStars } from '../components/ContactBadge'
 import Icon from '../components/ui/Icon'
 import { format } from 'date-fns'
+import PhotoCarousel from '../components/PhotoCarousel'
 
 const SHORTCUT_MAP = {
   '1': 'tente_sans_reponse',
@@ -183,7 +184,7 @@ export default function SessionPage() {
             <div className="text-sm text-quai-muted mb-3 inline-flex items-center gap-1.5"><Icon name="mail" size="sm" /> {contact.email}</div>
           )}
 
-          {(contact.source_import || contact.assigned_prenom || contact.date_estimation || contact.photo_url) && (
+          {(contact.source_import || contact.assigned_prenom || contact.date_estimation || contact.suivi_par_origine) && (
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-quai-muted mb-3">
               {contact.assigned_prenom && (
                 <span className="inline-flex items-center gap-1.5"><Icon name="user" size="sm" /> {contact.assigned_prenom} {contact.assigned_nom}</span>
@@ -194,14 +195,12 @@ export default function SessionPage() {
               {contact.source_import && (
                 <span className="inline-flex items-center gap-1.5"><Icon name="tag" size="sm" /> {contact.source_import}</span>
               )}
-              {contact.photo_url && /^https?:\/\//i.test(contact.photo_url) && (
-                <a href={contact.photo_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-quai-navy hover:underline">
-                  <img src={contact.photo_url} alt="" className="h-8 w-8 object-cover rounded border border-quai-border"
-                    onError={e => { e.currentTarget.outerHTML = '<span class=\"inline-flex items-center gap-1\">Voir la photo</span>' }} />
-                </a>
+              {contact.suivi_par_origine && (
+                <span className="inline-flex items-center gap-1.5"><Icon name="history" size="sm" /> Suivi origine : {contact.suivi_par_origine}</span>
               )}
             </div>
           )}
+          {contact.photo_url && <div className="mb-3 max-w-xs"><PhotoCarousel value={contact.photo_url} /></div>}
 
           {contact.notes && (
             <div className="bg-quai-gold/10 border border-quai-gold/30 rounded-lg p-3 text-sm text-quai-text mb-3 flex gap-2">

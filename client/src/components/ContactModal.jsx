@@ -7,6 +7,7 @@ import Modal from './ui/Modal'
 import ConfirmDialog from './ui/ConfirmDialog'
 import Icon from './ui/Icon'
 import { format } from 'date-fns'
+import PhotoCarousel from './PhotoCarousel'
 
 export default function ContactModal({ contact, onClose, onSaved }) {
   const isNew = !contact
@@ -14,7 +15,7 @@ export default function ContactModal({ contact, onClose, onSaved }) {
     nom: '', prenom: '', telephone: '', telephone2: '', email: '',
     adresse: '', code_postal: '', ville: '', categorie: 'autre',
     notes: '', potentiel: 3, statut: 'a_contacter', prochain_contact: '', tags: '',
-    source_import: '', assigned_to: '', date_estimation: '', photo_url: '',
+    source_import: '', assigned_to: '', date_estimation: '', photo_url: '', suivi_par_origine: '',
   })
   const [users, setUsers] = useState([])
   const [relances, setRelances] = useState([])
@@ -138,6 +139,12 @@ export default function ContactModal({ contact, onClose, onSaved }) {
                 {users.map(u => <option key={u.id} value={u.id}>{u.prenom} {u.nom}</option>)}
               </select>
             </div>
+            {form.suivi_par_origine && (
+              <div>
+                <label className="block text-xs font-medium text-quai-muted mb-1">Suivi à l'origine (Modelo)</label>
+                <input className="input bg-quai-light" value={form.suivi_par_origine} readOnly />
+              </div>
+            )}
             <div>
               <label className="block text-xs font-medium text-quai-muted mb-1">Date d'estimation</label>
               <input type="date" className="input" value={form.date_estimation || ''} onChange={e => set('date_estimation', e.target.value)} />
@@ -146,10 +153,7 @@ export default function ContactModal({ contact, onClose, onSaved }) {
             <div>
               <label className="block text-xs font-medium text-quai-muted mb-1">Photo (URL)</label>
               <input className="input" value={form.photo_url || ''} onChange={e => set('photo_url', e.target.value)} placeholder="https://…" />
-              {form.photo_url && (
-                <img src={form.photo_url} alt="Aperçu" className="mt-2 h-16 w-16 object-cover rounded-lg border border-quai-border"
-                  onError={e => { e.currentTarget.style.display = 'none' }} />
-              )}
+              {form.photo_url && <div className="mt-2"><PhotoCarousel value={form.photo_url} /></div>}
             </div>
             <div className="col-span-2">
               <label className="block text-xs font-medium text-quai-muted mb-1">Tags (séparés par virgule)</label>
