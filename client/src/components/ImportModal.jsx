@@ -6,7 +6,7 @@ import toast from 'react-hot-toast'
 import { CATEGORIES } from '../utils/constants'
 import Modal from './ui/Modal'
 import Icon from './ui/Icon'
-import { detecterFormat, bienVersContact, categorieModelo } from '../utils/modelo-import'
+import { detecterFormat, bienVersContact, categorieModelo, nettoyerNomContact } from '../utils/modelo-import'
 import { useAuth } from '../hooks/useAuth'
 
 const FIELD_MAP = {
@@ -136,6 +136,10 @@ export default function ImportModal({ onClose, onImported }) {
       })
       if (c.categorie && formatDetecte === 'contact' && c.categorie !== defaultCategorie) {
         c.categorie = categorieModelo(c.categorie)
+      }
+      // Nettoie les titres parasites en tête de nom ("et Mme. GRIS" -> "GRIS"), couples Modelo
+      if (formatDetecte === 'contact' && c.nom) {
+        c.nom = nettoyerNomContact(c.nom)
       }
       return c
     })
