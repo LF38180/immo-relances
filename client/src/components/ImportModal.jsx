@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import Papa from 'papaparse'
 import * as XLSX from 'xlsx'
 import api from '../utils/api'
@@ -7,6 +7,7 @@ import { CATEGORIES } from '../utils/constants'
 import Modal from './ui/Modal'
 import Icon from './ui/Icon'
 import { detecterFormat, bienVersContact, categorieModelo } from '../utils/modelo-import'
+import { useAuth } from '../hooks/useAuth'
 
 const FIELD_MAP = {
   nom: ['nom', 'name', 'last_name', 'lastname', 'surname'],
@@ -52,6 +53,7 @@ function guessMapping(headers) {
 }
 
 export default function ImportModal({ onClose, onImported }) {
+  const { user } = useAuth()
   const [step, setStep] = useState(1)
   const [rows, setRows] = useState([])
   const [headers, setHeaders] = useState([])
@@ -60,7 +62,15 @@ export default function ImportModal({ onClose, onImported }) {
   const [importing, setImporting] = useState(false)
   const [result, setResult] = useState(null)
   const [formatDetecte, setFormatDetecte] = useState('contact')
+  const [users, setUsers] = useState([])
+  const [assigneA, setAssigneA] = useState('')
   const fileRef = useRef()
+
+  useEffect(() => {
+    if (user && (user.role === 'manager' || user.role === 'admin')) {
+      api.get('/admin/users').then(r => { setUsers(r.data); setAssigneA(String(user.id)) }).catch(() => {})
+    }
+  }, [])
 
   const appliquerDonnees = (hdrs, data) => {
     const format = detecterFormat(hdrs)
@@ -130,7 +140,9 @@ export default function ImportModal({ onClose, onImported }) {
       return c
     })
     try {
-      const r = await api.post('/contacts/import', { contacts })
+      const payload = { contacts }
+      if ((user?.role === 'manager' || user?.role === 'admin') && assigneA) payload.assigned_to = assigneA
+      const r = await api.post('/contacts/import', payload)
       setResult(r.data)
       setStep(3)
       toast.success(`${r.data.importes} contacts importés`)
@@ -186,6 +198,14 @@ export default function ImportModal({ onClose, onImported }) {
               {Object.entries(CATEGORIES).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
             </select>
           </div>
+          {(user?.role === 'manager' || user?.role === 'admin') && (
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-quai-text mb-1">Attribuer les contacts à</label>
+              <select className="input w-auto" value={assigneA} onChange={e => setAssigneA(e.target.value)}>
+                {users.map(u => <option key={u.id} value={u.id}>{u.prenom} {u.nom}{u.id === user.id ? ' (moi)' : ''}</option>)}
+              </select>
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-3">
             {Object.keys(FIELD_MAP).map(field => (
               <div key={field}>
@@ -239,10 +259,9 @@ export default function ImportModal({ onClose, onImported }) {
               <div className="text-xs text-quai-muted">Erreurs</div>
             </div>
           </div>
-          {(result.conseillers_non_reconnus > 0 || result.dates_ignorees > 0) && (
+          {result.dates_ignorees > 0 && (
             <div className="text-xs text-quai-muted mt-2 space-y-1">
-              {result.conseillers_non_reconnus > 0 && <div>{result.conseillers_non_reconnus} conseiller(s) non reconnu(s) — contacts laissés non attribués.</div>}
-              {result.dates_ignorees > 0 && <div>{result.dates_ignorees} date(s) d'estimation illisible(s) — ignorée(s).</div>}
+              <div>{result.dates_ignorees} date(s) d'estimation illisible(s) — ignorée(s).</div>
             </div>
           )}
         </div>
