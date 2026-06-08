@@ -1,7 +1,7 @@
 const express = require('express');
 const { db, recalculerScore } = require('../database');
 const { normaliserDate, resoudreConseiller } = require('../utils/import-helpers');
-const { requireAuth } = require('../auth');
+const { requireAuth, requireRole } = require('../auth');
 
 const CHAMPS_UPDATE = ['nom','prenom','telephone','telephone2','email','adresse','code_postal',
   'ville','categorie','tags','notes','potentiel','statut','prochain_contact',
@@ -140,6 +140,13 @@ router.put('/:id', (req, res) => {
   db.prepare(`UPDATE contacts SET ${sets.join(', ')} WHERE id = ?`).run(...params);
   recalculerScore(req.params.id);
   res.json({ ok: true });
+});
+
+// Effacer TOUS les contacts (admin uniquement) — doit être déclaré AVANT /:id
+router.delete('/all', requireRole('admin'), (req, res) => {
+  const avant = db.prepare('SELECT COUNT(*) AS c FROM contacts').get().c;
+  db.prepare('DELETE FROM contacts').run();
+  res.json({ ok: true, supprimes: avant });
 });
 
 // Supprimer
