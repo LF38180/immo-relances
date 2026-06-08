@@ -1,5 +1,5 @@
 import assert from 'assert'
-import { detecterFormat, splitNomComplet, categorieModelo, bienVersContact } from '../src/utils/modelo-import.js'
+import { detecterFormat, splitNomComplet, categorieModelo, bienVersContact, nettoyerNomContact } from '../src/utils/modelo-import.js'
 
 function test(nom, fn) {
   try { fn(); console.log('  OK  ' + nom) }
@@ -84,4 +84,19 @@ test('bienVersContact met le Suivi par dans suivi_par_origine (pas conseiller)',
   const c = bienVersContact({ 'Référence': 'P-3', 'Nom, Prenom': 'X', 'Suivi par': 'Tara ZOPPAS' })
   assert.strictEqual(c.suivi_par_origine, 'Tara ZOPPAS')
   assert.strictEqual(c.conseiller, undefined)
+})
+
+test('splitNomComplet couples M. et Mme', () => {
+  assert.deepStrictEqual(splitNomComplet('M. et Mme. GRIS'), { prenom: '', nom: 'GRIS' })
+  assert.deepStrictEqual(splitNomComplet('M et Mme FERIEL'), { prenom: '', nom: 'FERIEL' })
+  assert.deepStrictEqual(splitNomComplet('M. Michaël MERCYANO'), { prenom: 'Michaël', nom: 'MERCYANO' })
+})
+
+test('nettoyerNomContact retire titres parasites en tete', () => {
+  assert.strictEqual(nettoyerNomContact('et Mme. GRIS'), 'GRIS')
+  assert.strictEqual(nettoyerNomContact('et Mme. FERIEL'), 'FERIEL')
+  assert.strictEqual(nettoyerNomContact('M. et Mme. DURAND'), 'DURAND')
+  assert.strictEqual(nettoyerNomContact('Quentin BREYSSE'), 'Quentin BREYSSE')
+  assert.strictEqual(nettoyerNomContact('Indivision NOBLET'), 'Indivision NOBLET')
+  assert.strictEqual(nettoyerNomContact('BREYSSE'), 'BREYSSE')
 })

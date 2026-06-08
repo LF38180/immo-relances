@@ -6,13 +6,25 @@ export function detecterFormat(headers) {
   return 'contact'
 }
 
+// Tokens de tête à retirer : civilités + conjonctions de couple.
 // "M. Michaël MERCYANO" -> { prenom: 'Michaël', nom: 'MERCYANO' }
+// "M. et Mme. GRIS"     -> { prenom: '', nom: 'GRIS' } (couple : pas de prénom)
+const TITRES = new Set(['m.', 'm', 'mr', 'mme', 'mme.', 'mlle', 'mlle.', 'mr.', 'et', '&', 'ses', 'consorts'])
 export function splitNomComplet(s) {
-  const clean = String(s || '').trim().replace(/^(M\.|Mme|Mlle|Mr|M)\s+/i, '').trim()
-  if (!clean) return { prenom: '', nom: '' }
-  const parts = clean.split(/\s+/)
+  let parts = String(s || '').trim().split(/\s+/).filter(Boolean)
+  // Retire tous les titres/conjonctions en tête (gère "M. et Mme.", "M et Mme", etc.)
+  while (parts.length && TITRES.has(parts[0].toLowerCase())) parts = parts.slice(1)
+  if (parts.length === 0) return { prenom: '', nom: '' }
   if (parts.length === 1) return { prenom: '', nom: parts[0] }
   return { prenom: parts[0], nom: parts.slice(1).join(' ') }
+}
+
+// Retire les titres/conjonctions en tête d'un nom, sans séparer prénom.
+// "et Mme. GRIS" -> "GRIS" ; "M. et Mme. DURAND" -> "DURAND" ; "MERCYANO" -> "MERCYANO"
+export function nettoyerNomContact(s) {
+  let parts = String(s || '').trim().split(/\s+/).filter(Boolean)
+  while (parts.length > 1 && TITRES.has(parts[0].toLowerCase())) parts = parts.slice(1)
+  return parts.join(' ')
 }
 
 // Nettoie un montant Modelo "250 000  €" -> "250 000 €" ; "0  €" / vide -> null
