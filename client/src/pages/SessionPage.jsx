@@ -8,6 +8,7 @@ import { format } from 'date-fns'
 import PhotoCarousel from '../components/PhotoCarousel'
 import { genererRecapPdf } from '../utils/recap-pdf'
 import { useAuth } from '../hooks/useAuth'
+import ContactModal from '../components/ContactModal'
 
 const SHORTCUT_MAP = {
   '1': 'tente_sans_reponse',
@@ -31,6 +32,9 @@ export default function SessionPage() {
   const [sessionStats, setSessionStats] = useState({ total: 0, rdv: 0, contactes: 0, pasRep: 0 })
   const [actionsSession, setActionsSession] = useState([])
   const [done, setDone] = useState(false)
+  const [recherche, setRecherche] = useState('')
+  const [resultats, setResultats] = useState([])
+  const [contactOuvert, setContactOuvert] = useState(null)
   const { user } = useAuth()
 
   const contact = file[index]
@@ -69,6 +73,15 @@ export default function SessionPage() {
     setShowScript(false)
     api.get(`/scripts?categorie=${contact.categorie}`).then(r => setScripts(r.data))
   }, [contact?.id])
+
+  useEffect(() => {
+    if (recherche.trim().length < 2) { setResultats([]); return }
+    const t = setTimeout(() => {
+      api.get('/contacts', { params: { search: recherche.trim(), limit: 8 } })
+        .then(r => setResultats(r.data.contacts)).catch(() => setResultats([]))
+    }, 300)
+    return () => clearTimeout(t)
+  }, [recherche])
 
   const submit = useCallback(async (statut) => {
     if (!contact || submitting) return
@@ -173,6 +186,28 @@ export default function SessionPage() {
             </button>
           </div>
         )}
+        <div className="relative mt-3">
+          <div className="flex items-center gap-2">
+            <Icon name="search" size="sm" className="text-quai-muted" />
+            <input
+              className="input flex-1"
+              placeholder="Rappel entrant ? Rechercher par numéro ou nom…"
+              value={recherche}
+              onChange={e => setRecherche(e.target.value)}
+            />
+          </div>
+          {resultats.length > 0 && (
+            <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-quai-border rounded-lg shadow-lg max-h-72 overflow-y-auto">
+              {resultats.map(c => (
+                <button key={c.id} onClick={() => { setContactOuvert(c); setRecherche(''); setResultats([]) }}
+                  className="w-full text-left px-3 py-2 hover:bg-quai-light border-b border-quai-border last:border-0">
+                  <div className="text-sm font-medium text-quai-navy">{c.civilite ? c.civilite + ' ' : ''}{c.prenom} {c.nom}</div>
+                  <div className="text-xs text-quai-muted">{c.telephone || c.telephone2 || '—'}{c.ville ? ' · ' + c.ville : ''}</div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="max-w-3xl mx-auto grid grid-cols-1 gap-4">
@@ -314,6 +349,13 @@ export default function SessionPage() {
           Raccourcis : <kbd className="kbd">1-6</kbd> statut · <kbd className="kbd">S</kbd> script · <kbd className="kbd">→</kbd> passer
         </div>
       </div>
+      {contactOuvert && (
+        <ContactModal
+          contact={contactOuvert}
+          onClose={() => setContactOuvert(null)}
+          onSaved={() => setContactOuvert(null)}
+        />
+      )}
     </div>
   )
 }
