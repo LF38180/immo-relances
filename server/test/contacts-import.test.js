@@ -18,6 +18,11 @@ test('migration ajoute date_estimation et photo_url', () => {
   assert.ok(cols.includes('photo_url'), 'photo_url absente')
 })
 
+test('migration ajoute suivi_par_origine', () => {
+  const cols = db.prepare("PRAGMA table_info(contacts)").all().map(c => c.name)
+  assert.ok(cols.includes('suivi_par_origine'), 'suivi_par_origine absente')
+})
+
 const { normaliserDate } = require('../src/utils/import-helpers')
 
 test('normaliserDate ISO inchangée', () => {
@@ -77,19 +82,39 @@ test('importerContacts : source colonne, conseiller, date normalisée', () => {
     { nom: 'Test1', source: 'site web', conseiller: 'Marie Dupont', date_estimation: '15/01/2026' },
     { nom: 'Test2' }, // pas de source -> fallback import_csv
     { nom: 'Test3', conseiller: 'Inconnu Personne', date_estimation: 'nimporte' },
-  ], users)
+  ], users, { id: 1, role: 'admin' }, null)
 
   assert.strictEqual(r.importes, 3)
-  assert.strictEqual(r.conseillers_non_reconnus, 1)
   assert.strictEqual(r.dates_ignorees, 1)
 
   const c1 = db.prepare("SELECT * FROM contacts WHERE nom='Test1'").get()
   assert.strictEqual(c1.source_import, 'site web')
-  assert.ok(c1.assigned_to != null, 'conseiller Marie non résolu')
+  assert.strictEqual(c1.assigned_to, 1)
   assert.strictEqual(c1.date_estimation, '2026-01-15')
 
   const c2 = db.prepare("SELECT * FROM contacts WHERE nom='Test2'").get()
   assert.strictEqual(c2.source_import, 'import_csv')
+})
+
+test('importerContacts agent : assigned_to force a importeur', () => {
+  const users = db.prepare('SELECT id, nom, prenom, email FROM users').all()
+  const r = importerContacts([{ nom: 'AgentImport', suivi_par_origine: 'Tara ZOPPAS' }], users, { id: 2, role: 'agent' }, 999)
+  assert.strictEqual(r.importes, 1)
+  const c = db.prepare("SELECT * FROM contacts WHERE nom='AgentImport'").get()
+  assert.strictEqual(c.assigned_to, 2)
+  assert.strictEqual(c.suivi_par_origine, 'Tara ZOPPAS')
+})
+test('importerContacts manager : assigned_to = choix', () => {
+  const users = db.prepare('SELECT id, nom, prenom, email FROM users').all()
+  const r = importerContacts([{ nom: 'MgrImport' }], users, { id: 3, role: 'manager' }, 2)
+  const c = db.prepare("SELECT * FROM contacts WHERE nom='MgrImport'").get()
+  assert.strictEqual(c.assigned_to, 2)
+})
+test('importerContacts manager sans choix : defaut = lui-meme', () => {
+  const users = db.prepare('SELECT id, nom, prenom, email FROM users').all()
+  const r = importerContacts([{ nom: 'MgrDefaut' }], users, { id: 3, role: 'manager' }, null)
+  const c = db.prepare("SELECT * FROM contacts WHERE nom='MgrDefaut'").get()
+  assert.strictEqual(c.assigned_to, 3)
 })
 
 test('PUT champs : assigned_to, date_estimation, photo_url, source_import dans CHAMPS_UPDATE', () => {

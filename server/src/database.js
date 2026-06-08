@@ -86,6 +86,7 @@ db.exec(`
 const contactCols = db.prepare("PRAGMA table_info(contacts)").all().map(c => c.name);
 if (!contactCols.includes('date_estimation')) db.exec("ALTER TABLE contacts ADD COLUMN date_estimation TEXT");
 if (!contactCols.includes('photo_url')) db.exec("ALTER TABLE contacts ADD COLUMN photo_url TEXT");
+if (!contactCols.includes('suivi_par_origine')) db.exec("ALTER TABLE contacts ADD COLUMN suivi_par_origine TEXT");
 
 // Seed default admin
 const existingAdmin = db.prepare('SELECT id FROM users WHERE email = ?').get('admin@lequai-immobilier.com');

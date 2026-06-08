@@ -40,6 +40,15 @@ export function bienVersContact(row) {
   const dpe = String(row['Classe DPE'] || '').trim()
   if (dpe) bits.push('DPE ' + dpe)
 
+  // Collecte toutes les photos non vides (principale + n°1..99)
+  const photos = []
+  const principale = String(row['Photo principale'] || '').trim()
+  if (principale) photos.push(principale)
+  for (let i = 1; i <= 99; i++) {
+    const p = String(row['Photo n°' + i] || '').trim()
+    if (p) photos.push(p)
+  }
+
   return {
     prenom, nom,
     email: row['E-mail'] || '',
@@ -48,9 +57,9 @@ export function bienVersContact(row) {
     adresse: row['Adresse_1'] || '',
     code_postal: row['Code postal_1'] || '',
     ville: row['Commune_1'] || '',
-    conseiller: row['Suivi par'] || '',
+    suivi_par_origine: row['Suivi par'] || '',
     date_estimation: row['Création'] || '',
-    photo_url: row['Photo principale'] || '',
+    photo_url: photos.length ? JSON.stringify(photos) : '',
     categorie: 'vendeur',
     source: ref ? `Mandat ${ref}` : 'Mandat',
     notes: bits.join(' · '),

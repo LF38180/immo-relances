@@ -49,7 +49,6 @@ test('bienVersContact extrait le propriétaire', () => {
   assert.strictEqual(c.adresse, '615 Bd Lepic')
   assert.strictEqual(c.code_postal, '73100')
   assert.strictEqual(c.ville, 'Aix-les-Bains')
-  assert.strictEqual(c.conseiller, 'Tara ZOPPAS')
   assert.strictEqual(c.date_estimation, '30-05-2026')
   assert.strictEqual(c.categorie, 'vendeur')
   assert.ok(c.source.startsWith('Mandat'))
@@ -64,4 +63,25 @@ test('bienVersContact gère prix vide / champs manquants', () => {
   assert.strictEqual(c.nom, 'DURAND')
   assert.ok(c.notes.includes('X-1'))
   assert.ok(!c.notes.includes('Prix'))
+})
+
+test('bienVersContact collecte toutes les photos non vides', () => {
+  const c = bienVersContact({
+    'Référence': 'P-1', 'Nom, Prenom': 'DURAND',
+    'Photo principale': 'http://x/p0.jpg', 'Photo n°1': 'http://x/p1.jpg',
+    'Photo n°2': '', 'Photo n°3': 'http://x/p3.jpg',
+  })
+  const photos = JSON.parse(c.photo_url)
+  assert.deepStrictEqual(photos, ['http://x/p0.jpg', 'http://x/p1.jpg', 'http://x/p3.jpg'])
+})
+
+test('bienVersContact photo_url vide si aucune photo', () => {
+  const c = bienVersContact({ 'Référence': 'P-2', 'Nom, Prenom': 'X' })
+  assert.strictEqual(c.photo_url, '')
+})
+
+test('bienVersContact met le Suivi par dans suivi_par_origine (pas conseiller)', () => {
+  const c = bienVersContact({ 'Référence': 'P-3', 'Nom, Prenom': 'X', 'Suivi par': 'Tara ZOPPAS' })
+  assert.strictEqual(c.suivi_par_origine, 'Tara ZOPPAS')
+  assert.strictEqual(c.conseiller, undefined)
 })

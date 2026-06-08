@@ -5,7 +5,7 @@ const { requireAuth } = require('../auth');
 
 const CHAMPS_UPDATE = ['nom','prenom','telephone','telephone2','email','adresse','code_postal',
   'ville','categorie','tags','notes','potentiel','statut','prochain_contact',
-  'source_import','assigned_to','date_estimation','photo_url'];
+  'source_import','assigned_to','date_estimation','photo_url','suivi_par_origine'];
 
 const router = express.Router();
 router.use(requireAuth);
@@ -87,16 +87,17 @@ router.post('/', (req, res) => {
   const {
     nom, prenom, telephone, telephone2, email, adresse, code_postal, ville,
     categorie = 'autre', tags = '[]', notes, potentiel = 3, source_import,
-    assigned_to, date_estimation, photo_url
+    assigned_to, date_estimation, photo_url, suivi_par_origine
   } = req.body;
   if (!nom) return res.status(400).json({ error: 'Nom requis' });
 
   const result = db.prepare(`
-    INSERT INTO contacts (nom, prenom, telephone, telephone2, email, adresse, code_postal, ville, categorie, tags, notes, potentiel, source_import, assigned_to, date_estimation, photo_url)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO contacts (nom, prenom, telephone, telephone2, email, adresse, code_postal, ville, categorie, tags, notes, potentiel, source_import, assigned_to, date_estimation, photo_url, suivi_par_origine)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(nom, prenom, telephone, telephone2, email, adresse, code_postal, ville, categorie,
     typeof tags === 'string' ? tags : JSON.stringify(tags), notes, potentiel, source_import,
-    assigned_to ? parseInt(assigned_to, 10) : null, date_estimation || null, photo_url || null);
+    assigned_to ? parseInt(assigned_to, 10) : null, date_estimation || null, photo_url || null,
+    suivi_par_origine || null);
 
   recalculerScore(result.lastInsertRowid);
   res.status(201).json({ id: result.lastInsertRowid });
@@ -137,15 +138,21 @@ router.delete('/:id', (req, res) => {
 });
 
 // Logique d'import factorée (testable sans HTTP).
-function importerContacts(contacts, users) {
+function importerContacts(contacts, users, importeur, assignedToChoisi) {
   const insert = db.prepare(`
-    INSERT INTO contacts (nom, prenom, telephone, telephone2, email, adresse, code_postal, ville, categorie, notes, potentiel, statut, prochain_contact, source_import, assigned_to, date_estimation, photo_url)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO contacts (nom, prenom, telephone, telephone2, email, adresse, code_postal, ville, categorie, notes, potentiel, statut, prochain_contact, source_import, assigned_to, date_estimation, photo_url, suivi_par_origine)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const STATUTS_OK = ['a_contacter','tente_sans_reponse','rappel_planifie','rdv_obtenu','pas_interesse','a_recontacter','inactif'];
   let importes = 0, erreurs = 0, dates_ignorees = 0;
-  const conseillersInconnus = new Set();
+
+  let assignedTo;
+  if (importeur && importeur.role === 'agent') {
+    assignedTo = importeur.id;
+  } else {
+    assignedTo = assignedToChoisi ? parseInt(assignedToChoisi, 10) : (importeur ? importeur.id : null);
+  }
 
   const importMany = db.transaction((rows) => {
     for (const c of rows) {
@@ -154,11 +161,7 @@ function importerContacts(contacts, users) {
         const statut = STATUTS_OK.includes(c.statut) ? c.statut : 'a_contacter';
         const source = (c.source && String(c.source).trim()) ? String(c.source).trim() : 'import_csv';
 
-        let assignedTo = null;
-        if (c.conseiller && String(c.conseiller).trim()) {
-          assignedTo = resoudreConseiller(c.conseiller, users);
-          if (assignedTo == null) conseillersInconnus.add(String(c.conseiller).trim());
-        }
+        const suiviParOrigine = c.suivi_par_origine || c.conseiller || null;
 
         let dateEstim = null;
         if (c.date_estimation && String(c.date_estimation).trim()) {
@@ -170,7 +173,8 @@ function importerContacts(contacts, users) {
           c.nom || '', c.prenom || '', c.telephone || '', c.telephone2 || '',
           c.email || '', c.adresse || '', c.code_postal || '', c.ville || '',
           c.categorie || 'autre', c.notes || '', parseInt(c.potentiel) || 3,
-          statut, c.prochain_contact || null, source, assignedTo, dateEstim, c.photo_url || null
+          statut, c.prochain_contact || null, source, assignedTo,
+          dateEstim, c.photo_url || null, suiviParOrigine
         );
         recalculerScore(result.lastInsertRowid);
         importes++;
@@ -179,15 +183,15 @@ function importerContacts(contacts, users) {
   });
 
   importMany(contacts);
-  return { importes, erreurs, conseillers_non_reconnus: conseillersInconnus.size, dates_ignorees };
+  return { importes, erreurs, dates_ignorees };
 }
 
 // Import CSV en masse
 router.post('/import', (req, res) => {
-  const { contacts } = req.body;
+  const { contacts, assigned_to } = req.body;
   if (!Array.isArray(contacts) || contacts.length === 0) return res.status(400).json({ error: 'Données invalides' });
   const users = db.prepare('SELECT id, nom, prenom, email FROM users WHERE actif = 1').all();
-  res.json(importerContacts(contacts, users));
+  res.json(importerContacts(contacts, users, req.user, assigned_to));
 });
 
 // Export
