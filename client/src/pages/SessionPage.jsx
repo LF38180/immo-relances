@@ -6,6 +6,8 @@ import { CategorieBadge, ScoreBadge, PotentielStars } from '../components/Contac
 import Icon from '../components/ui/Icon'
 import { format } from 'date-fns'
 import PhotoCarousel from '../components/PhotoCarousel'
+import { genererRecapPdf } from '../utils/recap-pdf'
+import { useAuth } from '../hooks/useAuth'
 
 const SHORTCUT_MAP = {
   '1': 'tente_sans_reponse',
@@ -27,9 +29,23 @@ export default function SessionPage() {
   const [scripts, setScripts] = useState([])
   const [showScript, setShowScript] = useState(false)
   const [sessionStats, setSessionStats] = useState({ total: 0, rdv: 0, contactes: 0, pasRep: 0 })
+  const [actionsSession, setActionsSession] = useState([])
   const [done, setDone] = useState(false)
+  const { user } = useAuth()
 
   const contact = file[index]
+
+  const telecharger = () => {
+    if (actionsSession.length === 0) { toast.error('Aucune action à exporter pour le moment'); return }
+    const now = new Date()
+    const dateLabel = format(now, 'dd/MM/yyyy HH:mm')
+    const dateFichier = format(now, 'yyyy-MM-dd-HHmm')
+    genererRecapPdf(actionsSession, {
+      agent: user ? `${user.prenom} ${user.nom}` : '',
+      dateLabel, dateFichier,
+      stats: sessionStats,
+    })
+  }
 
   const loadFile = async () => {
     setLoading(true)
@@ -72,6 +88,10 @@ export default function SessionPage() {
         contactes: prev.contactes + (['contacte', 'rdv_obtenu'].includes(s) ? 1 : 0),
         pasRep: prev.pasRep + (['tente_sans_reponse', 'message_laisse'].includes(s) ? 1 : 0),
       }))
+      setActionsSession(prev => [...prev, {
+        nom: contact.nom, prenom: contact.prenom, telephone: contact.telephone,
+        statut: s, notes, prochain_contact: prochainContact || null,
+      }])
       if (s === 'rdv_obtenu') toast.success('RDV obtenu ! Excellent !', { duration: 3000 })
       else toast.success('Relance enregistrée')
 
@@ -119,7 +139,12 @@ export default function SessionPage() {
             <div className="card text-center"><div className="text-2xl font-bold text-quai-navy">{sessionStats.contactes}</div><div className="text-xs text-quai-muted">Contactés</div></div>
             <div className="card text-center"><div className="text-2xl font-bold text-amber-600">{sessionStats.pasRep}</div><div className="text-xs text-quai-muted">Sans réponse</div></div>
           </div>
-          <button onClick={loadFile} className="btn-primary inline-flex items-center gap-2"><Icon name="refresh-cw" size="sm" /> Recharger la file</button>
+          <div className="flex flex-wrap gap-3 justify-center">
+            <button onClick={loadFile} className="btn-primary inline-flex items-center gap-2"><Icon name="refresh-cw" size="sm" /> Recharger la file</button>
+            {actionsSession.length > 0 && (
+              <button onClick={telecharger} className="btn-secondary inline-flex items-center gap-2"><Icon name="file-down" size="sm" /> Télécharger le récap</button>
+            )}
+          </div>
         </div>
       </div>
     )
@@ -141,6 +166,13 @@ export default function SessionPage() {
         <div className="h-2 bg-quai-border rounded-full overflow-hidden">
           <div className="h-full bg-quai-gold rounded-full transition-all" style={{ width: `${progress}%` }} />
         </div>
+        {actionsSession.length > 0 && (
+          <div className="mt-2 flex justify-end">
+            <button onClick={telecharger} className="btn-secondary btn-sm inline-flex items-center gap-1.5">
+              <Icon name="file-down" size="sm" /> Fin de session et télécharger récap ({actionsSession.length})
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="max-w-3xl mx-auto grid grid-cols-1 gap-4">
