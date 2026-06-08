@@ -6,23 +6,24 @@ import toast from 'react-hot-toast'
 import { CATEGORIES } from '../utils/constants'
 import Modal from './ui/Modal'
 import Icon from './ui/Icon'
+import { detecterFormat, bienVersContact, categorieModelo } from '../utils/modelo-import'
 
 const FIELD_MAP = {
   nom: ['nom', 'name', 'last_name', 'lastname', 'surname'],
   prenom: ['prenom', 'prénom', 'first_name', 'firstname'],
-  telephone: ['telephone', 'téléphone', 'tel', 'phone', 'mobile', 'portable'],
-  telephone2: ['telephone2', 'tel2', 'mobile2'],
+  telephone: ['telephone', 'téléphone', 'tel', 'phone', 'mobile', 'portable', 'tél. port.', 'tel. port.', 'tél port'],
+  telephone2: ['telephone2', 'tel2', 'mobile2', 'tél. fixe', 'tel. fixe', 'tél fixe', 'fixe'],
   email: ['email', 'e-mail', 'mail', 'courriel'],
   adresse: ['adresse', 'address', 'rue', 'street'],
-  code_postal: ['code_postal', 'cp', 'zip', 'postal_code'],
+  code_postal: ['code_postal', 'cp', 'zip', 'postal_code', 'code postal'],
   ville: ['ville', 'city', 'localite', 'commune'],
   categorie: ['categorie', 'catégorie', 'category', 'type'],
-  notes: ['notes', 'note', 'commentaire', 'remarque', 'observation'],
+  notes: ['notes', 'note', 'commentaire', 'remarque', 'observation', 'observations'],
   potentiel: ['potentiel', 'score', 'note_contact'],
   source: ['source', 'origine', 'provenance'],
-  conseiller: ['conseiller', 'agent', 'négociateur', 'negociateur', 'responsable', 'assigné', 'assigne'],
-  date_estimation: ['date estimation', 'date création', 'date creation', 'date', 'créé le', 'cree le'],
-  photo_url: ['photo', 'image', 'url photo', 'lien photo', 'photo_url'],
+  conseiller: ['conseiller', 'agent', 'négociateur', 'negociateur', 'responsable', 'assigné', 'assigne', 'suivi par'],
+  date_estimation: ['date estimation', 'date création', 'date creation', 'date', 'créé le', 'cree le', 'création', 'creation'],
+  photo_url: ['photo', 'image', 'url photo', 'lien photo', 'photo_url', 'photo principale'],
 }
 
 const FIELD_LABELS = {
@@ -38,9 +39,13 @@ function guessMapping(headers) {
   headers.forEach(h => {
     const hl = h.toLowerCase().trim()
     Object.entries(FIELD_MAP).forEach(([field, aliases]) => {
-      if (aliases.some(a => hl === a || hl.includes(a))) {
-        if (!map[field]) map[field] = h
-      }
+      if (!map[field] && aliases.some(a => hl === a)) map[field] = h
+    })
+  })
+  headers.forEach(h => {
+    const hl = h.toLowerCase().trim()
+    Object.entries(FIELD_MAP).forEach(([field, aliases]) => {
+      if (!map[field] && aliases.some(a => hl.includes(a))) map[field] = h
     })
   })
   return map
@@ -54,7 +59,27 @@ export default function ImportModal({ onClose, onImported }) {
   const [defaultCategorie, setDefaultCategorie] = useState('prospect_froid')
   const [importing, setImporting] = useState(false)
   const [result, setResult] = useState(null)
+  const [formatDetecte, setFormatDetecte] = useState('contact')
   const fileRef = useRef()
+
+  const appliquerDonnees = (hdrs, data) => {
+    const format = detecterFormat(hdrs)
+    if (format === 'bien') {
+      const contacts = data.map(bienVersContact)
+      setRows(contacts)
+      setHeaders(Object.keys(contacts[0] || {}))
+      const idMap = {}
+      Object.keys(contacts[0] || {}).forEach(k => { idMap[k] = k })
+      setMapping(idMap)
+      setFormatDetecte('bien')
+    } else {
+      setHeaders(hdrs)
+      setRows(data)
+      setMapping(guessMapping(hdrs))
+      setFormatDetecte('contact')
+    }
+    setStep(2)
+  }
 
   const handleFile = (file) => {
     const ext = file.name.split('.').pop().toLowerCase()
@@ -63,11 +88,9 @@ export default function ImportModal({ onClose, onImported }) {
       // Lecture CSV
       Papa.parse(file, {
         header: true, skipEmptyLines: true, encoding: 'UTF-8',
+        delimitersToGuess: [';', ',', '\t', '|'],
         complete: (res) => {
-          setHeaders(res.meta.fields || [])
-          setRows(res.data)
-          setMapping(guessMapping(res.meta.fields || []))
-          setStep(2)
+          appliquerDonnees(res.meta.fields || [], res.data)
         },
         error: () => toast.error('Erreur de lecture du fichier CSV')
       })
@@ -83,10 +106,7 @@ export default function ImportModal({ onClose, onImported }) {
           const data = XLSX.utils.sheet_to_json(sheet, { defval: '' })
           if (data.length === 0) { toast.error('Feuille vide'); return }
           const hdrs = Object.keys(data[0])
-          setHeaders(hdrs)
-          setRows(data)
-          setMapping(guessMapping(hdrs))
-          setStep(2)
+          appliquerDonnees(hdrs, data)
         } catch {
           toast.error('Erreur de lecture du fichier tableur')
         }
@@ -104,6 +124,9 @@ export default function ImportModal({ onClose, onImported }) {
       Object.entries(mapping).forEach(([field, col]) => {
         if (col) c[field] = row[col]
       })
+      if (c.categorie && formatDetecte === 'contact' && c.categorie !== defaultCategorie) {
+        c.categorie = categorieModelo(c.categorie)
+      }
       return c
     })
     try {
@@ -151,6 +174,9 @@ export default function ImportModal({ onClose, onImported }) {
 
       {step === 2 && (
         <div>
+          <div className="mb-3 text-xs inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-quai-navy/5 text-quai-navy">
+            <Icon name="file-check" size="sm" /> Format détecté : {formatDetecte === 'bien' ? 'Export biens Modelo (propriétaires)' : 'Export contacts'}
+          </div>
           <div className="mb-4 p-3 bg-quai-navy/5 rounded-lg text-sm text-quai-navy inline-flex items-center gap-2">
             <Icon name="table" size="sm" /> {rows.length.toLocaleString('fr')} lignes détectées. Vérifiez le mapping des colonnes.
           </div>
