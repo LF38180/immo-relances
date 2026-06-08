@@ -268,6 +268,9 @@ export default function ImportModal({ onClose, onImported }) {
               <div className="text-xs text-quai-muted">Erreurs</div>
             </div>
           </div>
+          {result.fusionnes > 0 && (
+            <div className="text-sm text-quai-navy mb-2">{result.fusionnes} contact(s) déjà existant(s) — complété(s) / bien(s) cumulé(s).</div>
+          )}
           {result.dates_ignorees > 0 && (
             <div className="text-xs text-quai-muted mt-2 space-y-1">
               <div>{result.dates_ignorees} date(s) d'estimation illisible(s) — ignorée(s).</div>

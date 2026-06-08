@@ -145,7 +145,7 @@ function importerContacts(contacts, users, importeur, assignedToChoisi) {
   `);
 
   const STATUTS_OK = ['a_contacter','tente_sans_reponse','rappel_planifie','rdv_obtenu','pas_interesse','a_recontacter','inactif'];
-  let importes = 0, erreurs = 0, dates_ignorees = 0;
+  let importes = 0, erreurs = 0, dates_ignorees = 0, fusionnes = 0;
 
   let assignedTo;
   if (importeur && importeur.role === 'agent') {
@@ -154,13 +154,45 @@ function importerContacts(contacts, users, importeur, assignedToChoisi) {
     assignedTo = assignedToChoisi ? parseInt(assignedToChoisi, 10) : (importeur ? importeur.id : null);
   }
 
+  // Normalise un téléphone : ne garde que les chiffres (pour comparer 06 12... == 0612...)
+  const normTel = (t) => String(t || '').replace(/\D/g, '');
+  const normMail = (e) => String(e || '').toLowerCase().trim();
+
+  // Recherche un contact existant par téléphone (port/fixe) ou email.
+  const trouverExistant = (c) => {
+    const tels = [normTel(c.telephone), normTel(c.telephone2)].filter(t => t.length >= 6);
+    const mail = normMail(c.email);
+    // Email exact (insensible casse)
+    if (mail) {
+      const parMail = db.prepare("SELECT * FROM contacts WHERE lower(email) = ? LIMIT 1").get(mail);
+      if (parMail) return parMail;
+    }
+    // Téléphone (compare chiffres seuls)
+    for (const t of tels) {
+      const parTel = db.prepare(
+        "SELECT * FROM contacts WHERE replace(replace(replace(replace(telephone,' ',''),'.',''),'-',''),'+','') = ? " +
+        "OR replace(replace(replace(replace(telephone2,' ',''),'.',''),'-',''),'+','') = ? LIMIT 1"
+      ).get(t, t);
+      if (parTel) return parTel;
+    }
+    return null;
+  };
+
+  const updateDoux = db.prepare(`UPDATE contacts SET
+    prenom=COALESCE(NULLIF(prenom,''), @prenom), telephone=COALESCE(NULLIF(telephone,''), @telephone),
+    telephone2=COALESCE(NULLIF(telephone2,''), @telephone2), email=COALESCE(NULLIF(email,''), @email),
+    adresse=COALESCE(NULLIF(adresse,''), @adresse), code_postal=COALESCE(NULLIF(code_postal,''), @code_postal),
+    ville=COALESCE(NULLIF(ville,''), @ville), date_estimation=COALESCE(date_estimation, @date_estimation),
+    photo_url=COALESCE(NULLIF(photo_url,''), @photo_url), suivi_par_origine=COALESCE(NULLIF(suivi_par_origine,''), @suivi_par_origine),
+    civilite=COALESCE(NULLIF(civilite,''), @civilite), notes=@notes, updated_at=datetime('now')
+    WHERE id=@id`);
+
   const importMany = db.transaction((rows) => {
     for (const c of rows) {
       if (!c.nom && !c.prenom) { erreurs++; continue; }
       try {
         const statut = STATUTS_OK.includes(c.statut) ? c.statut : 'a_contacter';
         const source = (c.source && String(c.source).trim()) ? String(c.source).trim() : 'import_csv';
-
         const suiviParOrigine = c.suivi_par_origine || c.conseiller || null;
 
         let dateEstim = null;
@@ -169,21 +201,41 @@ function importerContacts(contacts, users, importeur, assignedToChoisi) {
           if (dateEstim == null) dates_ignorees++;
         }
 
-        const result = insert.run(
-          c.nom || '', c.prenom || '', c.telephone || '', c.telephone2 || '',
-          c.email || '', c.adresse || '', c.code_postal || '', c.ville || '',
-          c.categorie || 'autre', c.notes || '', parseInt(c.potentiel) || 3,
-          statut, c.prochain_contact || null, source, assignedTo,
-          dateEstim, c.photo_url || null, suiviParOrigine, (c.civilite || null)
-        );
-        recalculerScore(result.lastInsertRowid);
-        importes++;
+        const existant = trouverExistant(c);
+        if (existant) {
+          // Fusion douce : compléter les champs vides ; cumuler le bien dans les notes si nouveau.
+          let notes = existant.notes || '';
+          const nouvelleNote = (c.notes || '').trim();
+          // Ajoute la note (résumé bien) seulement si non déjà présente (évite doublon de mandat)
+          if (nouvelleNote && !notes.includes(nouvelleNote)) {
+            notes = notes ? `${notes}\n— ${nouvelleNote}` : nouvelleNote;
+          }
+          updateDoux.run({
+            id: existant.id,
+            prenom: c.prenom || '', telephone: c.telephone || '', telephone2: c.telephone2 || '',
+            email: c.email || '', adresse: c.adresse || '', code_postal: c.code_postal || '',
+            ville: c.ville || '', date_estimation: dateEstim, photo_url: c.photo_url || '',
+            suivi_par_origine: suiviParOrigine || '', civilite: c.civilite || '', notes,
+          });
+          recalculerScore(existant.id);
+          fusionnes++;
+        } else {
+          const result = insert.run(
+            c.nom || '', c.prenom || '', c.telephone || '', c.telephone2 || '',
+            c.email || '', c.adresse || '', c.code_postal || '', c.ville || '',
+            c.categorie || 'autre', c.notes || '', parseInt(c.potentiel) || 3,
+            statut, c.prochain_contact || null, source, assignedTo,
+            dateEstim, c.photo_url || null, suiviParOrigine, (c.civilite || null)
+          );
+          recalculerScore(result.lastInsertRowid);
+          importes++;
+        }
       } catch { erreurs++; }
     }
   });
 
   importMany(contacts);
-  return { importes, erreurs, dates_ignorees };
+  return { importes, erreurs, dates_ignorees, fusionnes };
 }
 
 // Import CSV en masse
