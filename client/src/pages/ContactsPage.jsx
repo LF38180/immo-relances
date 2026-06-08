@@ -18,6 +18,11 @@ export default function ContactsPage() {
   const [statut, setStatut] = useState('')
   const [sort, setSort] = useState('score_priorite')
   const [order, setOrder] = useState('DESC')
+  const [assigned, setAssigned] = useState('')
+  const [source, setSource] = useState('')
+  const [ville, setVille] = useState('')
+  const [users, setUsers] = useState([])
+  const [filtreOpts, setFiltreOpts] = useState({ sources: [], villes: [] })
   const [selectedContact, setSelectedContact] = useState(null)
   const [showModal, setShowModal] = useState(false)
   const [showImport, setShowImport] = useState(false)
@@ -28,7 +33,7 @@ export default function ContactsPage() {
     setLoading(true)
     try {
       const r = await api.get('/contacts', {
-        params: { page: p, limit: LIMIT, search, categorie, statut, sort, order }
+        params: { page: p, limit: LIMIT, search, categorie, statut, sort, order, assigned_to: assigned, source, ville }
       })
       setContacts(r.data.contacts)
       setTotal(r.data.total)
@@ -41,9 +46,14 @@ export default function ContactsPage() {
     clearTimeout(searchTimer.current)
     searchTimer.current = setTimeout(() => { setPage(1); load(1) }, 300)
     return () => clearTimeout(searchTimer.current)
-  }, [search, categorie, statut, sort, order])
+  }, [search, categorie, statut, sort, order, assigned, source, ville])
 
   useEffect(() => { load() }, [page])
+
+  useEffect(() => {
+    api.get('/admin/users').then(r => setUsers(r.data)).catch(() => {})
+    api.get('/contacts/filtres').then(r => setFiltreOpts(r.data)).catch(() => {})
+  }, [])
 
   const handleExport = async () => {
     const r = await api.get('/contacts/export/csv', { responseType: 'blob' })
@@ -77,6 +87,18 @@ export default function ContactsPage() {
             <select className="input w-auto" value={statut} onChange={e => setStatut(e.target.value)} aria-label="Filtrer par statut">
               <option value="">Tous statuts</option>
               {Object.entries(STATUTS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+            </select>
+            <select className="input w-auto" value={assigned} onChange={e => setAssigned(e.target.value)} aria-label="Filtrer par conseiller">
+              <option value="">Tous conseillers</option>
+              {users.map(u => <option key={u.id} value={u.id}>{u.prenom} {u.nom}</option>)}
+            </select>
+            <select className="input w-auto" value={source} onChange={e => setSource(e.target.value)} aria-label="Filtrer par source">
+              <option value="">Toutes sources</option>
+              {filtreOpts.sources.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+            <select className="input w-auto" value={ville} onChange={e => setVille(e.target.value)} aria-label="Filtrer par ville">
+              <option value="">Toutes villes</option>
+              {filtreOpts.villes.map(v => <option key={v} value={v}>{v}</option>)}
             </select>
             <select className="input w-auto" value={`${sort}:${order}`} onChange={e => { const [s, o] = e.target.value.split(':'); setSort(s); setOrder(o) }} aria-label="Trier">
               <option value="score_priorite:DESC">Score décroissant</option>

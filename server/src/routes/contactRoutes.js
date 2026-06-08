@@ -14,7 +14,8 @@ router.use(requireAuth);
 router.get('/', (req, res) => {
   const {
     page = 1, limit = 50, search = '', categorie = '', statut = '',
-    sort = 'score_priorite', order = 'DESC', tag = ''
+    sort = 'score_priorite', order = 'DESC', tag = '',
+    assigned_to = '', source = '', ville = ''
   } = req.query;
 
   const offset = (parseInt(page) - 1) * parseInt(limit);
@@ -29,6 +30,9 @@ router.get('/', (req, res) => {
   if (categorie) { conditions.push('contacts.categorie = ?'); params.push(categorie); }
   if (statut) { conditions.push('contacts.statut = ?'); params.push(statut); }
   if (tag) { conditions.push(`contacts.tags LIKE ?`); params.push(`%"${tag}"%`); }
+  if (assigned_to) { conditions.push('contacts.assigned_to = ?'); params.push(parseInt(assigned_to, 10)); }
+  if (source) { conditions.push('contacts.source_import = ?'); params.push(source); }
+  if (ville) { conditions.push('contacts.ville LIKE ?'); params.push(`%${ville}%`); }
 
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
   const validSorts = ['score_priorite', 'nom', 'date_dernier_contact', 'prochain_contact', 'created_at', 'categorie', 'statut'];
@@ -62,6 +66,13 @@ router.get('/file-relances', (req, res) => {
   `).all(today, limit);
 
   res.json({ contacts, total: contacts.length });
+});
+
+// Valeurs distinctes pour les filtres (sources, villes)
+router.get('/filtres', (req, res) => {
+  const sources = db.prepare("SELECT DISTINCT source_import AS v FROM contacts WHERE source_import IS NOT NULL AND source_import != '' ORDER BY v").all().map(r => r.v);
+  const villes = db.prepare("SELECT DISTINCT ville AS v FROM contacts WHERE ville IS NOT NULL AND ville != '' ORDER BY v").all().map(r => r.v);
+  res.json({ sources, villes });
 });
 
 // Un contact
