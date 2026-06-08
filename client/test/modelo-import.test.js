@@ -1,5 +1,5 @@
 import assert from 'assert'
-import { detecterFormat, splitNomComplet, categorieModelo, bienVersContact, nettoyerNomContact } from '../src/utils/modelo-import.js'
+import { detecterFormat, splitNomComplet, categorieModelo, bienVersContact, nettoyerNomContact, extraireCivilite } from '../src/utils/modelo-import.js'
 
 function test(nom, fn) {
   try { fn(); console.log('  OK  ' + nom) }
@@ -18,10 +18,10 @@ test('detecterFormat fichier quelconque -> contact (défaut)', () => {
 })
 
 test('splitNomComplet retire civilité', () => {
-  assert.deepStrictEqual(splitNomComplet('M. Michaël MERCYANO'), { prenom: 'Michaël', nom: 'MERCYANO' })
-  assert.deepStrictEqual(splitNomComplet('Mme Marie Claire DURAND'), { prenom: 'Marie', nom: 'Claire DURAND' })
-  assert.deepStrictEqual(splitNomComplet('DUPONT'), { prenom: '', nom: 'DUPONT' })
-  assert.deepStrictEqual(splitNomComplet(''), { prenom: '', nom: '' })
+  assert.deepStrictEqual(splitNomComplet('M. Michaël MERCYANO'), { civilite: 'M.', prenom: 'Michaël', nom: 'MERCYANO' })
+  assert.deepStrictEqual(splitNomComplet('Mme Marie Claire DURAND'), { civilite: 'Mme', prenom: 'Marie', nom: 'Claire DURAND' })
+  assert.deepStrictEqual(splitNomComplet('DUPONT'), { civilite: '', prenom: '', nom: 'DUPONT' })
+  assert.deepStrictEqual(splitNomComplet(''), { civilite: '', prenom: '', nom: '' })
 })
 
 test('categorieModelo mappe les libellés', () => {
@@ -87,9 +87,15 @@ test('bienVersContact met le Suivi par dans suivi_par_origine (pas conseiller)',
 })
 
 test('splitNomComplet couples M. et Mme', () => {
-  assert.deepStrictEqual(splitNomComplet('M. et Mme. GRIS'), { prenom: '', nom: 'GRIS' })
-  assert.deepStrictEqual(splitNomComplet('M et Mme FERIEL'), { prenom: '', nom: 'FERIEL' })
-  assert.deepStrictEqual(splitNomComplet('M. Michaël MERCYANO'), { prenom: 'Michaël', nom: 'MERCYANO' })
+  assert.deepStrictEqual(splitNomComplet('M. et Mme. GRIS'), { civilite: 'M. et Mme', prenom: '', nom: 'GRIS' })
+  assert.deepStrictEqual(splitNomComplet('M et Mme FERIEL'), { civilite: 'M. et Mme', prenom: '', nom: 'FERIEL' })
+  assert.deepStrictEqual(splitNomComplet('M. Michaël MERCYANO'), { civilite: 'M.', prenom: 'Michaël', nom: 'MERCYANO' })
+})
+
+test('extraireCivilite', () => {
+  assert.strictEqual(extraireCivilite('M. et Mme. GRIS'), 'M. et Mme')
+  assert.strictEqual(extraireCivilite('Mme. RAMSTEINER'), 'Mme')
+  assert.strictEqual(extraireCivilite('DURAND'), '')
 })
 
 test('nettoyerNomContact retire titres parasites en tete', () => {
