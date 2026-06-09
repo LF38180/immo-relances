@@ -38,10 +38,4 @@ if (isProd) {
   app.get('*', (_, res) => res.sendFile(path.join(clientBuild, 'index.html')));
 }
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Serveur démarré sur http://0.0.0.0:${PORT}`);
-  // Sauvegarde DB quotidienne vers GitHub (si token configuré)
-  if (isProd) {
-    try { require('./backup').demarrerPlanificateur(); } catch (e) { console.error('[backup] init: ' + e.message); }
-  }
-});
+app.listen(PORT, '0.0.0.0', () => console.log(`Serveur démarré sur http://0.0.0.0:${PORT}`));

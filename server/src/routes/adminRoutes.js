@@ -8,19 +8,6 @@ const ROLES_VALIDES = ['agent', 'manager', 'admin'];
 const router = express.Router();
 router.use(requireAuth, requireRole('manager', 'admin'));
 
-// Sauvegarde manuelle de la DB vers GitHub (admin)
-router.post('/backup', requireRole('admin'), async (req, res) => {
-  try {
-    const { sauvegarder } = require('../backup');
-    const jour = new Date().toISOString().slice(0, 10);
-    const r = await sauvegarder(jour);
-    if (r.ok) res.json({ ok: true, fichier: r.fichier, tailleKo: r.tailleKo });
-    else res.status(400).json({ error: r.raison || 'sauvegarde impossible' });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
 // Utilisateurs
 router.get('/users', (req, res) => {
   res.json(db.prepare('SELECT id, nom, prenom, email, role, actif, created_at FROM users').all());

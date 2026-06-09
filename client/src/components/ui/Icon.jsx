@@ -2,7 +2,7 @@
 // Si une icône manque, fallback sur Circle (pas de crash).
 import {
   ArrowLeft, ArrowRight, Calendar, CalendarCheck, CalendarClock, ChevronDown, ChevronLeft,
-  ChevronRight, ChevronUp, Circle, CircleCheckBig, CircleX, Database, Download, Eye, FileCheck, FileDown,
+  ChevronRight, ChevronUp, Circle, CircleCheckBig, CircleX, Download, Eye, FileCheck, FileDown,
   FileText, FileUp, History, LayoutDashboard, LogOut, Mail, Pencil, Phone, PhoneCall, PhoneOff,
   Pin, Plus, RefreshCw, Search, Settings, Star, Table, Tag, Trash2, TriangleAlert, Trophy,
   Upload, User, Users, Voicemail, X,
@@ -15,7 +15,7 @@ const MAP = {
   'arrow-left': ArrowLeft, 'arrow-right': ArrowRight, 'calendar': Calendar,
   'calendar-check': CalendarCheck, 'calendar-clock': CalendarClock, 'chevron-down': ChevronDown,
   'chevron-left': ChevronLeft, 'chevron-right': ChevronRight, 'chevron-up': ChevronUp,
-  'circle': Circle, 'check-circle-2': CircleCheckBig, 'x-circle': CircleX, 'database': Database, 'download': Download,
+  'circle': Circle, 'check-circle-2': CircleCheckBig, 'x-circle': CircleX, 'download': Download,
   'eye': Eye, 'file-check': FileCheck, 'file-down': FileDown, 'file-text': FileText,
   'file-up': FileUp, 'history': History, 'layout-dashboard': LayoutDashboard, 'log-out': LogOut,
   'mail': Mail, 'pencil': Pencil, 'phone': Phone, 'phone-call': PhoneCall, 'phone-off': PhoneOff,
