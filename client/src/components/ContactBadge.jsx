@@ -1,5 +1,7 @@
 import { CATEGORIES, STATUTS } from '../utils/constants'
 import Stars from './ui/Stars'
+import Icon from './ui/Icon'
+import { infoCadence } from '../utils/cadence'
 
 export function CategorieBadge({ categorie }) {
   const c = CATEGORIES[categorie] || CATEGORIES.autre
@@ -22,4 +24,14 @@ export function ScoreBadge({ score }) {
 
 export function PotentielStars({ potentiel }) {
   return <Stars potentiel={potentiel} />
+}
+
+export function CadenceBadge({ contact, jalons }) {
+  const info = infoCadence(contact, jalons)
+  if (!info) return null
+  return (
+    <span className="badge bg-quai-gold/15 text-quai-navy border border-quai-gold/40 inline-flex items-center gap-1">
+      <Icon name="calendar-clock" size="sm" /> Estimation J+{info.jalonJours}
+    </span>
+  )
 }

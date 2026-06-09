@@ -147,6 +147,7 @@ export default function AdminPage() {
             <h2 className="font-semibold text-quai-navy mb-4">Paramètres de relance</h2>
             <div className="card space-y-4">
               <ParamField label="Nombre de relances par jour" cle="relances_par_jour" params={params} setParams={setParams} type="number" />
+              <ParamField label="Cadence estimation (jours)" cle="cadence_estimation_jours" params={params} setParams={setParams} type="text" placeholder="ex: 2,7,15,30" />
               <hr className="border-quai-border" />
               <h3 className="font-medium text-quai-navy">Score de base par catégorie</h3>
               {[
@@ -192,13 +193,13 @@ export default function AdminPage() {
   )
 }
 
-function ParamField({ label, cle, params, setParams, type = 'text', min, max }) {
+function ParamField({ label, cle, params, setParams, type = 'text', min, max, placeholder }) {
   return (
     <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
       <label className="sm:w-48 text-sm font-medium text-quai-muted">{label}</label>
       <input
-        type={type} min={min} max={max}
-        className="input w-full sm:w-32"
+        type={type} min={min} max={max} placeholder={placeholder}
+        className="input w-full sm:w-48"
         value={params[cle] || ''}
         onChange={e => setParams(p => ({ ...p, [cle]: e.target.value }))}
       />

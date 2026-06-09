@@ -2,7 +2,8 @@ import { useState, useEffect, useRef } from 'react'
 import api from '../utils/api'
 import toast from 'react-hot-toast'
 import { CATEGORIES, STATUTS } from '../utils/constants'
-import { CategorieBadge, StatutBadge, ScoreBadge } from '../components/ContactBadge'
+import { CategorieBadge, StatutBadge, ScoreBadge, CadenceBadge } from '../components/ContactBadge'
+import { parseJalons } from '../utils/cadence'
 import ContactModal from '../components/ContactModal'
 import ImportModal from '../components/ImportModal'
 import Icon from '../components/ui/Icon'
@@ -26,6 +27,8 @@ export default function ContactsPage() {
   const [selectedContact, setSelectedContact] = useState(null)
   const [showModal, setShowModal] = useState(false)
   const [showImport, setShowImport] = useState(false)
+  const [cadence, setCadence] = useState(false)
+  const [jalons, setJalons] = useState([2, 7, 15, 30])
   const searchTimer = useRef(null)
   const LIMIT = 50
 
@@ -33,7 +36,7 @@ export default function ContactsPage() {
     setLoading(true)
     try {
       const r = await api.get('/contacts', {
-        params: { page: p, limit: LIMIT, search, categorie, statut, sort, order, assigned_to: assigned, source, ville }
+        params: { page: p, limit: LIMIT, search, categorie, statut, sort, order, assigned_to: assigned, source, ville, cadence: cadence ? '1' : '' }
       })
       setContacts(r.data.contacts)
       setTotal(r.data.total)
@@ -46,13 +49,14 @@ export default function ContactsPage() {
     clearTimeout(searchTimer.current)
     searchTimer.current = setTimeout(() => { setPage(1); load(1) }, 300)
     return () => clearTimeout(searchTimer.current)
-  }, [search, categorie, statut, sort, order, assigned, source, ville])
+  }, [search, categorie, statut, sort, order, assigned, source, ville, cadence])
 
   useEffect(() => { load() }, [page])
 
   useEffect(() => {
     api.get('/admin/users').then(r => setUsers(r.data)).catch(() => {})
     api.get('/contacts/filtres').then(r => setFiltreOpts(r.data)).catch(() => {})
+    api.get('/admin/parametres').then(r => { const s = r.data?.cadence_estimation_jours; if (s) setJalons(parseJalons(s)) }).catch(() => {})
   }, [])
 
   const handleExport = async () => {
@@ -107,6 +111,10 @@ export default function ContactsPage() {
               <option value="prochain_contact:ASC">Prochain contact</option>
               <option value="created_at:DESC">Ajouté récemment</option>
             </select>
+            <label className="inline-flex items-center gap-1.5 text-sm text-quai-text cursor-pointer">
+              <input type="checkbox" checked={cadence} onChange={e => setCadence(e.target.checked)} className="rounded border-quai-border" />
+              En cadencier
+            </label>
           </div>
           <div className="flex flex-wrap gap-2 lg:ml-auto">
             <button onClick={openNew} className="btn-primary btn-sm inline-flex items-center gap-1.5"><Icon name="plus" size="sm" /> Nouveau</button>
@@ -149,7 +157,7 @@ export default function ContactsPage() {
                   <td className="px-4 py-3 font-mono text-quai-text">{c.telephone}</td>
                   <td className="px-4 py-3 text-quai-muted">{c.ville}</td>
                   <td className="px-4 py-3"><CategorieBadge categorie={c.categorie} /></td>
-                  <td className="px-4 py-3"><StatutBadge statut={c.statut} /></td>
+                  <td className="px-4 py-3 flex flex-wrap gap-1"><StatutBadge statut={c.statut} /><CadenceBadge contact={c} jalons={jalons} /></td>
                   <td className="px-4 py-3"><ScoreBadge score={c.score_priorite} /></td>
                   <td className="px-4 py-3 text-quai-muted text-xs">
                     {c.date_dernier_contact ? format(new Date(c.date_dernier_contact), 'dd/MM/yyyy') : '—'}
