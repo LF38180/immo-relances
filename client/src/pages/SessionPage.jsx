@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback } from 'react'
 import api from '../utils/api'
 import toast from 'react-hot-toast'
 import { STATUTS_RELANCE } from '../utils/constants'
-import { CategorieBadge, ScoreBadge, PotentielStars } from '../components/ContactBadge'
+import { CategorieBadge, ScoreBadge, PotentielStars, CadenceBadge } from '../components/ContactBadge'
+import { parseJalons } from '../utils/cadence'
 import Icon from '../components/ui/Icon'
 import { format } from 'date-fns'
 import PhotoCarousel from '../components/PhotoCarousel'
@@ -17,6 +18,7 @@ const SHORTCUT_MAP = {
   '4': 'rdv_obtenu',
   '5': 'pas_interesse',
   '6': 'rappel_planifie',
+  '7': 'mandat_obtenu',
 }
 
 export default function SessionPage() {
@@ -35,6 +37,7 @@ export default function SessionPage() {
   const [recherche, setRecherche] = useState('')
   const [resultats, setResultats] = useState([])
   const [contactOuvert, setContactOuvert] = useState(null)
+  const [jalons, setJalons] = useState([2, 7, 15, 30])
   const { user } = useAuth()
 
   const contact = file[index]
@@ -66,6 +69,10 @@ export default function SessionPage() {
   }
 
   useEffect(() => { loadFile() }, [])
+
+  useEffect(() => {
+    api.get('/admin/parametres').then(r => { const s = r.data?.cadence_estimation_jours; if (s) setJalons(parseJalons(s)) }).catch(() => {})
+  }, [])
 
   useEffect(() => {
     if (!contact) return
@@ -220,6 +227,7 @@ export default function SessionPage() {
                 <CategorieBadge categorie={contact.categorie} />
                 <ScoreBadge score={contact.score_priorite} />
                 <PotentielStars potentiel={contact.potentiel} />
+                <CadenceBadge contact={contact} jalons={jalons} />
               </div>
               <h2 className="text-2xl font-display font-bold text-quai-navy">{contact.civilite ? contact.civilite + ' ' : ''}{contact.prenom} {contact.nom}</h2>
               {contact.ville && <p className="text-quai-muted text-sm">{contact.ville} {contact.code_postal}</p>}
@@ -306,7 +314,7 @@ export default function SessionPage() {
           <h3 className="font-medium text-quai-navy mb-3">Résultat de l'appel</h3>
 
           <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mb-4">
-            {Object.entries(STATUTS_RELANCE).map(([key, val], i) => (
+            {Object.entries(STATUTS_RELANCE).filter(([key]) => key !== 'mandat_obtenu').map(([key, val], i) => (
               <button
                 key={key}
                 onClick={() => setStatutRelance(key)}
@@ -323,6 +331,15 @@ export default function SessionPage() {
               </button>
             ))}
           </div>
+          <button
+            onClick={() => submit('mandat_obtenu')}
+            disabled={submitting}
+            className="w-full flex items-center gap-2 p-3 rounded-lg border-2 border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-sm font-medium transition-all min-h-[44px] mb-4"
+          >
+            <Icon name="trophy" size="sm" className="flex-shrink-0" />
+            <span className="flex-1 text-left">Mandat obtenu</span>
+            <kbd className="kbd text-xs">7</kbd>
+          </button>
 
           <textarea
             className="input mb-3 resize-none"
@@ -348,7 +365,7 @@ export default function SessionPage() {
         </div>
 
         <div className="text-center text-xs text-quai-muted">
-          Raccourcis : <kbd className="kbd">1-6</kbd> statut · <kbd className="kbd">S</kbd> script · <kbd className="kbd">→</kbd> passer
+          Raccourcis : <kbd className="kbd">1-7</kbd> statut · <kbd className="kbd">S</kbd> script · <kbd className="kbd">→</kbd> passer
         </div>
       </div>
       {contactOuvert && (

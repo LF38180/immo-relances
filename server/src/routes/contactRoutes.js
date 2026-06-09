@@ -1,6 +1,7 @@
 const express = require('express');
 const { db, recalculerScore } = require('../database');
 const { normaliserDate, resoudreConseiller } = require('../utils/import-helpers');
+const { parseJalons, estDuCadencier } = require('../utils/cadence');
 const { requireAuth, requireRole } = require('../auth');
 
 const CHAMPS_UPDATE = ['nom','prenom','telephone','telephone2','email','adresse','code_postal',
@@ -15,7 +16,7 @@ router.get('/', (req, res) => {
   const {
     page = 1, limit = 50, search = '', categorie = '', statut = '',
     sort = 'score_priorite', order = 'DESC', tag = '',
-    assigned_to = '', source = '', ville = ''
+    assigned_to = '', source = '', ville = '', cadence = ''
   } = req.query;
 
   const offset = (parseInt(page) - 1) * parseInt(limit);
@@ -33,6 +34,12 @@ router.get('/', (req, res) => {
   if (assigned_to) { conditions.push('contacts.assigned_to = ?'); params.push(parseInt(assigned_to, 10)); }
   if (source) { conditions.push('contacts.source_import = ?'); params.push(source); }
   if (ville) { conditions.push('contacts.ville LIKE ?'); params.push(`%${ville}%`); }
+  if (cadence === '1') {
+    const jalonsStr = db.prepare("SELECT valeur FROM parametres WHERE cle = 'cadence_estimation_jours'").get()?.valeur || '2,7,15,30'
+    const nbJalons = jalonsStr.split(',').filter(Boolean).length
+    conditions.push("contacts.date_estimation IS NOT NULL AND contacts.date_estimation != '' AND contacts.mandat_signe = 0 AND contacts.cadence_etape < ? AND contacts.statut NOT IN ('pas_interesse','inactif')")
+    params.push(nbJalons)
+  }
 
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
   const validSorts = ['score_priorite', 'nom', 'date_dernier_contact', 'prochain_contact', 'created_at', 'categorie', 'statut'];
@@ -47,12 +54,12 @@ router.get('/', (req, res) => {
 
 // File de relances du jour
 router.get('/file-relances', (req, res) => {
-  const params = {};
-  db.prepare('SELECT cle, valeur FROM parametres').all().forEach(r => params[r.cle] = r.valeur);
-  const limit = parseInt(params.relances_par_jour || 50);
+  const paramsDb = {};
+  db.prepare('SELECT cle, valeur FROM parametres').all().forEach(r => paramsDb[r.cle] = r.valeur);
+  const limit = parseInt(paramsDb.relances_par_jour || 50);
   const today = new Date().toISOString().slice(0, 10);
 
-  // Contacts à contacter ou dont le prochain_contact est passé/aujourd'hui
+  // Contacts a contacter ou dont le prochain_contact est passe/aujourd'hui
   const contacts = db.prepare(`
     SELECT contacts.*, u.nom AS assigned_nom, u.prenom AS assigned_prenom
     FROM contacts LEFT JOIN users u ON u.id = contacts.assigned_to
@@ -65,7 +72,21 @@ router.get('/file-relances', (req, res) => {
     LIMIT ?
   `).all(today, limit);
 
-  res.json({ contacts, total: contacts.length });
+  // Cadencier : ajouter les contacts dont le jalon est du aujourd'hui
+  const jalonsStr = db.prepare("SELECT valeur FROM parametres WHERE cle = 'cadence_estimation_jours'").get()?.valeur
+  const jalons = parseJalons(jalonsStr)
+  const candidats = db.prepare(`
+    SELECT contacts.*, u.nom AS assigned_nom, u.prenom AS assigned_prenom
+    FROM contacts LEFT JOIN users u ON u.id = contacts.assigned_to
+    WHERE contacts.date_estimation IS NOT NULL AND contacts.date_estimation != ''
+      AND contacts.mandat_signe = 0 AND contacts.statut NOT IN ('pas_interesse','inactif')
+  `).all()
+  const dus = candidats.filter(c => estDuCadencier(c, jalons, today))
+  // Merge : cadencier en tete, dedup par id
+  const vusIds = new Set(dus.map(c => c.id))
+  const fusion = [...dus, ...contacts.filter(c => !vusIds.has(c.id))].slice(0, limit)
+
+  res.json({ contacts: fusion, total: fusion.length });
 });
 
 // Valeurs distinctes pour les filtres (sources, villes)

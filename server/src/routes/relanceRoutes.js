@@ -10,13 +10,22 @@ router.post('/', (req, res) => {
   const { contact_id, statut, notes, duree_appel, prochain_contact } = req.body;
   if (!contact_id || !statut) return res.status(400).json({ error: 'contact_id et statut requis' });
 
+  // 'mandat_obtenu' est un statut metier qui ne figure pas dans le CHECK relances.statut.
+  // On le mappe vers 'rdv_obtenu' pour l'insertion et on prefixe les notes.
+  let statutRelance = statut
+  let noteFinale = notes
+  if (statut === 'mandat_obtenu') {
+    statutRelance = 'rdv_obtenu'
+    noteFinale = '[Mandat signe] ' + (notes || '')
+  }
+
   const result = db.prepare(`
     INSERT INTO relances (contact_id, agent_id, statut, notes, duree_appel, prochain_contact)
     VALUES (?, ?, ?, ?, ?, ?)
-  `).run(contact_id, req.user.id, statut, notes, duree_appel, prochain_contact || null);
+  `).run(contact_id, req.user.id, statutRelance, noteFinale, duree_appel, prochain_contact || null);
 
-  // Mettre à jour le contact
-  const contactStatut = mapRelanceToContactStatut(statut);
+  // Mettre a jour le contact
+  const contactStatut = mapRelanceToContactStatut(statutRelance);
   db.prepare(`
     UPDATE contacts SET
       statut = ?,
@@ -26,6 +35,14 @@ router.post('/', (req, res) => {
       updated_at = datetime('now')
     WHERE id = ?
   `).run(contactStatut, prochain_contact || null, contact_id);
+
+  // Cadencier : mandat signe => sortie ; sinon avance d'une etape si en cadencier
+  const c = db.prepare("SELECT date_estimation, mandat_signe, cadence_etape FROM contacts WHERE id = ?").get(contact_id)
+  if (statut === 'mandat_obtenu') {
+    db.prepare("UPDATE contacts SET mandat_signe = 1 WHERE id = ?").run(contact_id)
+  } else if (c && c.date_estimation && !c.mandat_signe) {
+    db.prepare("UPDATE contacts SET cadence_etape = cadence_etape + 1 WHERE id = ?").run(contact_id)
+  }
 
   recalculerScore(contact_id);
   res.status(201).json({ id: result.lastInsertRowid });
