@@ -1,14 +1,24 @@
-import { useState } from 'react'
+import { useState, lazy, Suspense } from 'react'
 import { Toaster } from 'react-hot-toast'
 import { AuthProvider, useAuth } from './hooks/useAuth'
 import LoginPage from './pages/LoginPage'
 import Layout from './components/Layout'
-import DashboardPage from './pages/DashboardPage'
-import SessionPage from './pages/SessionPage'
-import ContactsPage from './pages/ContactsPage'
-import ScriptsPage from './pages/ScriptsPage'
-import SupervisionPage from './pages/SupervisionPage'
-import AdminPage from './pages/AdminPage'
+
+// Pages chargées à la demande (chunks séparés) — allège le bundle initial.
+const DashboardPage = lazy(() => import('./pages/DashboardPage'))
+const SessionPage = lazy(() => import('./pages/SessionPage'))
+const ContactsPage = lazy(() => import('./pages/ContactsPage'))
+const ScriptsPage = lazy(() => import('./pages/ScriptsPage'))
+const SupervisionPage = lazy(() => import('./pages/SupervisionPage'))
+const AdminPage = lazy(() => import('./pages/AdminPage'))
+
+function ChargementPage() {
+  return (
+    <div className="flex-1 flex items-center justify-center bg-quai-light">
+      <div className="animate-pulse text-quai-muted text-sm">Chargement…</div>
+    </div>
+  )
+}
 
 function AppInner() {
   const { user } = useAuth()
@@ -30,7 +40,9 @@ function AppInner() {
 
   return (
     <Layout page={page} onNavigate={setPage}>
-      {renderPage()}
+      <Suspense fallback={<ChargementPage />}>
+        {renderPage()}
+      </Suspense>
     </Layout>
   )
 }

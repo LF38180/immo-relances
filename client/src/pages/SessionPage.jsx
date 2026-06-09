@@ -39,16 +39,18 @@ export default function SessionPage() {
 
   const contact = file[index]
 
-  const telecharger = () => {
+  const telecharger = async () => {
     if (actionsSession.length === 0) { toast.error('Aucune action à exporter pour le moment'); return }
     const now = new Date()
     const dateLabel = format(now, 'dd/MM/yyyy HH:mm')
     const dateFichier = format(now, 'yyyy-MM-dd-HHmm')
-    genererRecapPdf(actionsSession, {
-      agent: user ? `${user.prenom} ${user.nom}` : '',
-      dateLabel, dateFichier,
-      stats: sessionStats,
-    })
+    try {
+      await genererRecapPdf(actionsSession, {
+        agent: user ? `${user.prenom} ${user.nom}` : '',
+        dateLabel, dateFichier,
+        stats: sessionStats,
+      })
+    } catch { toast.error('Erreur génération du récap') }
   }
 
   const loadFile = async () => {
