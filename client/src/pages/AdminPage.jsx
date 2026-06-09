@@ -27,6 +27,17 @@ export default function AdminPage() {
     finally { setEffacement(false) }
   }
 
+  const [backupEnCours, setBackupEnCours] = useState(false)
+  const sauvegarder = async () => {
+    if (backupEnCours) return
+    setBackupEnCours(true)
+    try {
+      const r = await api.post('/admin/backup')
+      toast.success(`Sauvegarde OK (${r.data.tailleKo} Ko) → ${r.data.fichier}`)
+    } catch (e) { toast.error(e.response?.data?.error || 'Sauvegarde impossible (token configuré ?)') }
+    finally { setBackupEnCours(false) }
+  }
+
   useEffect(() => {
     api.get('/admin/users').then(r => setUsers(r.data))
     api.get('/admin/parametres').then(r => setParams(r.data))
@@ -169,6 +180,18 @@ export default function AdminPage() {
         {tab === 'donnees' && estAdmin && (
           <div>
             <h2 className="font-semibold text-quai-navy mb-4">Données</h2>
+            <div className="card mb-4">
+              <div className="flex items-start gap-3 mb-3">
+                <Icon name="database" size="md" className="text-quai-navy flex-shrink-0 mt-0.5" />
+                <div>
+                  <h3 className="font-medium text-quai-navy">Sauvegarde de la base</h3>
+                  <p className="text-sm text-quai-muted">Une sauvegarde automatique a lieu chaque jour (vers GitHub privé, branche backups). Tu peux aussi en déclencher une maintenant.</p>
+                </div>
+              </div>
+              <button onClick={sauvegarder} disabled={backupEnCours} className="btn-primary inline-flex items-center gap-1.5">
+                <Icon name="download" size="sm" /> {backupEnCours ? 'Sauvegarde…' : 'Sauvegarder maintenant'}
+              </button>
+            </div>
             <div className="card border-2 border-red-200">
               <div className="flex items-start gap-3 mb-3">
                 <Icon name="alert-triangle" size="md" className="text-red-600 flex-shrink-0 mt-0.5" />

@@ -186,4 +186,4 @@ function recalculerScore(contactId) {
   db.prepare('UPDATE contacts SET score_priorite = ? WHERE id = ?').run(score, contactId);
 }
 
-module.exports = { db, recalculerScore };
+module.exports = { db, recalculerScore, DB_PATH };
