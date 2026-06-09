@@ -248,7 +248,7 @@ function importerContacts(contacts, users, importeur, assignedToChoisi) {
           recalculerScore(result.lastInsertRowid);
           importes++;
         }
-      } catch { erreurs++; }
+      } catch (e) { erreurs++; console.error(`[import] échec contact "${c.nom || c.prenom || '?'}" : ${e.message}`); }
     }
   });
 

@@ -1,5 +1,3 @@
-import jsPDF from 'jspdf'
-import autoTable from 'jspdf-autotable'
 import { STATUTS_RELANCE } from './constants'
 
 // AAAA-MM-JJ (ou ISO) -> JJ/MM/AAAA. Vide si absent.
@@ -17,7 +15,10 @@ function statutLabel(statut) {
 // Génère et télécharge un PDF récapitulatif des actions d'une session d'appel.
 // actions : [{ nom, prenom, telephone, statut, notes, prochain_contact, heure }]
 // meta : { agent, dateLabel, stats: { total, rdv, contactes, pasRep } }
-export function genererRecapPdf(actions, meta) {
+export async function genererRecapPdf(actions, meta) {
+  // Charge jsPDF + autotable à la demande (libs lourdes) — pas dans le bundle initial.
+  const { default: jsPDF } = await import('jspdf')
+  const { default: autoTable } = await import('jspdf-autotable')
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
   const navy = [13, 13, 43] // #0D0D2B
 

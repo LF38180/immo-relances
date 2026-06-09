@@ -1,6 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
 import Papa from 'papaparse'
-import * as XLSX from 'xlsx'
 import api from '../utils/api'
 import toast from 'react-hot-toast'
 import { CATEGORIES } from '../utils/constants'
@@ -108,8 +107,10 @@ export default function ImportModal({ onClose, onImported }) {
     } else if (['xlsx', 'xls', 'ods', 'numbers'].includes(ext)) {
       // Lecture Excel / tableur
       const reader = new FileReader()
-      reader.onload = (e) => {
+      reader.onload = async (e) => {
         try {
+          // Charge xlsx à la demande (lib lourde, ~400K) — pas dans le bundle initial.
+          const XLSX = await import('xlsx')
           const workbook = XLSX.read(e.target.result, { type: 'array' })
           // Prendre le premier onglet
           const sheetName = workbook.SheetNames[0]
