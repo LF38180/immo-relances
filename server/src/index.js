@@ -25,7 +25,16 @@ app.get('/api/health', (_, res) => res.json({ status: 'ok', time: new Date().toI
 if (isProd) {
   // Depuis la racine du projet : client/dist
   const clientBuild = path.join(process.cwd(), 'client', 'dist');
-  app.use(express.static(clientBuild));
+  app.use(express.static(clientBuild, {
+    setHeaders: (res, filePath) => {
+      // Assets hashés (nom unique par build) = cache permanent. index.html = jamais caché (pointe les bons hash).
+      if (filePath.includes(`${path.sep}assets${path.sep}`)) {
+        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      } else if (filePath.endsWith('index.html')) {
+        res.setHeader('Cache-Control', 'no-cache');
+      }
+    },
+  }));
   app.get('*', (_, res) => res.sendFile(path.join(clientBuild, 'index.html')));
 }
 
