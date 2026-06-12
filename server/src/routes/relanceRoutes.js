@@ -5,44 +5,99 @@ const { requireAuth } = require('../auth');
 const router = express.Router();
 router.use(requireAuth);
 
-// Enregistrer une relance
-router.post('/', (req, res) => {
-  const { contact_id, statut, notes, duree_appel, prochain_contact } = req.body;
-  if (!contact_id || !statut) return res.status(400).json({ error: 'contact_id et statut requis' });
+// Parametre numerique avec defaut
+function param(cle, defaut) {
+  const r = db.prepare('SELECT valeur FROM parametres WHERE cle = ?').get(cle);
+  const n = parseInt(r?.valeur, 10);
+  return Number.isFinite(n) ? n : defaut;
+}
 
-  // 'mandat_obtenu' est un statut metier qui ne figure pas dans le CHECK relances.statut.
-  // On le mappe vers 'rdv_obtenu' pour l'insertion et on prefixe les notes.
-  let statutRelance = statut
-  let noteFinale = notes
-  if (statut === 'mandat_obtenu') {
-    statutRelance = 'rdv_obtenu'
-    noteFinale = '[Mandat signe] ' + (notes || '')
+function dansNJours(n) {
+  return new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
+}
+
+// Issue fine -> statut relance compatible avec le CHECK existant
+const ISSUE_STATUT = {
+  sans_reponse: 'tente_sans_reponse',
+  projet: 'rdv_obtenu',
+  rappel: 'rappel_planifie',
+  demenage: 'contacte',
+  sans_projet: 'contacte',
+  autre: 'contacte',
+};
+
+router.post('/', (req, res) => {
+  const { contact_id, issue, statut, notes, duree_appel, prochain_contact, date_rappel, nouvelle_adresse, adresse_inconnue } = req.body;
+  if (!contact_id) return res.status(400).json({ error: 'contact_id requis' });
+
+  let statutRelance;
+  const issueFinale = issue || null;
+  if (issue) {
+    statutRelance = ISSUE_STATUT[issue];
+    if (!statutRelance) return res.status(400).json({ error: 'issue invalide' });
+    if (issue === 'rappel' && !date_rappel) return res.status(400).json({ error: 'date_rappel requise' });
+    if (issue === 'autre' && !(notes && String(notes).trim())) return res.status(400).json({ error: 'note requise pour issue autre' });
+  } else if (statut) {
+    statutRelance = statut; // contrat legacy
+  } else {
+    return res.status(400).json({ error: 'issue ou statut requis' });
   }
 
   const result = db.prepare(`
-    INSERT INTO relances (contact_id, agent_id, statut, notes, duree_appel, prochain_contact)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `).run(contact_id, req.user.id, statutRelance, noteFinale, duree_appel, prochain_contact || null);
+    INSERT INTO relances (contact_id, agent_id, statut, notes, duree_appel, prochain_contact, issue)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(contact_id, req.user.id, statutRelance, notes || null, duree_appel || null,
+    (issue === 'rappel' ? date_rappel : prochain_contact) || null, issueFinale);
 
-  // Mettre a jour le contact
-  const contactStatut = mapRelanceToContactStatut(statutRelance);
+  // Effet sur le contact selon l'issue
+  let contactStatut;
+  let prochainContact = null;
+  const sets = [];
+  const setParams = [];
+  if (issue === 'sans_reponse') {
+    contactStatut = 'tente_sans_reponse';
+    prochainContact = dansNJours(param('delai_sans_reponse_jours', 3));
+  } else if (issue === 'projet') {
+    contactStatut = 'rdv_obtenu';
+  } else if (issue === 'rappel') {
+    contactStatut = 'rappel_planifie';
+    prochainContact = date_rappel;
+  } else if (issue === 'demenage') {
+    const contact = db.prepare('SELECT adresse, code_postal, ville, tags FROM contacts WHERE id = ?').get(contact_id);
+    const ancienne = [contact?.adresse, contact?.code_postal, contact?.ville].filter(Boolean).join(', ');
+    if (adresse_inconnue || !(nouvelle_adresse && (nouvelle_adresse.adresse || nouvelle_adresse.ville))) {
+      contactStatut = 'inactif';
+      let tags = [];
+      try { tags = JSON.parse(contact?.tags || '[]'); } catch { tags = []; }
+      if (!tags.includes('prospecter_terrain')) tags.push('prospecter_terrain');
+      sets.push('tags = ?'); setParams.push(JSON.stringify(tags));
+      if (ancienne) { sets.push("notes = COALESCE(notes,'') || ?"); setParams.push('\n[Demenage] Ancienne adresse a prospecter : ' + ancienne); }
+    } else {
+      contactStatut = 'a_recontacter';
+      sets.push('adresse = ?'); setParams.push(nouvelle_adresse.adresse || '');
+      sets.push('code_postal = ?'); setParams.push(nouvelle_adresse.code_postal || '');
+      sets.push('ville = ?'); setParams.push(nouvelle_adresse.ville || '');
+    }
+  } else if (issue === 'sans_projet') {
+    contactStatut = 'a_recontacter';
+    prochainContact = dansNJours(param('relance_sans_projet_jours', 180));
+  } else if (issue === 'autre') {
+    contactStatut = 'a_recontacter';
+  } else {
+    contactStatut = mapRelanceToContactStatut(statutRelance); // legacy
+    prochainContact = prochain_contact || null;
+  }
+
   db.prepare(`
     UPDATE contacts SET
       statut = ?,
+      ${sets.length ? sets.join(', ') + ',' : ''}
       date_dernier_contact = datetime('now'),
       nombre_tentatives = nombre_tentatives + 1,
       prochain_contact = ?,
       updated_at = datetime('now')
     WHERE id = ?
-  `).run(contactStatut, prochain_contact || null, contact_id);
-
-  // Cadencier : mandat signe => sortie ; sinon avance d'une etape si en cadencier
-  const c = db.prepare("SELECT date_estimation, mandat_signe, cadence_etape FROM contacts WHERE id = ?").get(contact_id)
-  if (statut === 'mandat_obtenu') {
-    db.prepare("UPDATE contacts SET mandat_signe = 1 WHERE id = ?").run(contact_id)
-  } else if (c && c.date_estimation && !c.mandat_signe) {
-    db.prepare("UPDATE contacts SET cadence_etape = cadence_etape + 1 WHERE id = ?").run(contact_id)
-  }
+  `).run(contactStatut, ...setParams, prochainContact, contact_id);
 
   recalculerScore(contact_id);
   res.status(201).json({ id: result.lastInsertRowid });
@@ -107,6 +162,12 @@ router.get('/stats', (req, res) => {
     GROUP BY DATE(r.created_at) ORDER BY jour
   `).all(dateDebut, dateFin, ...agentParam);
 
+  const parIssue = db.prepare(`
+    SELECT issue, COUNT(*) as cnt FROM relances r
+    WHERE DATE(r.created_at) BETWEEN ? AND ? AND r.type = 'appel' AND r.issue IS NOT NULL ${agentFilter}
+    GROUP BY issue
+  `).all(dateDebut, dateFin, ...agentParam);
+
   const rdvObtenus = db.prepare(`
     SELECT COUNT(*) as cnt FROM contacts WHERE statut = 'rdv_obtenu'
   `).get().cnt;
@@ -131,6 +192,7 @@ router.get('/stats', (req, res) => {
     totalRelances,
     parStatut,
     parJour,
+    parIssue,
     rdvObtenus,
     contactsParCategorie,
     contactsParStatut,
@@ -140,3 +202,4 @@ router.get('/stats', (req, res) => {
 });
 
 module.exports = router;
+module.exports.ISSUE_STATUT = ISSUE_STATUT;

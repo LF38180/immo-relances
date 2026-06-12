@@ -88,10 +88,9 @@ if (!contactCols.includes('date_estimation')) db.exec("ALTER TABLE contacts ADD 
 if (!contactCols.includes('photo_url')) db.exec("ALTER TABLE contacts ADD COLUMN photo_url TEXT");
 if (!contactCols.includes('suivi_par_origine')) db.exec("ALTER TABLE contacts ADD COLUMN suivi_par_origine TEXT");
 if (!contactCols.includes('civilite')) db.exec("ALTER TABLE contacts ADD COLUMN civilite TEXT");
-if (!contactCols.includes('cadence_etape')) db.exec("ALTER TABLE contacts ADD COLUMN cadence_etape INTEGER NOT NULL DEFAULT 0");
-if (!contactCols.includes('mandat_signe')) db.exec("ALTER TABLE contacts ADD COLUMN mandat_signe INTEGER NOT NULL DEFAULT 0");
 const relanceCols = db.prepare("PRAGMA table_info(relances)").all().map(c => c.name);
 if (!relanceCols.includes('type')) db.exec("ALTER TABLE relances ADD COLUMN type TEXT NOT NULL DEFAULT 'appel'");
+if (!relanceCols.includes('issue')) db.exec("ALTER TABLE relances ADD COLUMN issue TEXT");
 
 // Seed default admin
 const existingAdmin = db.prepare('SELECT id FROM users WHERE email = ?').get('admin@lequai-immobilier.com');
@@ -109,7 +108,8 @@ if (!existingAdmin) {
 // Default parametres
 const defaultParams = [
   ['relances_par_jour', '50'],
-  ['cadence_estimation_jours', '2,7,15,30'],
+  ['delai_sans_reponse_jours', '3'],
+  ['relance_sans_projet_jours', '180'],
   ['score_ancien_client', '80'],
   ['score_prospect_chaud', '70'],
   ['score_prospect_froid', '40'],

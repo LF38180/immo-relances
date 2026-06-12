@@ -1,4 +1,4 @@
-import { STATUTS_RELANCE } from './constants'
+import { STATUTS_RELANCE, ISSUES } from './constants'
 
 // AAAA-MM-JJ (ou ISO) -> JJ/MM/AAAA. Vide si absent.
 function dateFr(v) {
@@ -9,7 +9,7 @@ function dateFr(v) {
 }
 
 function statutLabel(statut) {
-  return STATUTS_RELANCE[statut]?.label || statut || ''
+  return ISSUES[statut]?.label || STATUTS_RELANCE[statut]?.label || statut || ''
 }
 
 // Génère et télécharge un PDF récapitulatif des actions d'une session d'appel.

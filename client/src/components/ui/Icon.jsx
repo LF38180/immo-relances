@@ -3,7 +3,7 @@
 import {
   ArrowLeft, ArrowRight, Calendar, CalendarCheck, CalendarClock, ChevronDown, ChevronLeft,
   ChevronRight, ChevronUp, Circle, CircleCheckBig, CircleX, Database, Download, Eye, FileCheck, FileDown,
-  FileText, FileUp, History, LayoutDashboard, LogOut, Mail, Pencil, Phone, PhoneCall, PhoneOff,
+  FileText, FileUp, History, LayoutDashboard, LogOut, Mail, MapPin, Pencil, Phone, PhoneCall, PhoneOff,
   Pin, Plus, RefreshCw, Search, Settings, Star, Table, Tag, Trash2, TriangleAlert, Trophy,
   Upload, User, Users, Voicemail, X,
 } from 'lucide-react'
@@ -18,7 +18,7 @@ const MAP = {
   'circle': Circle, 'check-circle-2': CircleCheckBig, 'x-circle': CircleX, 'database': Database, 'download': Download,
   'eye': Eye, 'file-check': FileCheck, 'file-down': FileDown, 'file-text': FileText,
   'file-up': FileUp, 'history': History, 'layout-dashboard': LayoutDashboard, 'log-out': LogOut,
-  'mail': Mail, 'pencil': Pencil, 'phone': Phone, 'phone-call': PhoneCall, 'phone-off': PhoneOff,
+  'mail': Mail, 'map-pin': MapPin, 'pencil': Pencil, 'phone': Phone, 'phone-call': PhoneCall, 'phone-off': PhoneOff,
   'pin': Pin, 'plus': Plus, 'refresh-cw': RefreshCw, 'search': Search, 'settings': Settings,
   'star': Star, 'table': Table, 'tag': Tag, 'trash-2': Trash2, 'alert-triangle': TriangleAlert,
   'trophy': Trophy, 'upload': Upload, 'user': User, 'users': Users, 'voicemail': Voicemail, 'x': X,
