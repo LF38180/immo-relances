@@ -19,16 +19,7 @@ app.use('/api/relances', require('./routes/relanceRoutes'));
 app.use('/api/scripts', require('./routes/scriptRoutes'));
 app.use('/api/admin', require('./routes/adminRoutes'));
 
-app.get('/api/health', (_, res) => {
-  const { DB_PATH } = require('./database');
-  res.json({
-    status: 'ok',
-    time: new Date().toISOString(),
-    dbPath: DB_PATH,
-    envDbPath: process.env.DB_PATH || null,        // ce que Railway injecte vraiment
-    envKeys: Object.keys(process.env).filter(k => /DB|DATA|PATH|VOLUME|RAILWAY_VOLUME/i.test(k)),
-  });
-});
+app.get('/api/health', (_, res) => res.json({ status: 'ok', time: new Date().toISOString() }));
 
 // En production : servir le build React
 if (isProd) {
