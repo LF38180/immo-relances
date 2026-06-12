@@ -147,7 +147,8 @@ export default function AdminPage() {
             <h2 className="font-semibold text-quai-navy mb-4">Paramètres de relance</h2>
             <div className="card space-y-4">
               <ParamField label="Nombre de relances par jour" cle="relances_par_jour" params={params} setParams={setParams} type="number" />
-              <ParamField label="Cadence estimation (jours)" cle="cadence_estimation_jours" params={params} setParams={setParams} type="text" placeholder="ex: 2,7,15,30" />
+              <ParamField label="Delai re-proposition sans reponse (jours)" cle="delai_sans_reponse_jours" params={params} setParams={setParams} type="number" />
+              <ParamField label="Relance apres 'plus de projet' (jours)" cle="relance_sans_projet_jours" params={params} setParams={setParams} type="number" />
               <hr className="border-quai-border" />
               <h3 className="font-medium text-quai-navy">Score de base par catégorie</h3>
               {[

@@ -24,7 +24,15 @@ export const STATUTS_RELANCE = {
   rdv_obtenu:         { label: 'RDV obtenu',       color: 'bg-emerald-50 text-emerald-700 border border-emerald-200', icon: 'calendar-check' },
   pas_interesse:      { label: 'Pas intéressé',   color: 'bg-red-50 text-red-700 border border-red-200',           icon: 'x-circle' },
   rappel_planifie:    { label: 'Rappel planifié',  color: 'bg-orange-50 text-orange-700 border border-orange-200',   icon: 'calendar-clock' },
-  mandat_obtenu:      { label: 'Mandat obtenu',    color: 'bg-emerald-100 text-emerald-800 border border-emerald-300', icon: 'trophy' },
+}
+
+export const ISSUES = {
+  sans_reponse: { label: 'Sans réponse',             icon: 'phone-off' },
+  projet:       { label: 'Projet (estimation/RDV)',  icon: 'trophy' },
+  rappel:       { label: 'A recontacter plus tard',  icon: 'calendar-clock' },
+  demenage:     { label: "N'habite plus a l'adresse", icon: 'map-pin' },
+  sans_projet:  { label: 'Plus de projet',           icon: 'calendar' },
+  autre:        { label: 'Autre',                    icon: 'pencil' },
 }
 
 export const POTENTIEL_LABELS = { 1: 'Très faible', 2: 'Faible', 3: 'Moyen', 4: 'Élevé', 5: 'Très élevé' }
