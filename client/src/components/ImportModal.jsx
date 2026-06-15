@@ -91,45 +91,53 @@ export default function ImportModal({ onClose, onImported }) {
     setStep(2)
   }
 
-  const handleFile = (file) => {
+  // Parse UN fichier -> renvoie un tableau de lignes (objets). Lit toutes les feuilles d'un Excel.
+  const parseFichier = (file) => new Promise((resolve, reject) => {
     const ext = file.name.split('.').pop().toLowerCase()
-
     if (ext === 'csv' || ext === 'tsv' || ext === 'txt') {
-      // Lecture CSV
       Papa.parse(file, {
         header: true, skipEmptyLines: true, encoding: 'UTF-8',
         delimitersToGuess: [';', ',', '\t', '|'],
-        complete: (res) => {
-          appliquerDonnees(res.meta.fields || [], res.data)
-        },
-        error: () => toast.error('Erreur de lecture du fichier CSV')
+        complete: (res) => resolve(res.data || []),
+        error: () => reject(new Error('CSV illisible : ' + file.name)),
       })
     } else if (['xlsx', 'xls', 'ods', 'numbers'].includes(ext)) {
-      // Lecture Excel / tableur
       const reader = new FileReader()
       reader.onload = async (e) => {
         try {
-          // Charge xlsx à la demande (lib lourde, ~400K) — pas dans le bundle initial.
           const XLSX = await import('xlsx')
           const workbook = XLSX.read(e.target.result, { type: 'array' })
-          // Lit TOUTES les feuilles et les concatène (un export Modelo a 1 feuille par type de bien).
           const data = []
           for (const sheetName of workbook.SheetNames) {
-            const lignes = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: '' })
-            data.push(...lignes)
+            data.push(...XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: '' }))
           }
-          if (data.length === 0) { toast.error('Fichier vide'); return }
-          // En-têtes = union des colonnes de toutes les lignes (les feuilles peuvent différer)
-          const hdrSet = new Set()
-          data.forEach(r => Object.keys(r).forEach(k => hdrSet.add(k)))
-          appliquerDonnees([...hdrSet], data)
-        } catch {
-          toast.error('Erreur de lecture du fichier tableur')
-        }
+          resolve(data)
+        } catch { reject(new Error('Tableur illisible : ' + file.name)) }
       }
+      reader.onerror = () => reject(new Error('Lecture impossible : ' + file.name))
       reader.readAsArrayBuffer(file)
     } else {
-      toast.error('Format non supporté. Utilisez CSV, Excel (.xlsx/.xls) ou ODS.')
+      reject(new Error('Format non supporté : ' + file.name))
+    }
+  })
+
+  // Gère un OU plusieurs fichiers : concatène toutes leurs lignes en un seul import.
+  const handleFiles = async (fileList) => {
+    const files = Array.from(fileList || [])
+    if (files.length === 0) return
+    try {
+      const toutes = []
+      for (const f of files) {
+        const lignes = await parseFichier(f)
+        toutes.push(...lignes)
+      }
+      if (toutes.length === 0) { toast.error('Aucune donnée dans le(s) fichier(s)'); return }
+      const hdrSet = new Set()
+      toutes.forEach(r => Object.keys(r).forEach(k => hdrSet.add(k)))
+      if (files.length > 1) toast.success(`${files.length} fichiers lus — ${toutes.length} lignes`)
+      appliquerDonnees([...hdrSet], toutes)
+    } catch (err) {
+      toast.error(err.message || 'Erreur de lecture')
     }
   }
 
@@ -184,17 +192,17 @@ export default function ImportModal({ onClose, onImported }) {
       {step === 1 && (
         <div className="text-center py-8">
           <Icon name="file-up" size="xl" className="text-quai-navy mx-auto mb-4" />
-          <h3 className="text-lg font-display font-medium text-quai-navy mb-2">Sélectionnez votre fichier</h3>
+          <h3 className="text-lg font-display font-medium text-quai-navy mb-2">Sélectionnez vos fichiers</h3>
           <p className="text-sm text-quai-muted mb-2">Formats acceptés :</p>
           <div className="flex flex-wrap gap-2 justify-center mb-4">
             {['.xlsx', '.xls', '.csv', '.ods', '.tsv'].map(f => (
               <span key={f} className="badge bg-quai-navy/10 text-quai-navy border border-quai-navy/20 text-xs font-mono">{f}</span>
             ))}
           </div>
-          <p className="text-xs text-quai-muted mb-4">La première ligne doit contenir les en-têtes de colonnes.</p>
-          <input ref={fileRef} type="file" accept=".csv,.tsv,.txt,.xlsx,.xls,.ods" className="hidden"
-            onChange={e => e.target.files[0] && handleFile(e.target.files[0])} />
-          <button onClick={() => fileRef.current.click()} className="btn-primary">Choisir un fichier</button>
+          <p className="text-xs text-quai-muted mb-4">Vous pouvez sélectionner plusieurs fichiers d'un coup (ils seront regroupés). Toutes les feuilles d'un Excel sont importées.</p>
+          <input ref={fileRef} type="file" accept=".csv,.tsv,.txt,.xlsx,.xls,.ods" className="hidden" multiple
+            onChange={e => e.target.files.length && handleFiles(e.target.files)} />
+          <button onClick={() => fileRef.current.click()} className="btn-primary">Choisir un ou plusieurs fichiers</button>
         </div>
       )}
 
