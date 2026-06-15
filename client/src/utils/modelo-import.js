@@ -86,6 +86,15 @@ export function bienVersContact(row) {
     if (p) photos.push(p)
   }
 
+  // Notes = résumé du bien + observations Modelo (bien puis contact), si présentes.
+  const notesParts = []
+  const resume = bits.join(' · ')
+  if (resume) notesParts.push(resume)
+  const obsBien = String(row['Observations'] || '').trim()
+  if (obsBien) notesParts.push('Observations bien : ' + obsBien)
+  const obsContact = String(row['Observations_1'] || '').trim()
+  if (obsContact) notesParts.push('Observations contact : ' + obsContact)
+
   return {
     civilite, prenom, nom,
     email: row['E-mail'] || '',
@@ -99,7 +108,7 @@ export function bienVersContact(row) {
     photo_url: photos.length ? JSON.stringify(photos) : '',
     categorie: 'vendeur',
     source: ref ? `Mandat ${ref}` : 'Mandat',
-    notes: bits.join(' · '),
+    notes: notesParts.join('\n\n'),
   }
 }
 
