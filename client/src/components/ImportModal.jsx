@@ -112,13 +112,17 @@ export default function ImportModal({ onClose, onImported }) {
           // Charge xlsx à la demande (lib lourde, ~400K) — pas dans le bundle initial.
           const XLSX = await import('xlsx')
           const workbook = XLSX.read(e.target.result, { type: 'array' })
-          // Prendre le premier onglet
-          const sheetName = workbook.SheetNames[0]
-          const sheet = workbook.Sheets[sheetName]
-          const data = XLSX.utils.sheet_to_json(sheet, { defval: '' })
-          if (data.length === 0) { toast.error('Feuille vide'); return }
-          const hdrs = Object.keys(data[0])
-          appliquerDonnees(hdrs, data)
+          // Lit TOUTES les feuilles et les concatène (un export Modelo a 1 feuille par type de bien).
+          const data = []
+          for (const sheetName of workbook.SheetNames) {
+            const lignes = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: '' })
+            data.push(...lignes)
+          }
+          if (data.length === 0) { toast.error('Fichier vide'); return }
+          // En-têtes = union des colonnes de toutes les lignes (les feuilles peuvent différer)
+          const hdrSet = new Set()
+          data.forEach(r => Object.keys(r).forEach(k => hdrSet.add(k)))
+          appliquerDonnees([...hdrSet], data)
         } catch {
           toast.error('Erreur de lecture du fichier tableur')
         }
