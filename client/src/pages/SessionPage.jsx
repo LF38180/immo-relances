@@ -8,6 +8,7 @@ import PhotoCarousel from '../components/PhotoCarousel'
 import { genererRecapPdf } from '../utils/recap-pdf'
 import { useAuth } from '../hooks/useAuth'
 import ContactModal from '../components/ContactModal'
+import { contientHtml, sanitizeContenu } from '../utils/scriptContenu'
 
 const ISSUES_LIST = [
   { key: 'projet',      label: 'Projet (estimation, RDV…)',      icon: 'trophy' },
@@ -302,9 +303,13 @@ export default function SessionPage() {
               <Icon name={showScript ? 'chevron-up' : 'chevron-down'} size="sm" />
             </button>
             {showScript && scripts.map(s => (
-              <div key={s.id} className="mt-3 p-3 bg-quai-light rounded-lg text-sm text-quai-text whitespace-pre-wrap border-l-4 border-quai-gold">
+              <div key={s.id} className="mt-3 p-3 bg-quai-light rounded-lg text-sm text-quai-text border-l-4 border-quai-gold">
                 <div className="font-medium text-quai-navy mb-1">{s.titre}</div>
-                {s.contenu}
+                {contientHtml(s.contenu) ? (
+                  <div dangerouslySetInnerHTML={{ __html: sanitizeContenu(s.contenu) }} />
+                ) : (
+                  <div className="whitespace-pre-wrap">{s.contenu}</div>
+                )}
               </div>
             ))}
           </div>
