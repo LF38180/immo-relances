@@ -107,7 +107,6 @@ if (!existingAdmin) {
 
 // Default parametres
 const defaultParams = [
-  ['relances_par_jour', '50'],
   ['delai_sans_reponse_jours', '3'],
   ['relance_sans_projet_jours', '180'],
   ['score_ancien_client', '80'],
