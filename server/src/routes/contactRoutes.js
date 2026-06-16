@@ -45,25 +45,25 @@ const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
   res.json({ contacts, total, page: parseInt(page), limit: parseInt(limit) });
 });
 
-// File de relances du jour
+// File de relances du jour (sans limite : tous les contacts joignables aujourd'hui)
 router.get('/file-relances', (req, res) => {
-  const paramsDb = {};
-  db.prepare('SELECT cle, valeur FROM parametres').all().forEach(r => paramsDb[r.cle] = r.valeur);
-  const limit = parseInt(paramsDb.relances_par_jour || 50);
   const today = new Date().toISOString().slice(0, 10);
 
-  // Contacts a contacter ou dont le prochain_contact est passe/aujourd'hui
+  // À appeler = jamais contactés OU dont le prochain_contact est échu (sans-réponse repoussés,
+  // rappels planifiés, à recontacter). Les sans-réponse du jour ont prochain_contact dans le
+  // futur (délai paramétrable) donc ne remontent pas le jour même.
+  // Ordre : jamais-appelés (groupe 0) d'abord, puis les échéances dues (groupe 1), par score.
   const contacts = db.prepare(`
-    SELECT contacts.*, u.nom AS assigned_nom, u.prenom AS assigned_prenom
+    SELECT contacts.*, u.nom AS assigned_nom, u.prenom AS assigned_prenom,
+      CASE WHEN contacts.statut = 'a_contacter' THEN 0 ELSE 1 END AS priorite_groupe
     FROM contacts LEFT JOIN users u ON u.id = contacts.assigned_to
     WHERE contacts.statut NOT IN ('pas_interesse', 'inactif')
     AND (
       contacts.statut = 'a_contacter'
-      OR (contacts.statut IN ('tente_sans_reponse', 'rappel_planifie', 'a_recontacter') AND (contacts.prochain_contact IS NULL OR contacts.prochain_contact <= ?))
+      OR (contacts.statut IN ('tente_sans_reponse', 'rappel_planifie', 'a_recontacter') AND contacts.prochain_contact IS NOT NULL AND contacts.prochain_contact <= ?)
     )
-    ORDER BY contacts.score_priorite DESC, contacts.prochain_contact ASC NULLS LAST
-    LIMIT ?
-  `).all(today, limit);
+    ORDER BY priorite_groupe ASC, contacts.score_priorite DESC, contacts.prochain_contact ASC
+  `).all(today);
 
   res.json({ contacts, total: contacts.length });
 });
