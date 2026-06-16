@@ -1,5 +1,6 @@
 import { useRef, useEffect, useState, useCallback } from 'react'
 import Icon from './ui/Icon'
+import { sanitizeContenu } from '../utils/scriptContenu'
 
 const BOUTONS = [
   { cmd: 'bold', icon: 'bold', label: 'Gras' },
@@ -14,9 +15,11 @@ export default function RichTextEditor({ value, onChange }) {
   const [actifs, setActifs] = useState({ bold: false, italic: false, underline: false })
 
   // Initialise le contenu une seule fois (évite de casser la position du curseur en frappe).
+  // Sanitize à l'injection : défense en profondeur si du HTML non nettoyé existait en base.
   useEffect(() => {
-    if (ref.current && ref.current.innerHTML !== (value || '')) {
-      ref.current.innerHTML = value || ''
+    const clean = sanitizeContenu(value || '')
+    if (ref.current && ref.current.innerHTML !== clean) {
+      ref.current.innerHTML = clean
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])

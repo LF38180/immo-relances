@@ -28,3 +28,7 @@ test('chaine vide -> pas de HTML', () => {
 test('texte avec < seul (math) -> pas de HTML', () => {
   assert.strictEqual(contientHtml('si x < 3 alors'), false)
 })
+
+test('balise tronquee en fin de chaine (<b) -> HTML', () => {
+  assert.strictEqual(contientHtml('texte coupe <b'), true)
+})
