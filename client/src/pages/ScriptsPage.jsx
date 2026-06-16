@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, lazy, Suspense } from 'react'
 import api from '../utils/api'
 import toast from 'react-hot-toast'
 import { CATEGORIES } from '../utils/constants'
@@ -6,6 +6,9 @@ import { useAuth } from '../hooks/useAuth'
 import Icon from '../components/ui/Icon'
 import PageHeader from '../components/ui/PageHeader'
 import ConfirmDialog from '../components/ui/ConfirmDialog'
+import { contientHtml, sanitizeContenu } from '../utils/scriptContenu'
+
+const RichTextEditor = lazy(() => import('../components/RichTextEditor'))
 
 export default function ScriptsPage() {
   const { user } = useAuth()
@@ -23,12 +26,13 @@ export default function ScriptsPage() {
 
   const save = async () => {
     if (!form.titre || !form.contenu) { toast.error('Titre et contenu requis'); return }
+    const payload = { ...form, contenu: sanitizeContenu(form.contenu) }
     try {
       if (editId) {
-        await api.put(`/scripts/${editId}`, form)
+        await api.put(`/scripts/${editId}`, payload)
         toast.success('Script mis à jour')
       } else {
-        await api.post('/scripts', form)
+        await api.post('/scripts', payload)
         toast.success('Script créé')
       }
       setEditId(null); setShowNew(false); load()
@@ -83,9 +87,13 @@ export default function ScriptsPage() {
             </div>
             <div className="mb-3">
               <label className="block text-xs font-medium text-quai-muted mb-1">Contenu du script</label>
-              <textarea className="input resize-none" rows={8} value={form.contenu}
-                onChange={e => setForm(f => ({ ...f, contenu: e.target.value }))}
-                placeholder="Rédigez votre script… Utilisez [Prénom], [Votre prénom], etc." />
+              <Suspense fallback={<div className="input min-h-[12rem] text-quai-muted">Chargement de l'éditeur…</div>}>
+                <RichTextEditor
+                  key={editId ?? 'nouveau'}
+                  value={form.contenu}
+                  onChange={html => setForm(f => ({ ...f, contenu: html }))}
+                />
+              </Suspense>
             </div>
             <div className="flex gap-2">
               <button onClick={save} className="btn-primary btn-sm">Sauvegarder</button>
@@ -145,9 +153,16 @@ function ScriptCard({ script, canEdit, onEdit, onDelete }) {
         </div>
       </div>
       {open && (
-        <div className="mt-3 p-4 bg-quai-light rounded-lg text-sm text-quai-text whitespace-pre-wrap border-l-4 border-quai-gold">
-          {script.contenu}
-        </div>
+        contientHtml(script.contenu) ? (
+          <div
+            className="mt-3 p-4 bg-quai-light rounded-lg text-sm text-quai-text border-l-4 border-quai-gold"
+            dangerouslySetInnerHTML={{ __html: sanitizeContenu(script.contenu) }}
+          />
+        ) : (
+          <div className="mt-3 p-4 bg-quai-light rounded-lg text-sm text-quai-text whitespace-pre-wrap border-l-4 border-quai-gold">
+            {script.contenu}
+          </div>
+        )
       )}
     </div>
   )
