@@ -9,6 +9,7 @@ import { genererRecapPdf } from '../utils/recap-pdf'
 import { useAuth } from '../hooks/useAuth'
 import ContactModal from '../components/ContactModal'
 import { contientHtml, sanitizeContenu } from '../utils/scriptContenu'
+import { formaterNotes } from '../utils/formaterNotes'
 
 const ISSUES_LIST = [
   { key: 'projet',      label: 'Projet (estimation, RDV…)',      icon: 'trophy' },
@@ -283,7 +284,21 @@ export default function SessionPage() {
           {contact.notes && (
             <div className="bg-quai-gold/10 border border-quai-gold/30 rounded-lg p-3 text-sm text-quai-text mb-3 flex gap-2">
               <Icon name="pin" size="sm" className="text-quai-gold flex-shrink-0 mt-0.5" />
-              <span><span className="font-medium">Notes : </span>{contact.notes}</span>
+              <div className="min-w-0">
+                <div className="font-medium mb-1">Notes</div>
+                <div className="space-y-0.5">
+                  {formaterNotes(contact.notes).map((ligne, i) => {
+                    if (ligne.titre) return <div key={i} className="font-semibold text-quai-navy">{ligne.libelle}</div>
+                    if (ligne.section) return <div key={i} className="font-semibold text-quai-navy mt-2">{ligne.libelle}</div>
+                    return (
+                      <div key={i}>
+                        <span className="font-medium text-quai-navy">{ligne.libelle}</span>
+                        {ligne.valeur != null && <span> : {ligne.valeur}</span>}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
             </div>
           )}
 
