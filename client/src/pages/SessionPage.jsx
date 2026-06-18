@@ -56,6 +56,12 @@ export default function SessionPage() {
         dateLabel, dateFichier,
         stats: sessionStats,
       })
+      // Clôture la session : repart à vide à la prochaine ouverture.
+      await api.post('/relances/cloturer-session')
+      setActionsSession([])
+      setSessionStats({ total: 0, rdv: 0, contactes: 0, pasRep: 0 })
+      setDone(false)
+      loadFile()
     } catch { toast.error('Erreur generation du recap') }
   }
 
@@ -71,7 +77,18 @@ export default function SessionPage() {
     }
   }
 
-  useEffect(() => { loadFile() }, [])
+  useEffect(() => {
+    loadFile()
+    // Restaure le récap de la session courante (après une fermeture inopinée).
+    api.get('/relances/session-courante')
+      .then(r => {
+        if (r.data?.actions?.length) {
+          setActionsSession(r.data.actions)
+          setSessionStats(r.data.stats)
+        }
+      })
+      .catch(() => {})
+  }, [])
 
   useEffect(() => {
     if (!contact) return
