@@ -9,6 +9,7 @@ function dateFr(v) {
 }
 
 function statutLabel(statut) {
+  if (statut === 'supprime') return 'Contact supprimé'
   return ISSUES[statut]?.label || STATUTS_RELANCE[statut]?.label || statut || ''
 }
 
