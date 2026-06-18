@@ -201,5 +201,50 @@ router.get('/stats', (req, res) => {
   });
 });
 
+// --- Reprise de session ---
+
+// Début de journée locale Europe/Paris, exprimé en UTC (borne basse si aucune clôture).
+function debutJourneeParisUtc() {
+  const dateParis = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Paris' });
+  const midi = new Date(`${dateParis}T12:00:00Z`);
+  const hParis = parseInt(midi.toLocaleString('en-US', { timeZone: 'Europe/Paris', hour12: false, hour: '2-digit' }), 10);
+  const offsetMin = (hParis - 12) * 60;
+  const [Y, M, D] = dateParis.split('-').map(Number);
+  return new Date(Date.UTC(Y, M - 1, D, 0, 0, 0) - offsetMin * 60000).toISOString().slice(0, 19).replace('T', ' ');
+}
+
+// Clôture la session courante de l'agent (marqueur = maintenant, UTC).
+router.post('/cloturer-session', (req, res) => {
+  const cle = 'session_cloturee_' + req.user.id;
+  const iso = new Date().toISOString().slice(0, 19).replace('T', ' ');
+  db.prepare('INSERT OR REPLACE INTO parametres (cle, valeur) VALUES (?, ?)').run(cle, iso);
+  res.json({ ok: true, cloture: iso });
+});
+
+// Récap de la session courante : relances de l'agent depuis la dernière clôture
+// (ou depuis le début de journée Paris si aucune clôture).
+router.get('/session-courante', (req, res) => {
+  const cle = 'session_cloturee_' + req.user.id;
+  const row = db.prepare('SELECT valeur FROM parametres WHERE cle = ?').get(cle);
+  const borne = row?.valeur || debutJourneeParisUtc();
+  const relances = db.prepare(`
+    SELECT r.issue, r.notes, c.nom, c.prenom, c.telephone
+    FROM relances r JOIN contacts c ON c.id = r.contact_id
+    WHERE r.agent_id = ? AND r.created_at > ?
+    ORDER BY r.created_at ASC
+  `).all(req.user.id, borne);
+  const actions = relances.map(r => ({
+    nom: r.nom, prenom: r.prenom, telephone: r.telephone,
+    statut: r.issue || 'contacte', notes: r.notes || '',
+  }));
+  const stats = {
+    total: actions.length,
+    rdv: actions.filter(a => a.statut === 'projet').length,
+    contactes: actions.filter(a => !['projet', 'sans_reponse'].includes(a.statut)).length,
+    pasRep: actions.filter(a => a.statut === 'sans_reponse').length,
+  };
+  res.json({ actions, stats, borne });
+});
+
 module.exports = router;
 module.exports.ISSUE_STATUT = ISSUE_STATUT;
