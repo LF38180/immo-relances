@@ -8,6 +8,7 @@ import ConfirmDialog from './ui/ConfirmDialog'
 import Icon from './ui/Icon'
 import { format } from 'date-fns'
 import PhotoCarousel from './PhotoCarousel'
+import { labelDateContact } from '../utils/labelDateContact'
 
 export default function ContactModal({ contact, onClose, onSaved }) {
   const isNew = !contact
@@ -146,7 +147,7 @@ export default function ContactModal({ contact, onClose, onSaved }) {
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-quai-muted mb-1">Prochain contact</label>
+              <label className="block text-xs font-medium text-quai-muted mb-1">{labelDateContact(form.statut)}</label>
               <input type="date" className="input" value={form.prochain_contact} onChange={e => set('prochain_contact', e.target.value)} />
             </div>
             <div>
