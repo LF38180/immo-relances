@@ -8,6 +8,7 @@ import PhotoCarousel from '../components/PhotoCarousel'
 import { genererRecapPdf } from '../utils/recap-pdf'
 import { useAuth } from '../hooks/useAuth'
 import ContactModal from '../components/ContactModal'
+import ConfirmDialog from '../components/ui/ConfirmDialog'
 import { contientHtml, sanitizeContenu } from '../utils/scriptContenu'
 import { formaterNotes } from '../utils/formaterNotes'
 
@@ -39,6 +40,7 @@ export default function SessionPage() {
   const [dateRappel, setDateRappel] = useState('')
   const [nouvelleAdresse, setNouvelleAdresse] = useState({ adresse: '', code_postal: '', ville: '' })
   const [adresseInconnue, setAdresseInconnue] = useState(false)
+  const [confirmSuppr, setConfirmSuppr] = useState(false)
   const { user } = useAuth()
 
   const contact = file[index]
@@ -135,6 +137,25 @@ export default function SessionPage() {
     if (index + 1 >= file.length) setDone(true)
     else setIndex(i => i + 1)
   }, [index, file.length])
+
+  const supprimerContact = async () => {
+    if (!contact) return
+    try {
+      await api.delete(`/contacts/${contact.id}`)
+      setActionsSession(prev => [...prev, {
+        nom: contact.nom, prenom: contact.prenom, telephone: contact.telephone,
+        statut: 'supprime', notes: '',
+      }])
+      toast.success('Contact supprime')
+      setConfirmSuppr(false)
+      setEtape(1)
+      setNotes('')
+      if (index + 1 >= file.length) setDone(true)
+      else setIndex(i => i + 1)
+    } catch {
+      toast.error('Erreur lors de la suppression')
+    }
+  }
 
   useEffect(() => {
     const handler = (e) => {
@@ -259,8 +280,25 @@ export default function SessionPage() {
             </div>
           )}
 
+          <button
+            onClick={() => setConfirmSuppr(true)}
+            className="text-xs text-red-600 hover:text-red-700 inline-flex items-center gap-1 mb-3"
+          >
+            <Icon name="trash-2" size="sm" /> Supprimer ce contact
+          </button>
+
           {contact.email && (
             <div className="text-sm text-quai-muted mb-3 inline-flex items-center gap-1.5"><Icon name="mail" size="sm" /> {contact.email}</div>
+          )}
+
+          {confirmSuppr && (
+            <ConfirmDialog
+              title="Supprimer ce contact"
+              message={`Supprimer definitvement ${contact?.prenom || ''} ${contact?.nom || ''} ? Cette action est irreversible.`}
+              confirmLabel="Supprimer"
+              onConfirm={supprimerContact}
+              onCancel={() => setConfirmSuppr(false)}
+            />
           )}
 
           {(contact.source_import || contact.assigned_prenom || contact.date_estimation || contact.suivi_par_origine) && (
