@@ -146,7 +146,7 @@ export default function SessionPage() {
         nom: contact.nom, prenom: contact.prenom, telephone: contact.telephone,
         statut: 'supprime', notes: '',
       }])
-      toast.success('Contact supprime')
+      toast.success('Contact supprimé')
       setConfirmSuppr(false)
       setEtape(1)
       setNotes('')
@@ -294,7 +294,7 @@ export default function SessionPage() {
           {confirmSuppr && (
             <ConfirmDialog
               title="Supprimer ce contact"
-              message={`Supprimer definitvement ${contact?.prenom || ''} ${contact?.nom || ''} ? Cette action est irreversible.`}
+              message={`Supprimer définitivement ${contact?.prenom || ''} ${contact?.nom || ''} ? Cette action est irréversible.`}
               confirmLabel="Supprimer"
               onConfirm={supprimerContact}
               onCancel={() => setConfirmSuppr(false)}
