@@ -28,6 +28,7 @@ export default function ContactsPage() {
   const [showImport, setShowImport] = useState(false)
   const searchTimer = useRef(null)
   const [limit, setLimit] = useState(50)
+  const [menuTri, setMenuTri] = useState(null)
 
   const load = async (p = page) => {
     setLoading(true)
@@ -49,6 +50,13 @@ export default function ContactsPage() {
   }, [search, categorie, statut, sort, order, assigned, source, ville, limit])
 
   useEffect(() => { load() }, [page])
+
+  useEffect(() => {
+    if (!menuTri) return
+    const close = () => setMenuTri(null)
+    document.addEventListener('click', close)
+    return () => document.removeEventListener('click', close)
+  }, [menuTri])
 
   useEffect(() => {
     api.get('/admin/users').then(r => setUsers(r.data)).catch(() => {})
@@ -138,15 +146,18 @@ export default function ContactsPage() {
           <table className="w-full text-sm">
             <thead className="bg-quai-light border-b border-quai-border sticky top-0">
               <tr>
-                <th className="text-left px-4 py-3 font-medium text-quai-muted">Nom</th>
-                <th className="text-left px-4 py-3 font-medium text-quai-muted">Téléphone</th>
-                <th className="text-left px-4 py-3 font-medium text-quai-muted">Ville</th>
-                <th className="text-left px-4 py-3 font-medium text-quai-muted">Catégorie</th>
-                <th className="text-left px-4 py-3 font-medium text-quai-muted">Statut</th>
-                <th className="text-left px-4 py-3 font-medium text-quai-muted">Dernier suivi</th>
-                <th className="text-left px-4 py-3 font-medium text-quai-muted">Score</th>
-                <th className="text-left px-4 py-3 font-medium text-quai-muted">Dernier contact</th>
-                <th className="text-left px-4 py-3 font-medium text-quai-muted">Prochain</th>
+                {[
+                  ['Nom', 'nom'], ['Téléphone', 'telephone'], ['Ville', 'ville'],
+                  ['Catégorie', 'categorie'], ['Statut', 'statut'],
+                  ['Dernier suivi', 'derniere_relance_date'], ['Score', 'score_priorite'],
+                  ['Dernier contact', 'date_dernier_contact'], ['Prochain', 'prochain_contact'],
+                ].map(([label, cle]) => (
+                  <ColonneTriable
+                    key={cle} label={label} cle={cle}
+                    sort={sort} order={order} menuTri={menuTri} setMenuTri={setMenuTri}
+                    setSort={setSort} setOrder={setOrder} setPage={setPage}
+                  />
+                ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-quai-border">
@@ -222,5 +233,36 @@ export default function ContactsPage() {
         />
       )}
     </div>
+  )
+}
+
+function ColonneTriable({ label, cle, sort, order, menuTri, setMenuTri, setSort, setOrder, setPage }) {
+  const actif = sort === cle
+  const fleche = actif ? (order === 'ASC' ? ' ↑' : ' ↓') : ''
+  const choisir = (e, newOrder) => {
+    e.stopPropagation()
+    if (newOrder === null) { setSort('score_priorite'); setOrder('DESC') }
+    else { setSort(cle); setOrder(newOrder) }
+    setPage(1)
+    setMenuTri(null)
+  }
+  return (
+    <th className="text-left px-4 py-3 font-medium text-quai-muted relative">
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); setMenuTri(menuTri === cle ? null : cle) }}
+        className="inline-flex items-center gap-1 hover:text-quai-navy"
+      >
+        {label}{fleche}
+        <Icon name="chevron-down" size="sm" className="opacity-50" />
+      </button>
+      {menuTri === cle && (
+        <div className="absolute z-20 mt-1 left-4 bg-white border border-quai-border rounded-lg shadow-lg text-sm text-quai-text min-w-[180px] py-1" onClick={(e) => e.stopPropagation()}>
+          <button type="button" className="block w-full text-left px-3 py-2 hover:bg-quai-light" onClick={(e) => choisir(e, 'ASC')}>Tri croissant</button>
+          <button type="button" className="block w-full text-left px-3 py-2 hover:bg-quai-light" onClick={(e) => choisir(e, 'DESC')}>Tri décroissant</button>
+          <button type="button" className="block w-full text-left px-3 py-2 hover:bg-quai-light text-quai-muted" onClick={(e) => choisir(e, null)}>Réinitialiser le tri</button>
+        </div>
+      )}
+    </th>
   )
 }
