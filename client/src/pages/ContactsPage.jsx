@@ -27,13 +27,13 @@ export default function ContactsPage() {
   const [showModal, setShowModal] = useState(false)
   const [showImport, setShowImport] = useState(false)
   const searchTimer = useRef(null)
-  const LIMIT = 50
+  const [limit, setLimit] = useState(50)
 
   const load = async (p = page) => {
     setLoading(true)
     try {
       const r = await api.get('/contacts', {
-        params: { page: p, limit: LIMIT, search, categorie, statut, sort, order, assigned_to: assigned, source, ville }
+        params: { page: p, limit, search, categorie, statut, sort, order, assigned_to: assigned, source, ville }
       })
       setContacts(r.data.contacts)
       setTotal(r.data.total)
@@ -46,7 +46,7 @@ export default function ContactsPage() {
     clearTimeout(searchTimer.current)
     searchTimer.current = setTimeout(() => { setPage(1); load(1) }, 300)
     return () => clearTimeout(searchTimer.current)
-  }, [search, categorie, statut, sort, order, assigned, source, ville])
+  }, [search, categorie, statut, sort, order, assigned, source, ville, limit])
 
   useEffect(() => { load() }, [page])
 
@@ -67,7 +67,7 @@ export default function ContactsPage() {
   const openContact = (c) => { setSelectedContact(c); setShowModal(true) }
   const openNew = () => { setSelectedContact(null); setShowModal(true) }
 
-  const pages = Math.ceil(total / LIMIT)
+  const pages = Math.ceil(total / limit)
 
   return (
     <div className="flex-1 overflow-hidden flex flex-col pb-24 md:pb-0">
@@ -114,7 +114,20 @@ export default function ContactsPage() {
             <button onClick={handleExport} className="btn-secondary btn-sm inline-flex items-center gap-1.5"><Icon name="download" size="sm" /> Exporter</button>
           </div>
         </div>
-        <div className="text-xs text-quai-muted mt-2">{total.toLocaleString('fr')} contact(s) trouvé(s)</div>
+        <div className="flex items-center justify-between mt-2">
+          <div className="text-xs text-quai-muted">{total.toLocaleString('fr')} contact(s) trouvé(s)</div>
+          <label className="text-xs text-quai-muted inline-flex items-center gap-1.5">
+            Afficher
+            <select className="input w-auto py-1 text-xs" value={limit} onChange={e => setLimit(Number(e.target.value))} aria-label="Nombre de contacts par page">
+              <option value={10}>10</option>
+              <option value={20}>20</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+              <option value={1000}>1000</option>
+            </select>
+            par page
+          </label>
+        </div>
       </div>
 
       <div className="flex-1 overflow-auto">
