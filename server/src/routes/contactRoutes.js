@@ -40,7 +40,16 @@ const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
   const sortOrder = order === 'ASC' ? 'ASC' : 'DESC';
 
   const total = db.prepare(`SELECT COUNT(*) as cnt FROM contacts ${where}`).get(...params).cnt;
-  const contacts = db.prepare(`SELECT contacts.*, u.nom AS assigned_nom, u.prenom AS assigned_prenom FROM contacts LEFT JOIN users u ON u.id = contacts.assigned_to ${where} ORDER BY contacts.${sortCol} ${sortOrder} LIMIT ? OFFSET ?`).all(...params, parseInt(limit), offset);
+  const contacts = db.prepare(`
+    SELECT contacts.*, u.nom AS assigned_nom, u.prenom AS assigned_prenom,
+      dr.issue AS derniere_issue, dr.notes AS derniere_note, dr.created_at AS derniere_relance_date
+    FROM contacts
+    LEFT JOIN users u ON u.id = contacts.assigned_to
+    LEFT JOIN relances dr ON dr.id = (
+      SELECT id FROM relances WHERE contact_id = contacts.id ORDER BY created_at DESC, id DESC LIMIT 1
+    )
+    ${where}
+    ORDER BY contacts.${sortCol} ${sortOrder} LIMIT ? OFFSET ?`).all(...params, parseInt(limit), offset);
 
   res.json({ contacts, total, page: parseInt(page), limit: parseInt(limit) });
 });
