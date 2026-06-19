@@ -35,7 +35,7 @@ router.get('/', (req, res) => {
   if (ville) { conditions.push('contacts.ville LIKE ?'); params.push(`%${ville}%`); }
 
 const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
-  const validSorts = ['score_priorite', 'nom', 'date_dernier_contact', 'prochain_contact', 'created_at', 'categorie', 'statut'];
+  const validSorts = ['score_priorite', 'nom', 'telephone', 'ville', 'date_dernier_contact', 'prochain_contact', 'created_at', 'categorie', 'statut', 'derniere_relance_date'];
   const sortCol = validSorts.includes(sort) ? sort : 'score_priorite';
   const sortOrder = order === 'ASC' ? 'ASC' : 'DESC';
 
@@ -49,7 +49,7 @@ const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
       SELECT id FROM relances WHERE contact_id = contacts.id ORDER BY created_at DESC, id DESC LIMIT 1
     )
     ${where}
-    ORDER BY contacts.${sortCol} ${sortOrder} LIMIT ? OFFSET ?`).all(...params, parseInt(limit), offset);
+    ORDER BY ${sortCol === 'derniere_relance_date' ? 'derniere_relance_date' : 'contacts.' + sortCol} ${sortOrder} LIMIT ? OFFSET ?`).all(...params, parseInt(limit), offset);
 
   res.json({ contacts, total, page: parseInt(page), limit: parseInt(limit) });
 });
@@ -273,14 +273,30 @@ router.post('/import', (req, res) => {
   res.json(importerContacts(contacts, users, req.user, assigned_to));
 });
 
-// Export
+const ISSUE_LABEL_EXPORT = {
+  sans_reponse: 'Sans réponse', projet: 'Projet (estimation/RDV)',
+  rappel: 'A recontacter plus tard', demenage: "N'habite plus a l'adresse",
+  sans_projet: 'Plus de projet', autre: 'Autre',
+};
+
 router.get('/export/csv', (req, res) => {
-  const contacts = db.prepare('SELECT * FROM contacts ORDER BY nom').all();
-  const header = 'id,nom,prenom,telephone,telephone2,email,adresse,code_postal,ville,categorie,statut,score_priorite,potentiel,date_dernier_contact,prochain_contact,nombre_tentatives,notes,tags,created_at\n';
+  const contacts = db.prepare(`
+    SELECT contacts.*,
+      dr.issue AS dernier_suivi_issue, dr.notes AS dernier_suivi_note, dr.created_at AS dernier_suivi_date
+    FROM contacts
+    LEFT JOIN relances dr ON dr.id = (
+      SELECT id FROM relances WHERE contact_id = contacts.id ORDER BY created_at DESC, id DESC LIMIT 1
+    )
+    ORDER BY contacts.nom
+  `).all();
+  const clean = (v) => (v || '').replace(/,/g, ';').replace(/\n/g, ' ');
+  const header = 'id,nom,prenom,telephone,telephone2,email,adresse,code_postal,ville,categorie,statut,score_priorite,potentiel,date_dernier_contact,prochain_contact,nombre_tentatives,notes,tags,created_at,dernier_suivi_issue,dernier_suivi_note,dernier_suivi_date\n';
   const rows = contacts.map(c =>
     [c.id, c.nom, c.prenom, c.telephone, c.telephone2, c.email, c.adresse, c.code_postal, c.ville,
      c.categorie, c.statut, c.score_priorite, c.potentiel, c.date_dernier_contact, c.prochain_contact,
-     c.nombre_tentatives, (c.notes || '').replace(/,/g, ';').replace(/\n/g, ' '), c.tags, c.created_at]
+     c.nombre_tentatives, clean(c.notes), c.tags, c.created_at,
+     c.dernier_suivi_issue ? (ISSUE_LABEL_EXPORT[c.dernier_suivi_issue] || c.dernier_suivi_issue) : '',
+     clean(c.dernier_suivi_note), c.dernier_suivi_date || '']
     .map(v => `"${v ?? ''}"`)
     .join(',')
   ).join('\n');
