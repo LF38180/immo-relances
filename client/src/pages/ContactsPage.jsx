@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import api from '../utils/api'
 import toast from 'react-hot-toast'
-import { CATEGORIES, STATUTS } from '../utils/constants'
+import { CATEGORIES, STATUTS, ISSUES } from '../utils/constants'
 import { CategorieBadge, StatutBadge, ScoreBadge } from '../components/ContactBadge'
 import ContactModal from '../components/ContactModal'
 import ImportModal from '../components/ImportModal'
@@ -130,6 +130,7 @@ export default function ContactsPage() {
                 <th className="text-left px-4 py-3 font-medium text-quai-muted">Ville</th>
                 <th className="text-left px-4 py-3 font-medium text-quai-muted">Catégorie</th>
                 <th className="text-left px-4 py-3 font-medium text-quai-muted">Statut</th>
+                <th className="text-left px-4 py-3 font-medium text-quai-muted">Dernier suivi</th>
                 <th className="text-left px-4 py-3 font-medium text-quai-muted">Score</th>
                 <th className="text-left px-4 py-3 font-medium text-quai-muted">Dernier contact</th>
                 <th className="text-left px-4 py-3 font-medium text-quai-muted">Prochain</th>
@@ -150,6 +151,23 @@ export default function ContactsPage() {
                   <td className="px-4 py-3 text-quai-muted">{c.ville}</td>
                   <td className="px-4 py-3"><CategorieBadge categorie={c.categorie} /></td>
                   <td className="px-4 py-3 flex flex-wrap gap-1"><StatutBadge statut={c.statut} /></td>
+                  <td className="px-4 py-3 text-xs">
+                    {c.derniere_issue || c.derniere_note ? (
+                      <div className="max-w-[16rem]">
+                        <div className="flex items-center gap-1.5 text-quai-muted">
+                          <span className="font-medium text-quai-navy">{ISSUES[c.derniere_issue]?.label || c.derniere_issue || 'Suivi'}</span>
+                          {c.derniere_relance_date && <span>· {format(new Date(c.derniere_relance_date.replace(' ', 'T') + 'Z'), 'dd/MM/yyyy')}</span>}
+                        </div>
+                        {c.derniere_note && (
+                          <div className="text-quai-text truncate" title={c.derniere_note}>
+                            {c.derniere_note.length > 40 ? c.derniere_note.slice(0, 40) + '…' : c.derniere_note}
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <span className="text-quai-muted">—</span>
+                    )}
+                  </td>
                   <td className="px-4 py-3"><ScoreBadge score={c.score_priorite} /></td>
                   <td className="px-4 py-3 text-quai-muted text-xs">
                     {c.date_dernier_contact ? format(new Date(c.date_dernier_contact), 'dd/MM/yyyy') : '—'}
