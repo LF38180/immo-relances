@@ -5,6 +5,20 @@ import Icon from '../components/ui/Icon'
 import PageHeader from '../components/ui/PageHeader'
 import { useAuth } from '../hooks/useAuth'
 
+// Date UTC ISO -> "il y a 2 h — 30/06/2026 19:02" (heure française, été/hiver auto).
+function formatConnexion(iso) {
+  if (!iso) return { relatif: 'Jamais', absolu: '' }
+  const d = new Date(iso)
+  const absolu = d.toLocaleString('fr-FR', { timeZone: 'Europe/Paris', dateStyle: 'short', timeStyle: 'short' })
+  const sec = Math.floor((Date.now() - d.getTime()) / 1000)
+  let relatif
+  if (sec < 60) relatif = 'à l\'instant'
+  else if (sec < 3600) relatif = `il y a ${Math.floor(sec / 60)} min`
+  else if (sec < 86400) relatif = `il y a ${Math.floor(sec / 3600)} h`
+  else relatif = `il y a ${Math.floor(sec / 86400)} j`
+  return { relatif, absolu }
+}
+
 export default function AdminPage() {
   const { user } = useAuth()
   const estAdmin = user?.role === 'admin'
@@ -109,6 +123,7 @@ export default function AdminPage() {
                     <th className="text-left px-4 py-3 font-medium text-quai-muted">Nom</th>
                     <th className="text-left px-4 py-3 font-medium text-quai-muted">Email</th>
                     <th className="text-left px-4 py-3 font-medium text-quai-muted">Rôle</th>
+                    <th className="text-left px-4 py-3 font-medium text-quai-muted">Dernière connexion</th>
                     <th className="text-left px-4 py-3 font-medium text-quai-muted">Statut</th>
                     <th className="text-left px-4 py-3 font-medium text-quai-muted">Actions</th>
                   </tr>
@@ -122,6 +137,13 @@ export default function AdminPage() {
                         <span className={`badge ${u.role === 'admin' ? 'bg-quai-navy text-white' : u.role === 'manager' ? 'bg-quai-gold/20 text-quai-navy border border-quai-gold/40' : 'bg-quai-light text-quai-muted border border-quai-border'}`}>
                           {u.role}
                         </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        {(() => { const { relatif, absolu } = formatConnexion(u.last_login); return (
+                          <span className={u.last_login ? 'text-quai-navy' : 'text-quai-muted italic'}>
+                            {relatif}{absolu && <span className="text-quai-muted text-xs"> — {absolu}</span>}
+                          </span>
+                        ) })()}
                       </td>
                       <td className="px-4 py-3">
                         <span className={`badge ${u.actif ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-quai-light text-quai-muted border border-quai-border'}`}>

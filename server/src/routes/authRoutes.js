@@ -14,6 +14,7 @@ router.post('/login', (req, res) => {
     return res.status(401).json({ error: 'Email ou mot de passe incorrect' });
   }
 
+  db.prepare('UPDATE users SET last_login = ? WHERE id = ?').run(new Date().toISOString(), user.id);
   const token = signToken(user);
   res.json({
     token,

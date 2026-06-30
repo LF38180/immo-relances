@@ -91,6 +91,9 @@ if (!contactCols.includes('civilite')) db.exec("ALTER TABLE contacts ADD COLUMN 
 const relanceCols = db.prepare("PRAGMA table_info(relances)").all().map(c => c.name);
 if (!relanceCols.includes('type')) db.exec("ALTER TABLE relances ADD COLUMN type TEXT NOT NULL DEFAULT 'appel'");
 if (!relanceCols.includes('issue')) db.exec("ALTER TABLE relances ADD COLUMN issue TEXT");
+// Dernière connexion (horodatage UTC du dernier login réussi), affiché côté admin.
+const userCols = db.prepare("PRAGMA table_info(users)").all().map(c => c.name);
+if (!userCols.includes('last_login')) db.exec("ALTER TABLE users ADD COLUMN last_login TEXT");
 
 // Seed default admin
 const existingAdmin = db.prepare('SELECT id FROM users WHERE email = ?').get('admin@lequai-immobilier.com');

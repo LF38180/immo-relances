@@ -10,7 +10,7 @@ router.use(requireAuth, requireRole('manager', 'admin'));
 
 // Utilisateurs
 router.get('/users', (req, res) => {
-  res.json(db.prepare('SELECT id, nom, prenom, email, role, actif, created_at FROM users').all());
+  res.json(db.prepare('SELECT id, nom, prenom, email, role, actif, created_at, last_login FROM users').all());
 });
 
 router.post('/users', requireRole('admin'), (req, res) => {
