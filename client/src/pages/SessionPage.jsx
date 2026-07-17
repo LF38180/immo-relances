@@ -34,6 +34,8 @@ export default function SessionPage() {
   const [recherche, setRecherche] = useState('')
   const [resultats, setResultats] = useState([])
   const [contactOuvert, setContactOuvert] = useState(null)
+  const [rappels, setRappels] = useState({ retard: [], aujourdhui: [], aVenir: [] })
+  const [showRappels, setShowRappels] = useState(false)
   // 2-step flow state
   const [etape, setEtape] = useState(1)
   const [issueChoisie, setIssueChoisie] = useState('')
@@ -77,8 +79,13 @@ export default function SessionPage() {
     }
   }
 
+  const chargerRappels = () => {
+    api.get('/relances/mes-rappels').then(r => setRappels(r.data)).catch(() => {})
+  }
+
   useEffect(() => {
     loadFile()
+    chargerRappels()
     // Restaure le récap de la session courante (après une fermeture inopinée).
     api.get('/relances/session-courante')
       .then(r => {
@@ -137,6 +144,7 @@ export default function SessionPage() {
       }])
       if (issue === 'projet') toast.success('Projet ! Excellent !', { duration: 3000 })
       else toast.success('Relance enregistree')
+      chargerRappels()
 
       if (index + 1 >= file.length) {
         setDone(true)
@@ -254,6 +262,36 @@ export default function SessionPage() {
                   <div className="text-sm font-medium text-quai-navy">{c.civilite ? c.civilite + ' ' : ''}{c.prenom} {c.nom}</div>
                   <div className="text-xs text-quai-muted">{c.telephone || c.telephone2 || '—'}{c.ville ? ' · ' + c.ville : ''}</div>
                 </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="mt-2">
+          <button onClick={() => setShowRappels(s => !s)} className="btn-secondary btn-sm inline-flex items-center gap-1.5">
+            <Icon name="bell" size="sm" />
+            Mes relances ({rappels.retard.length + rappels.aujourdhui.length})
+            {rappels.retard.length > 0 && (
+              <span className="ml-1 px-1.5 py-0.5 rounded-full bg-red-600 text-white text-xs font-semibold">{rappels.retard.length} en retard</span>
+            )}
+          </button>
+          {showRappels && (
+            <div className="mt-2 bg-white border border-quai-border rounded-lg shadow-lg p-3 space-y-3">
+              {[['En retard', rappels.retard, 'text-red-600'], ['Aujourd\'hui', rappels.aujourdhui, 'text-quai-navy'], ['À venir (7 jours)', rappels.aVenir, 'text-quai-muted']].map(([titre, liste, coul]) => (
+                <div key={titre}>
+                  <div className={`text-xs font-semibold uppercase tracking-wide mb-1 ${coul}`}>{titre} ({liste.length})</div>
+                  {liste.length === 0 && <div className="text-xs text-quai-muted">Aucun.</div>}
+                  {liste.map(c => (
+                    <button key={c.id} onClick={() => { setContactOuvert(c); setShowRappels(false) }}
+                      className="w-full text-left px-2 py-1.5 rounded hover:bg-quai-light">
+                      <div className="text-sm font-medium text-quai-navy">
+                        {c.prenom} {c.nom}
+                        <span className="text-quai-muted font-normal"> · {c.telephone || c.telephone2 || '—'} · prévu le {new Date(c.prochain_contact.slice(0, 10) + 'T12:00:00').toLocaleDateString('fr-FR')}</span>
+                      </div>
+                      {c.derniere_note && <div className="text-xs text-quai-muted truncate">{c.derniere_note}</div>}
+                    </button>
+                  ))}
+                </div>
               ))}
             </div>
           )}
@@ -543,7 +581,7 @@ export default function SessionPage() {
         <ContactModal
           contact={contactOuvert}
           onClose={() => setContactOuvert(null)}
-          onSaved={() => setContactOuvert(null)}
+          onSaved={() => { setContactOuvert(null); chargerRappels() }}
         />
       )}
     </div>

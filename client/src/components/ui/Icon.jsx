@@ -1,7 +1,7 @@
 // Imports nommés (tree-shaking) : seules les icônes réellement utilisées sont embarquées.
 // Si une icône manque, fallback sur Circle (pas de crash).
 import {
-  ArrowLeft, ArrowRight, Calendar, CalendarCheck, CalendarClock, ChevronDown, ChevronLeft,
+  ArrowLeft, ArrowRight, Bell, Calendar, CalendarCheck, CalendarClock, ChevronDown, ChevronLeft,
   ChevronRight, ChevronUp, Circle, CircleCheckBig, CircleX, Database, Download, Eye, FileCheck, FileDown,
   FileText, FileUp, History, LayoutDashboard, LogOut, Mail, MapPin, Pencil, Phone, PhoneCall, PhoneOff,
   Pin, Plus, RefreshCw, Search, Settings, Star, Table, Tag, Trash2, TriangleAlert, Trophy,
@@ -13,7 +13,7 @@ const SIZES = { sm: 16, md: 20, lg: 24, xl: 32 }
 
 // Dictionnaire nom (kebab du code) -> composant. Couvre tous les usages de l'app.
 const MAP = {
-  'arrow-left': ArrowLeft, 'arrow-right': ArrowRight, 'calendar': Calendar,
+  'arrow-left': ArrowLeft, 'arrow-right': ArrowRight, 'bell': Bell, 'calendar': Calendar,
   'calendar-check': CalendarCheck, 'calendar-clock': CalendarClock, 'chevron-down': ChevronDown,
   'chevron-left': ChevronLeft, 'chevron-right': ChevronRight, 'chevron-up': ChevronUp,
   'circle': Circle, 'check-circle-2': CircleCheckBig, 'x-circle': CircleX, 'database': Database, 'download': Download,
