@@ -246,5 +246,33 @@ router.get('/session-courante', (req, res) => {
   res.json({ actions, stats, borne });
 });
 
+// Mes rappels : contacts en rappel planifié dont la DERNIÈRE relance 'rappel' vient de
+// l'agent connecté (= ses promesses de rappel). Groupés retard / aujourd'hui / à venir (7 j).
+router.get('/mes-rappels', (req, res) => {
+  const today = new Date().toISOString().slice(0, 10);
+  const dans7j = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+  const rows = db.prepare(`
+    SELECT c.id, c.civilite, c.nom, c.prenom, c.telephone, c.telephone2, c.ville,
+      c.prochain_contact, r.notes AS derniere_note
+    FROM contacts c
+    JOIN relances r ON r.id = (
+      SELECT id FROM relances
+      WHERE contact_id = c.id AND statut = 'rappel_planifie'
+      ORDER BY created_at DESC, id DESC LIMIT 1
+    )
+    WHERE c.statut = 'rappel_planifie' AND c.prochain_contact IS NOT NULL
+      AND r.agent_id = ?
+    ORDER BY c.prochain_contact ASC
+  `).all(req.user.id);
+  const retard = [], aujourdhui = [], aVenir = [];
+  for (const c of rows) {
+    const d = String(c.prochain_contact).slice(0, 10);
+    if (d < today) retard.push(c);
+    else if (d === today) aujourdhui.push(c);
+    else if (d <= dans7j) aVenir.push(c);
+  }
+  res.json({ retard, aujourdhui, aVenir });
+});
+
 module.exports = router;
 module.exports.ISSUE_STATUT = ISSUE_STATUT;
