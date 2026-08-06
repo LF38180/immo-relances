@@ -18,7 +18,7 @@ router.post('/login', (req, res) => {
   const token = signToken(user);
   res.json({
     token,
-    user: { id: user.id, nom: user.nom, prenom: user.prenom, email: user.email, role: user.role }
+    user: { id: user.id, nom: user.nom, prenom: user.prenom, email: user.email, role: user.role, must_change_password: user.must_change_password }
   });
 });
 
@@ -32,6 +32,7 @@ router.put('/password', requireAuth, (req, res) => {
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
   if (!bcrypt.compareSync(ancien, user.password)) return res.status(400).json({ error: 'Ancien mot de passe incorrect' });
   db.prepare('UPDATE users SET password = ? WHERE id = ?').run(bcrypt.hashSync(nouveau, 10), req.user.id);
+  db.prepare('UPDATE users SET must_change_password = 0 WHERE id = ?').run(req.user.id);
   res.json({ ok: true });
 });
 

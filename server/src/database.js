@@ -17,8 +17,9 @@ db.exec(`
     prenom TEXT NOT NULL,
     email TEXT UNIQUE NOT NULL,
     password TEXT NOT NULL,
-    role TEXT NOT NULL DEFAULT 'agent' CHECK(role IN ('agent', 'manager', 'admin')),
+    role TEXT NOT NULL DEFAULT 'agent' CHECK(role IN ('agent', 'manager', 'admin', 'courtage')),
     actif INTEGER NOT NULL DEFAULT 1,
+    must_change_password INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
@@ -95,6 +96,90 @@ if (!relanceCols.includes('issue')) db.exec("ALTER TABLE relances ADD COLUMN iss
 const userCols = db.prepare("PRAGMA table_info(users)").all().map(c => c.name);
 if (!userCols.includes('last_login')) db.exec("ALTER TABLE users ADD COLUMN last_login TEXT");
 
+// Migration rôle 'courtage' : SQLite ne modifie pas un CHECK en place -> table-swap.
+// FK-safe : relances.agent_id et contacts.assigned_to référencent users ; si les FK
+// sont actives (cas prod), DROP TABLE users échoue et laisse users_new résiduelle
+// -> crash en boucle. Procédure sûre : FK OFF avant, transaction, DROP IF EXISTS d'abord.
+// NB : l'ALTER last_login ci-dessus DOIT s'exécuter AVANT ce bloc (le SELECT lit last_login).
+{
+  const sql = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='users'").get();
+  if (sql && /CHECK\(role IN/.test(sql.sql) && !/'courtage'/.test(sql.sql)) {
+    db.pragma('foreign_keys = OFF');
+    const swap = db.transaction(() => {
+      db.exec('DROP TABLE IF EXISTS users_new');
+      db.exec(`
+        CREATE TABLE users_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          nom TEXT NOT NULL, prenom TEXT NOT NULL,
+          email TEXT UNIQUE NOT NULL, password TEXT NOT NULL,
+          role TEXT NOT NULL DEFAULT 'agent' CHECK(role IN ('agent','manager','admin','courtage')),
+          actif INTEGER NOT NULL DEFAULT 1,
+          must_change_password INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          last_login TEXT
+        );
+        INSERT INTO users_new (id,nom,prenom,email,password,role,actif,created_at,last_login)
+          SELECT id,nom,prenom,email,password,role,actif,created_at,last_login FROM users;
+        DROP TABLE users;
+        ALTER TABLE users_new RENAME TO users;
+      `);
+    });
+    swap();
+    db.pragma('foreign_keys = ON');
+  }
+}
+// Ceinture : colonne must_change_password si base créée avant cette version.
+const uCols = db.prepare("PRAGMA table_info(users)").all().map(c => c.name);
+if (!uCols.includes('must_change_password')) db.exec("ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0");
+
+// Tables courtage (espace cloisonné Marine) — aucune interaction avec contacts/relances.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS courtage_fiches (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nom TEXT NOT NULL, prenom TEXT,
+    telephone TEXT, telephone_norm TEXT,
+    mail TEXT, mail_norm TEXT,
+    date_contact TEXT,
+    montant_projet TEXT,
+    reference_bien TEXT,
+    source TEXT DEFAULT 'CI Facile',
+    attribution_cr TEXT, capacite_emprunt TEXT,
+    categorie TEXT NOT NULL DEFAULT 'manuel',
+    priorite INTEGER NOT NULL DEFAULT 1,
+    statut TEXT NOT NULL DEFAULT 'en_relance' CHECK(statut IN
+      ('a_qualifier','en_relance','simulation_faite','dossier_en_cours',
+       'gagne','perdu','injoignable','ne_plus_contacter')),
+    prochaine_relance TEXT,
+    tentatives_sans_reponse INTEGER NOT NULL DEFAULT 0,
+    mail_propose_le TEXT,
+    commentaire TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_courtage_fiches_relance ON courtage_fiches(prochaine_relance);
+  CREATE INDEX IF NOT EXISTS idx_courtage_fiches_tel ON courtage_fiches(telephone_norm);
+  CREATE TABLE IF NOT EXISTS courtage_actions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    fiche_id INTEGER NOT NULL REFERENCES courtage_fiches(id) ON DELETE CASCADE,
+    type TEXT NOT NULL CHECK(type IN ('creation','relance','pas_de_reponse','trop_tot','mail_propose','statut')),
+    commentaire TEXT, prochaine_relance TEXT,
+    statut_avant TEXT, statut_apres TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_courtage_actions_fiche ON courtage_actions(fiche_id);
+  CREATE TABLE IF NOT EXISTS courtage_blacklist (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    telephone_norm TEXT, mail_norm TEXT, motif TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE TABLE IF NOT EXISTS courtage_demandes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    fiche_id INTEGER NOT NULL REFERENCES courtage_fiches(id) ON DELETE CASCADE,
+    reference_bien TEXT, date_demande TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+`);
+
 // Seed default admin
 const existingAdmin = db.prepare('SELECT id FROM users WHERE email = ?').get('admin@lequai-immobilier.com');
 if (!existingAdmin) {
@@ -122,6 +207,31 @@ const defaultParams = [
 ];
 const insertParam = db.prepare('INSERT OR IGNORE INTO parametres (cle, valeur) VALUES (?, ?)');
 defaultParams.forEach(([k, v]) => insertParam.run(k, v));
+
+// Paramètres courtage (modifiables via l'admin, sans redéploiement).
+[['courtage_delai_relance_jours', '7'],
+ ['courtage_tentatives_max', '2'],
+ ['courtage_tel_marine', ''],
+ ['courtage_mail_objet', 'Votre projet immobilier — étude de financement'],
+ ['courtage_mail_corps',
+`Bonjour [Prénom],
+
+Vous avez récemment contacté notre agence au sujet d'un bien [BIEN] et manifesté un intérêt pour une étude de financement. Je me tiens à votre disposition pour en parler et vous proposer une simulation personnalisée, gratuite et sans engagement.
+
+Vous pouvez me joindre au [TEL_MARINE] ou répondre directement à ce message.
+
+Bien cordialement,
+Marine Rosain — Conseillère en financement
+Le Quai de l'Immobilier`],
+ ['courtage_exclusion_agents', 'POITEVIN Lyes,BARRETO Nolan'],
+].forEach(([c, v]) => insertParam.run(c, v));
+
+// Seed Marine (rôle courtage, mot de passe à changer au premier login) — idempotent.
+const marine = db.prepare('SELECT id FROM users WHERE email = ?').get('marine.rosain@lequai-immobilier.com');
+if (!marine) {
+  db.prepare('INSERT INTO users (nom, prenom, email, password, role, must_change_password) VALUES (?,?,?,?,?,1)')
+    .run('Rosain', 'Marine', 'marine.rosain@lequai-immobilier.com', bcrypt.hashSync('MarineLeQuai', 10), 'courtage');
+}
 
 // Default scripts
 const existingScripts = db.prepare('SELECT COUNT(*) as cnt FROM scripts').get();
