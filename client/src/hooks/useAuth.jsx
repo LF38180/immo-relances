@@ -23,8 +23,17 @@ export function AuthProvider({ children }) {
     setUser(null)
   }
 
+  // Met à jour le user courant (état + localStorage) — ex. après changement de mot de passe.
+  const updateUser = (patch) => {
+    setUser(prev => {
+      const next = { ...prev, ...patch }
+      localStorage.setItem('user', JSON.stringify(next))
+      return next
+    })
+  }
+
   return (
-    <AuthContext.Provider value={{ user, login, logout, loading }}>
+    <AuthContext.Provider value={{ user, login, logout, updateUser, loading }}>
       {children}
     </AuthContext.Provider>
   )

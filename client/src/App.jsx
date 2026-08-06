@@ -11,6 +11,8 @@ const ContactsPage = lazy(() => import('./pages/ContactsPage'))
 const ScriptsPage = lazy(() => import('./pages/ScriptsPage'))
 const SupervisionPage = lazy(() => import('./pages/SupervisionPage'))
 const AdminPage = lazy(() => import('./pages/AdminPage'))
+const CourtagePage = lazy(() => import('./pages/CourtagePage'))
+const ChangePasswordGate = lazy(() => import('./pages/ChangePasswordGate'))
 
 function ChargementPage() {
   return (
@@ -25,6 +27,24 @@ function AppInner() {
   const [page, setPage] = useState('dashboard')
 
   if (!user) return <LoginPage />
+
+  // Changement de mot de passe obligatoire : écran bloquant avant tout accès.
+  if (user.must_change_password) {
+    return (
+      <Suspense fallback={<div className="min-h-screen flex"><ChargementPage /></div>}>
+        <ChangePasswordGate />
+      </Suspense>
+    )
+  }
+
+  // Rôle courtage : espace dédié cloisonné, sans le Layout/nav de l'agence.
+  if (user.role === 'courtage') {
+    return (
+      <Suspense fallback={<div className="min-h-screen flex"><ChargementPage /></div>}>
+        <CourtagePage />
+      </Suspense>
+    )
+  }
 
   const renderPage = () => {
     switch (page) {
