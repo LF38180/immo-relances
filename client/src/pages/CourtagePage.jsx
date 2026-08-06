@@ -535,9 +535,88 @@ function NouvelleFicheModal({ onClose, onCreated }) {
 // ------------------------------------------------------------- Tableau de bord
 
 function DashboardCourtage() {
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    api.get('/courtage/dashboard')
+      .then(r => setData(r.data))
+      .catch(() => toast.error('Erreur de chargement du tableau de bord'))
+      .finally(() => setLoading(false))
+  }, [])
+
+  if (loading) return <div className="text-center text-quai-muted animate-pulse py-12 text-sm">Chargement…</div>
+  if (!data) return null
+
+  return <DashboardCourtageContenu data={data} />
+}
+
+// Contenu réutilisé tel quel par la Supervision (lecture seule côté admin/manager).
+export function DashboardCourtageContenu({ data }) {
+  const totalStatuts = data.parStatut.reduce((s, x) => s + x.cnt, 0)
+
   return (
-    <div className="text-center text-quai-muted py-16 text-sm">
-      Le tableau de bord arrive bientôt.
+    <div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <TuileCourtage label="Relances cette semaine" value={data.relancesSemaine} icon="phone-call" variant="navy" />
+        <TuileCourtage label="À relancer aujourd'hui" value={data.aRelancerAujourdhui} icon="bell" variant="gold" />
+        <TuileCourtage label="Simulations" value={data.simulations} icon="file-check" variant="light" />
+        <TuileCourtage label="Dossiers en cours" value={data.dossiers} icon="trophy" variant="success" />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="card">
+          <h2 className="font-semibold text-quai-navy mb-4 text-sm uppercase tracking-wider">Répartition par statut</h2>
+          {data.parStatut.length === 0 && <div className="text-sm text-quai-muted py-6 text-center">Aucune fiche pour le moment.</div>}
+          <div className="space-y-2">
+            {data.parStatut.map(s => {
+              const info = STATUTS_COURTAGE[s.statut] || { label: s.statut, color: 'bg-quai-light text-quai-muted' }
+              return (
+                <div key={s.statut} className="flex items-center gap-3">
+                  <span className={`badge ${info.color} w-36 justify-center`}>{info.label}</span>
+                  <div className="flex-1 bg-quai-border rounded-full h-4 overflow-hidden">
+                    <div className="h-full bg-quai-navy rounded-full"
+                      style={{ width: `${totalStatuts ? Math.min(100, (s.cnt / totalStatuts) * 100) : 0}%` }} />
+                  </div>
+                  <div className="w-10 text-sm text-right font-medium text-quai-navy">{s.cnt}</div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
+        <div className="card">
+          <h2 className="font-semibold text-quai-navy mb-4 text-sm uppercase tracking-wider">Taux de transformation</h2>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="text-center p-4 bg-quai-light rounded-xl border border-quai-border">
+              <div className="text-3xl font-bold text-quai-navy">{data.tauxOuiSimulation}%</div>
+              <div className="text-xs text-quai-muted mt-1">Contacts → simulation</div>
+            </div>
+            <div className="text-center p-4 bg-quai-light rounded-xl border border-quai-border">
+              <div className="text-3xl font-bold text-quai-navy">{data.tauxSimulationDossier}%</div>
+              <div className="text-xs text-quai-muted mt-1">Simulation → dossier</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function TuileCourtage({ label, value, icon, variant }) {
+  const styles = {
+    navy:    'bg-quai-navy text-white',
+    gold:    'bg-quai-gold text-quai-navy',
+    light:   'bg-white border border-quai-border text-quai-navy',
+    success: 'bg-emerald-600 text-white',
+  }
+  return (
+    <div className={`rounded-xl p-5 flex items-center gap-4 ${styles[variant]}`}>
+      <Icon name={icon} size="xl" className="opacity-80" />
+      <div>
+        <div className="text-2xl font-bold leading-tight">{value}</div>
+        <div className="text-xs opacity-70 mt-0.5">{label}</div>
+      </div>
     </div>
   )
 }

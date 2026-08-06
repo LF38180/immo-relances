@@ -3,7 +3,7 @@ const bcrypt = require('bcryptjs');
 const { db } = require('../database');
 const { requireAuth, requireRole } = require('../auth');
 
-const ROLES_VALIDES = ['agent', 'manager', 'admin'];
+const ROLES_VALIDES = ['agent', 'manager', 'admin', 'courtage'];
 
 const router = express.Router();
 router.use(requireAuth, requireRole('manager', 'admin'));

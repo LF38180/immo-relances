@@ -105,6 +105,7 @@ export default function AdminPage() {
                       <option value="agent">Agent</option>
                       <option value="manager">Manager</option>
                       <option value="admin">Admin</option>
+                      <option value="courtage">Courtage</option>
                     </select>
                   </div>
                 </div>
@@ -186,6 +187,31 @@ export default function AdminPage() {
               <ParamField label="Délai avant recontact (jours)" cle="delai_recontact_jours" params={params} setParams={setParams} type="number" />
               <button onClick={saveParams} className="btn-primary">Sauvegarder les paramètres</button>
             </div>
+
+            {estAdmin && (
+              <>
+                <h2 className="font-semibold text-quai-navy mt-8 mb-4">Paramètres courtage</h2>
+                <div className="card space-y-4">
+                  <ParamField label="Délai de relance (jours)" cle="courtage_delai_relance_jours" params={params} setParams={setParams} type="number" min={1} />
+                  <ParamField label="Tentatives avant Injoignable" cle="courtage_tentatives_max" params={params} setParams={setParams} type="number" min={1} />
+                  <ParamField label="Téléphone Marine" cle="courtage_tel_marine" params={params} setParams={setParams} placeholder="06 00 00 00 00" />
+                  <ParamField label="Objet du mail" cle="courtage_mail_objet" params={params} setParams={setParams} large />
+                  <div className="flex flex-col sm:flex-row sm:items-start gap-2 sm:gap-4">
+                    <label className="sm:w-48 text-sm font-medium text-quai-muted sm:pt-2">Corps du mail</label>
+                    <textarea
+                      className="input flex-1 resize-y" rows={8}
+                      value={params.courtage_mail_corps || ''}
+                      onChange={e => setParams(p => ({ ...p, courtage_mail_corps: e.target.value }))}
+                    />
+                  </div>
+                  <p className="text-xs text-quai-muted">
+                    Variables disponibles dans l'objet et le corps : [Prénom], [BIEN], [TEL_MARINE].
+                  </p>
+                  <ParamField label="Agents exclus import" cle="courtage_exclusion_agents" params={params} setParams={setParams} large placeholder="NOM Prénom, NOM Prénom" />
+                  <button onClick={saveParams} className="btn-primary">Sauvegarder les paramètres courtage</button>
+                </div>
+              </>
+            )}
           </div>
         )}
 
@@ -215,13 +241,13 @@ export default function AdminPage() {
   )
 }
 
-function ParamField({ label, cle, params, setParams, type = 'text', min, max, placeholder }) {
+function ParamField({ label, cle, params, setParams, type = 'text', min, max, placeholder, large }) {
   return (
     <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
       <label className="sm:w-48 text-sm font-medium text-quai-muted">{label}</label>
       <input
         type={type} min={min} max={max} placeholder={placeholder}
-        className="input w-full sm:w-48"
+        className={large ? 'input flex-1' : 'input w-full sm:w-48'}
         value={params[cle] || ''}
         onChange={e => setParams(p => ({ ...p, [cle]: e.target.value }))}
       />

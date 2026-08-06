@@ -4,12 +4,14 @@ import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
 import Icon from '../components/ui/Icon'
 import PageHeader from '../components/ui/PageHeader'
+import { DashboardCourtageContenu } from './CourtagePage'
 
 export default function SupervisionPage() {
   const [data, setData] = useState(null)
   const [stats, setStats] = useState(null)
   const [agents, setAgents] = useState([])
   const [agentId, setAgentId] = useState('')
+  const [courtage, setCourtage] = useState(null)
   const [loading, setLoading] = useState(true)
 
   const load = async () => {
@@ -21,6 +23,8 @@ export default function SupervisionPage() {
     setAgents(users.data.filter(u => u.role === 'agent'))
     const r = await api.get(`/relances/stats?${agentId ? `agent_id=${agentId}` : ''}`)
     setStats(r.data)
+    // Indicateurs courtage (lecture seule) — section masquée en cas d'erreur.
+    api.get('/courtage/dashboard').then(c => setCourtage(c.data)).catch(() => setCourtage(null))
     setLoading(false)
   }
 
@@ -116,6 +120,13 @@ export default function SupervisionPage() {
               </div>
             </div>
           </>
+        )}
+
+        {courtage && (
+          <div className="mt-8">
+            <h2 className="font-semibold text-quai-navy mb-3">Courtage — Marine</h2>
+            <DashboardCourtageContenu data={courtage} />
+          </div>
         )}
       </div>
     </div>
