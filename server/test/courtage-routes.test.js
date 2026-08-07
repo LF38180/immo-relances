@@ -29,7 +29,8 @@ setTimeout(async () => {
 
     // Login Marine : must_change_password present dans la reponse.
     const loginMarine = await loginFull('marine.rosain@lequai-immobilier.com', 'MarineLeQuai');
-    test('login Marine renvoie must_change_password=1', loginMarine.user && loginMarine.user.must_change_password === 1, JSON.stringify(loginMarine.user));
+    // TEMPORAIRE : gate desactivee (phase de test Loick, voir database.js) -> attendu 0.
+    test('login Marine renvoie must_change_password (0 temporaire)', loginMarine.user && loginMarine.user.must_change_password === 0, JSON.stringify(loginMarine.user));
     test('login Marine renvoie role courtage', loginMarine.user && loginMarine.user.role === 'courtage');
     const marine = loginMarine.token;
     const agent = (await loginFull('agent@lequai-immobilier.com', 'agent123')).token;
