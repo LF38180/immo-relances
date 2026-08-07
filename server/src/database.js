@@ -226,12 +226,16 @@ Le Quai de l'Immobilier`],
  ['courtage_exclusion_agents', 'POITEVIN Lyes,BARRETO Nolan'],
 ].forEach(([c, v]) => insertParam.run(c, v));
 
-// Seed Marine (rôle courtage, mot de passe à changer au premier login) — idempotent.
+// Seed Marine (rôle courtage) — idempotent.
 const marine = db.prepare('SELECT id FROM users WHERE email = ?').get('marine.rosain@lequai-immobilier.com');
 if (!marine) {
   db.prepare('INSERT INTO users (nom, prenom, email, password, role, must_change_password) VALUES (?,?,?,?,?,1)')
     .run('Rosain', 'Marine', 'marine.rosain@lequai-immobilier.com', bcrypt.hashSync('MarineLeQuai', 10), 'courtage');
 }
+// TEMPORAIRE : Loïck teste le compte Marine avec le mot de passe convenu — on désactive
+// le changement obligatoire. AVANT de remettre les accès à Marine : supprimer cette ligne
+// et repasser must_change_password à 1 (le mécanisme de gate reste en place et testé).
+db.prepare("UPDATE users SET must_change_password = 0 WHERE email = 'marine.rosain@lequai-immobilier.com'").run();
 
 // Default scripts
 const existingScripts = db.prepare('SELECT COUNT(*) as cnt FROM scripts').get();
