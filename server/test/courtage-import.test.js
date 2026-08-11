@@ -274,6 +274,25 @@ setTimeout(async () => {
     const badBody = await req('POST', '/api/courtage/import', marine, { fichier: 'x.xlsx' });
     test('import sans tableau lignes -> 400', badBody.status === 400, badBody.status);
 
+    // 7bis) SIMULATION MULTI-LOTS : le client envoie ~13 lots avec le meme session_id.
+    // Un contact present dans deux lots (deux mois) ne doit etre compte "cree" qu'une fois.
+    const contactDeuxMois = (onglet, ligne, ref, tel) => ({
+      onglet, ligne,
+      valeurs: ['15/06/2026', '10h', 'Appel', 'leboncoin', 'ZOPPAS TARA', 'MULTILOT', 'Paul',
+        tel, 'multilot@test.fr', ref, 'commentaire', null, 'OUI', null, null, 'NON', null, null, 'NON'],
+    });
+    const sid = 'session-test-multilots';
+    const s1 = await req('POST', '/api/courtage/import', marine,
+      { fichier: 'multi.xlsx', simulation: true, session_id: sid, lignes: [contactDeuxMois('JUIN 2026', 90, 'REF-A', '06 55 44 33 22')] });
+    const s2 = await req('POST', '/api/courtage/import', marine,
+      { fichier: 'multi.xlsx', simulation: true, session_id: sid, lignes: [contactDeuxMois('JUILLET 2026', 91, 'REF-B', '06.55.44.33.22')] });
+    test('simulation multi-lots : 1 seule creation cumulee',
+      s1.body.creees + s2.body.creees === 1, `creees ${s1.body.creees}+${s2.body.creees}`);
+    test('simulation multi-lots : le 2e lot compte un doublon',
+      s1.body.doublons + s2.body.doublons === 1, `doublons ${s1.body.doublons}+${s2.body.doublons}`);
+    const fichesMultilot = (await req('GET', '/api/courtage/fiches', marine)).body.filter(f => f.nom === 'MULTILOT');
+    test('simulation multi-lots : aucune ecriture en base', fichesMultilot.length === 0, String(fichesMultilot.length));
+
     // 8) Journal des imports.
     const jr = await req('GET', '/api/courtage/imports', admin);
     test('journal : admin GET /imports 200', jr.status === 200, jr.status);

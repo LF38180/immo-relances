@@ -222,8 +222,28 @@ const val = (valeurs, i) => {
   return s || null;
 };
 
+// Etat des simulations en cours, par session (le client envoie ~13 lots successifs).
+// Sans cela, chaque lot repartirait a zero et un contact present dans deux mois
+// differents serait compte "cree" deux fois -> rapport de simulation fausse.
+// Purge des sessions inactives depuis plus d'une heure a chaque nouvel appel.
+const simulationsEnCours = new Map(); // id -> { hashVus, noireSimulee, ficheSimulee, vue }
+function etatSimulation(id) {
+  const maintenant = Date.now();
+  for (const [cle, etat] of simulationsEnCours) {
+    if (maintenant - etat.vue > 3600000) simulationsEnCours.delete(cle);
+  }
+  if (!id) return { hashVus: new Set(), noireSimulee: new Set(), ficheSimulee: new Map(), vue: maintenant };
+  if (!simulationsEnCours.has(id)) {
+    simulationsEnCours.set(id, { hashVus: new Set(), noireSimulee: new Set(), ficheSimulee: new Map(), vue: maintenant });
+  }
+  const etat = simulationsEnCours.get(id);
+  etat.vue = maintenant;
+  return etat;
+}
+
 // Traite un lot de lignes. ecrire = false -> aucune ecriture (mode simulation).
-function traiterLignes(lignes, ecrire) {
+// etat : porte le dedoublonnage entre les lots d'une meme session de simulation.
+function traiterLignes(lignes, ecrire, etat) {
   const opts = {
     exclusionAgents: param('courtage_exclusion_agents', ''),
     heuristiqueGabby: param('courtage_heuristique_gabby', 'PS_OUI'),
@@ -239,9 +259,11 @@ function traiterLignes(lignes, ecrire) {
     parCategorie: { oui_agent: 0, oui_gabby: 0, a_qualifier: 0 },
   };
 
-  const hashVus = new Set();          // dedoublonnage intra-lot (et simulation)
-  const noireSimulee = new Set();     // liste noire ajoutee pendant une simulation
-  const ficheSimulee = new Map();     // cle contact -> categorie, en simulation
+  // Etat partage entre les lots d'une meme simulation (sinon reinitialise a chaque appel).
+  const ctx = etat || { hashVus: new Set(), noireSimulee: new Set(), ficheSimulee: new Map() };
+  const hashVus = ctx.hashVus;              // dedoublonnage intra-lot (et simulation)
+  const noireSimulee = ctx.noireSimulee;    // liste noire ajoutee pendant une simulation
+  const ficheSimulee = ctx.ficheSimulee;    // cle contact -> categorie, en simulation
   const dejaVu = db.prepare('SELECT 1 FROM courtage_import_lignes WHERE hash = ?');
   const journal = db.prepare('INSERT OR IGNORE INTO courtage_import_lignes (hash, onglet, ligne, fiche_id, resultat) VALUES (?,?,?,?,?)');
 
@@ -407,10 +429,15 @@ router.post('/import', importation, (req, res) => {
   const simulation = !!b.simulation;
   const fichier = b.fichier ? String(b.fichier).slice(0, 255) : null;
 
+  // En simulation, le client envoie plusieurs lots avec le meme session_id : on conserve
+  // l'etat (contacts deja "crees", liste noire) pour ne pas compter deux fois un contact
+  // present dans deux onglets/lots differents.
+  const sessionId = simulation && b.session_id ? String(b.session_id).slice(0, 100) : null;
+
   let bilan;
   try {
     bilan = simulation
-      ? traiterLignes(b.lignes, false)
+      ? traiterLignes(b.lignes, false, etatSimulation(sessionId))
       : db.transaction(() => traiterLignes(b.lignes, true))();
   } catch (e) {
     return res.status(500).json({ error: "Echec de l'import : " + e.message });

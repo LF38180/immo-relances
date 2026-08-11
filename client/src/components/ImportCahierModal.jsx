@@ -114,12 +114,17 @@ export default function ImportCahierModal({ onClose, onImported }) {
       lots.push(fichier.lignes.slice(i, i + TAILLE_LOT))
     }
     let cumul = { ...BILAN_VIDE }
+    // Identifiant de session : permet au serveur de conserver l'etat de dedoublonnage
+    // entre les lots d'une meme simulation (un contact present dans deux mois ne doit
+    // pas etre compte "cree" deux fois dans le rapport).
+    const sessionId = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
     try {
       for (let i = 0; i < lots.length; i++) {
         setProgression({ lot: i + 1, total: lots.length })
         const { data } = await api.post('/courtage/import', {
           fichier: fichier.nom,
           simulation: enSimulation,
+          session_id: sessionId,
           lignes: lots[i],
         })
         cumul = cumuler(cumul, data)
