@@ -5,6 +5,7 @@ import { useAuth } from '../hooks/useAuth'
 import Icon from '../components/ui/Icon'
 import Modal from '../components/ui/Modal'
 import ConfirmDialog from '../components/ui/ConfirmDialog'
+import ImportCahierModal from '../components/ImportCahierModal'
 
 // Espace courtage (Marine) — totalement cloisonné : pas de Layout ni de nav agent.
 
@@ -54,6 +55,7 @@ export default function CourtagePage() {
   const [recherche, setRecherche] = useState('')
   const [loading, setLoading] = useState(true)
   const [showNouvelle, setShowNouvelle] = useState(false)
+  const [showImport, setShowImport] = useState(false)
   const [detailId, setDetailId] = useState(null)
 
   const loadRelances = useCallback(() => api.get('/courtage/fiches/relances-jour').then(r => setRelances(r.data)), [])
@@ -109,9 +111,14 @@ export default function CourtagePage() {
                 </button>
               ))}
             </div>
-            <button onClick={() => setShowNouvelle(true)} className="btn-primary btn-sm inline-flex items-center gap-1.5 mb-2">
-              <Icon name="plus" size="sm" /> Nouvelle fiche
-            </button>
+            <div className="flex flex-wrap gap-2 mb-2">
+              <button onClick={() => setShowImport(true)} className="btn-secondary btn-sm inline-flex items-center gap-1.5">
+                <Icon name="file-up" size="sm" /> Importer le cahier
+              </button>
+              <button onClick={() => setShowNouvelle(true)} className="btn-primary btn-sm inline-flex items-center gap-1.5">
+                <Icon name="plus" size="sm" /> Nouvelle fiche
+              </button>
+            </div>
           </div>
 
           {loading && <div className="text-center text-quai-muted animate-pulse py-12 text-sm">Chargement…</div>}
@@ -157,6 +164,7 @@ export default function CourtagePage() {
       </div>
 
       {showNouvelle && <NouvelleFicheModal onClose={() => setShowNouvelle(false)} onCreated={() => { setShowNouvelle(false); refresh() }} />}
+      {showImport && <ImportCahierModal onClose={() => setShowImport(false)} onImported={refresh} />}
       {detailId && <DetailFicheModal ficheId={detailId} onClose={() => setDetailId(null)} />}
     </div>
   )

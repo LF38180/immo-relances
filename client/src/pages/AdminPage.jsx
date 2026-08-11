@@ -3,6 +3,7 @@ import api from '../utils/api'
 import toast from 'react-hot-toast'
 import Icon from '../components/ui/Icon'
 import PageHeader from '../components/ui/PageHeader'
+import ImportCahierModal from '../components/ImportCahierModal'
 import { useAuth } from '../hooks/useAuth'
 
 // Date UTC ISO -> "il y a 2 h — 30/06/2026 19:02" (heure française, été/hiver auto).
@@ -73,7 +74,7 @@ export default function AdminPage() {
         <PageHeader title="Administration" />
 
         <div className="flex border-b border-quai-border mb-6">
-          {[['users','Utilisateurs','users'],['params','Paramètres','settings'],...(estAdmin ? [['donnees','Données','database']] : [])].map(([t, lbl, ic]) => (
+          {[['users','Utilisateurs','users'],['params','Paramètres','settings'],...(estAdmin ? [['imports','Imports courtage','file-up'],['donnees','Données','database']] : [])].map(([t, lbl, ic]) => (
             <button key={t} onClick={() => setTab(t)}
               className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors inline-flex items-center gap-2 ${tab === t ? 'border-quai-gold text-quai-navy' : 'border-transparent text-quai-muted hover:text-quai-navy'}`}>
               <Icon name={ic} size="sm" /> {lbl}
@@ -208,12 +209,32 @@ export default function AdminPage() {
                     Variables disponibles dans l'objet et le corps : [Prénom], [BIEN], [TEL_MARINE].
                   </p>
                   <ParamField label="Agents exclus import" cle="courtage_exclusion_agents" params={params} setParams={setParams} large placeholder="NOM Prénom, NOM Prénom" />
+                  <hr className="border-quai-border" />
+                  <h3 className="font-medium text-quai-navy">Import du cahier des messages</h3>
+                  <ParamField label="Latence OUI agent (jours)" cle="courtage_latence_oui_agent" params={params} setParams={setParams} type="number" min={0} />
+                  <ParamField label="Latence OUI Gabby (jours)" cle="courtage_latence_oui_gabby" params={params} setParams={setParams} type="number" min={0} />
+                  <ParamField label="Latence À qualifier (jours)" cle="courtage_latence_a_qualifier" params={params} setParams={setParams} type="number" min={0} />
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+                    <label className="sm:w-48 text-sm font-medium text-quai-muted">Heuristique OUI Gabby</label>
+                    <select className="input flex-1"
+                      value={params.courtage_heuristique_gabby || 'PS_OUI'}
+                      onChange={e => setParams(p => ({ ...p, courtage_heuristique_gabby: e.target.value }))}>
+                      <option value="PS_OUI">P ou S valent OUI (recommandé)</option>
+                      <option value="PS_REMPLI">P ou S renseignées</option>
+                      <option value="off">Pas de distinction</option>
+                    </select>
+                  </div>
+                  <p className="text-xs text-quai-muted">
+                    Un lead n'est proposé qu'après la latence de sa catégorie, comptée depuis la date du message.
+                  </p>
                   <button onClick={saveParams} className="btn-primary">Sauvegarder les paramètres courtage</button>
                 </div>
               </>
             )}
           </div>
         )}
+
+        {tab === 'imports' && estAdmin && <ImportsCourtage />}
 
         {tab === 'donnees' && estAdmin && (
           <div>
@@ -237,6 +258,83 @@ export default function AdminPage() {
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+// Imports du cahier des messages : lancement + journal des 20 derniers imports.
+function ImportsCourtage() {
+  const [imports, setImports] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [showImport, setShowImport] = useState(false)
+
+  const charger = () => api.get('/courtage/imports')
+    .then(r => setImports(r.data))
+    .catch(() => toast.error('Erreur de chargement du journal'))
+    .finally(() => setLoading(false))
+
+  useEffect(() => { charger() }, [])
+
+  const COLONNES = [
+    ['lignes_lues', 'Lues'], ['creees', 'Créées'], ['doublons', 'Doublons'],
+    ['exclues', 'Exclues'], ['blacklistees', 'Liste noire'], ['ignorees', 'Ignorées'],
+  ]
+
+  return (
+    <div>
+      <div className="flex flex-wrap justify-between items-center gap-3 mb-4">
+        <h2 className="font-semibold text-quai-navy">Imports courtage</h2>
+        <div className="flex gap-2">
+          <button onClick={charger} className="btn-secondary btn-sm inline-flex items-center gap-1.5">
+            <Icon name="refresh-cw" size="sm" /> Actualiser
+          </button>
+          <button onClick={() => setShowImport(true)} className="btn-primary btn-sm inline-flex items-center gap-1.5">
+            <Icon name="file-up" size="sm" /> Importer le cahier
+          </button>
+        </div>
+      </div>
+
+      <div className="card overflow-hidden p-0">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-quai-light">
+              <tr>
+                <th className="text-left px-4 py-3 font-medium text-quai-muted">Date</th>
+                <th className="text-left px-4 py-3 font-medium text-quai-muted">Auteur</th>
+                <th className="text-left px-4 py-3 font-medium text-quai-muted">Fichier</th>
+                <th className="text-left px-4 py-3 font-medium text-quai-muted">Mode</th>
+                {COLONNES.map(([k, l]) => (
+                  <th key={k} className="text-right px-3 py-3 font-medium text-quai-muted">{l}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-quai-border">
+              {loading && <tr><td colSpan={10} className="px-4 py-6 text-center text-quai-muted animate-pulse">Chargement…</td></tr>}
+              {!loading && imports.length === 0 && (
+                <tr><td colSpan={10} className="px-4 py-6 text-center text-quai-muted">Aucun import pour le moment.</td></tr>
+              )}
+              {imports.map(i => (
+                <tr key={i.id}>
+                  <td className="px-4 py-3 text-quai-navy whitespace-nowrap">{formatConnexion(i.created_at).absolu}</td>
+                  <td className="px-4 py-3 text-quai-muted whitespace-nowrap">{[i.user_prenom, i.user_nom].filter(Boolean).join(' ') || '—'}</td>
+                  <td className="px-4 py-3 text-quai-muted max-w-48 truncate">{i.fichier || '—'}</td>
+                  <td className="px-4 py-3">
+                    <span className={`badge ${i.simulation ? 'bg-quai-gold/20 text-quai-navy border border-quai-gold/40' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'}`}>
+                      {i.simulation ? 'Simulation' : 'Réel'}
+                    </span>
+                  </td>
+                  {COLONNES.map(([k]) => (
+                    <td key={k} className="px-3 py-3 text-right text-quai-navy">{(i[k] || 0).toLocaleString('fr')}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <p className="text-xs text-quai-muted mt-2">Les 20 derniers imports. Les simulations sont journalisées mais n'ont rien enregistré.</p>
+
+      {showImport && <ImportCahierModal onClose={() => setShowImport(false)} onImported={charger} />}
     </div>
   )
 }
