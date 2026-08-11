@@ -3,12 +3,14 @@
 const express = require('express');
 const { db } = require('../database');
 const { requireAuth, requireRole } = require('../auth');
+const CI = require('../utils/courtageImport');
 
 const router = express.Router();
 router.use(requireAuth);
 
 const lireSeule = requireRole('courtage', 'manager', 'admin');
 const ecriture = requireRole('courtage');
+const importation = requireRole('courtage', 'admin');
 
 // Helpers
 const normTel = (t) => { let d = String(t || '').replace(/\D/g, ''); if (d.startsWith('33') && d.length === 11) d = '0' + d.slice(2); return d || null; };
@@ -202,6 +204,234 @@ router.get('/dashboard', lireSeule, (req, res) => {
       AND prochaine_relance IS NOT NULL AND prochaine_relance <= date('now')
   `).get().cnt;
   res.json({ parStatut, relancesSemaine, simulations, dossiers, tauxOuiSimulation, tauxSimulationDossier, aRelancerAujourdhui });
+});
+
+// ---------------------------------------------------------------------------
+// Import du cahier des messages (V2). Le client parse le .xlsx et envoie les
+// lignes brutes ; le serveur applique les regles (voir utils/courtageImport.js).
+// ---------------------------------------------------------------------------
+
+const COL = CI.COL;
+const val = (valeurs, i) => {
+  const v = valeurs[i];
+  if (v === null || v === undefined) return null;
+  const s = String(v).replace(/\s+/g, ' ').trim();
+  return s || null;
+};
+
+// Traite un lot de lignes. ecrire = false -> aucune ecriture (mode simulation).
+function traiterLignes(lignes, ecrire) {
+  const opts = {
+    exclusionAgents: param('courtage_exclusion_agents', ''),
+    heuristiqueGabby: param('courtage_heuristique_gabby', 'PS_OUI'),
+  };
+  const latences = {
+    courtage_latence_oui_agent: param('courtage_latence_oui_agent', '0'),
+    courtage_latence_oui_gabby: param('courtage_latence_oui_gabby', '3'),
+    courtage_latence_a_qualifier: param('courtage_latence_a_qualifier', '7'),
+  };
+  const bilan = {
+    lignes_lues: 0, creees: 0, doublons: 0, exclues: 0,
+    blacklistees: 0, ignorees: 0, deja_importees: 0,
+    parCategorie: { oui_agent: 0, oui_gabby: 0, a_qualifier: 0 },
+  };
+
+  const hashVus = new Set();          // dedoublonnage intra-lot (et simulation)
+  const noireSimulee = new Set();     // liste noire ajoutee pendant une simulation
+  const ficheSimulee = new Map();     // cle contact -> categorie, en simulation
+  const dejaVu = db.prepare('SELECT 1 FROM courtage_import_lignes WHERE hash = ?');
+  const journal = db.prepare('INSERT OR IGNORE INTO courtage_import_lignes (hash, onglet, ligne, fiche_id, resultat) VALUES (?,?,?,?,?)');
+
+  for (const brut of lignes) {
+    const valeurs = Array.isArray(brut && brut.valeurs) ? brut.valeurs : [];
+    const onglet = brut && brut.onglet != null ? String(brut.onglet) : null;
+    const numLigne = brut && brut.ligne != null ? parseInt(brut.ligne, 10) : null;
+    bilan.lignes_lues++;
+
+    const hash = CI.hashLigne(onglet, numLigne, valeurs);
+    if (hashVus.has(hash) || dejaVu.get(hash)) { bilan.deja_importees++; continue; }
+    hashVus.add(hash);
+
+    const nom = val(valeurs, COL.nom);
+    const dateBrute = valeurs[COL.date];
+    if (!nom && !CI.normaliserDate(dateBrute)) {
+      // Ligne sans DATE ni NOM : ignoree silencieusement (mais journalisee).
+      bilan.ignorees++;
+      if (ecrire) journal.run(hash, onglet, numLigne, null, 'ignore');
+      continue;
+    }
+
+    const verdict = CI.categoriser(valeurs, opts);
+    const tel = CI.normaliserTelephone(valeurs[COL.telephone]);
+    const mail = CI.normaliserMail(valeurs[COL.mail]);
+    const cleContact = tel ? 'T:' + tel : (mail ? 'M:' + mail : null);
+
+    if (verdict.action === 'exclu') {
+      bilan.exclues++;
+      if (ecrire) journal.run(hash, onglet, numLigne, null, 'exclu');
+      continue;
+    }
+
+    if (verdict.action === 'ignore') {
+      bilan.ignorees++;
+      if (ecrire) journal.run(hash, onglet, numLigne, null, 'ignore');
+      continue;
+    }
+
+    if (verdict.action === 'blackliste') {
+      bilan.blacklistees++;
+      if (ecrire) {
+        if (tel || mail) {
+          db.prepare('INSERT INTO courtage_blacklist (telephone_norm, mail_norm, motif) VALUES (?,?,?)').run(tel, mail, 'import_non');
+          // Une fiche existe deja pour ce contact -> on la sort du circuit.
+          const f = trouverFiche(tel, mail);
+          if (f && f.statut !== 'ne_plus_contacter') {
+            action(f.id, 'statut', { statut_avant: f.statut, statut_apres: 'ne_plus_contacter' });
+            db.prepare("UPDATE courtage_fiches SET statut='ne_plus_contacter', prochaine_relance=NULL, updated_at=datetime('now') WHERE id=?").run(f.id);
+          }
+        }
+        journal.run(hash, onglet, numLigne, null, 'blackliste');
+      } else if (cleContact) {
+        noireSimulee.add(cleContact);
+      }
+      continue;
+    }
+
+    // action = 'cree'
+    const enNoire = ecrire
+      ? enListeNoire(tel, mail)
+      : (cleContact ? noireSimulee.has(cleContact) : false);
+    if (enNoire) {
+      // Liste noire absolue : jamais recree.
+      bilan.blacklistees++;
+      if (ecrire) journal.run(hash, onglet, numLigne, null, 'blackliste');
+      continue;
+    }
+
+    const dateContact = CI.normaliserDate(dateBrute);
+    const reference_bien = val(valeurs, COL.reference_bien);
+    const existante = ecrire
+      ? trouverFiche(tel, mail)
+      : (cleContact && ficheSimulee.has(cleContact) ? { id: 0 } : null);
+
+    if (existante) {
+      bilan.doublons++;
+      if (ecrire) {
+        if (reference_bien) {
+          db.prepare('INSERT INTO courtage_demandes (fiche_id, reference_bien, date_demande) VALUES (?,?,?)')
+            .run(existante.id, reference_bien, dateContact);
+        }
+        completerFiche(existante, valeurs, dateContact);
+        journal.run(hash, onglet, numLigne, existante.id, 'doublon');
+      }
+      continue;
+    }
+
+    // Creation.
+    const categorie = verdict.categorie;
+    const latence = CI.latencePour(categorie, latences);
+    // Si la date obtenue est passee, la fiche est disponible immediatement :
+    // on ne repousse pas (decision du spec, l'historique entre dans la file).
+    const prochaine_relance = dateContact
+      ? CI.ajouterJours(dateContact, latence)
+      : CI.ajouterJours(new Date().toISOString().slice(0, 10), latence);
+
+    bilan.creees++;
+    if (bilan.parCategorie[categorie] !== undefined) bilan.parCategorie[categorie]++;
+
+    if (ecrire) {
+      const r = db.prepare(`INSERT INTO courtage_fiches
+        (nom, prenom, telephone, telephone_norm, mail, mail_norm, date_contact, reference_bien,
+         source, attribution_cr, capacite_emprunt, categorie, priorite, statut, prochaine_relance,
+         commentaire, suivi_lead, source_onglet, source_ligne)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+        nom || 'INCONNU', val(valeurs, COL.prenom),
+        val(valeurs, COL.telephone), tel, val(valeurs, COL.mail), mail,
+        dateContact, reference_bien,
+        CI.normaliserSource(valeurs[COL.source]), val(valeurs, COL.attribution_cr),
+        val(valeurs, COL.capacite_emprunt), categorie, verdict.priorite,
+        'en_relance', prochaine_relance,
+        val(valeurs, COL.commentaire), val(valeurs, COL.suivi_lead),
+        onglet, numLigne
+      );
+      const id = r.lastInsertRowid;
+      action(id, 'creation', { commentaire: val(valeurs, COL.commentaire), prochaine_relance });
+      if (reference_bien) {
+        db.prepare('INSERT INTO courtage_demandes (fiche_id, reference_bien, date_demande) VALUES (?,?,?)')
+          .run(id, reference_bien, dateContact);
+      }
+      journal.run(hash, onglet, numLigne, id, 'cree');
+    } else if (cleContact) {
+      ficheSimulee.set(cleContact, categorie);
+    }
+  }
+  return bilan;
+}
+
+function trouverFiche(tel, mail) {
+  if (tel) {
+    const f = db.prepare('SELECT * FROM courtage_fiches WHERE telephone_norm = ?').get(tel);
+    if (f) return f;
+  }
+  if (mail) return db.prepare('SELECT * FROM courtage_fiches WHERE mail_norm = ?').get(mail) || null;
+  return null;
+}
+
+// Complete uniquement les champs vides de la fiche existante.
+function completerFiche(fiche, valeurs, dateContact) {
+  const maj = {};
+  const poser = (champ, valeur) => { if (valeur && !fiche[champ]) maj[champ] = valeur; };
+  poser('prenom', val(valeurs, COL.prenom));
+  poser('telephone', val(valeurs, COL.telephone));
+  poser('telephone_norm', CI.normaliserTelephone(valeurs[COL.telephone]));
+  poser('mail', val(valeurs, COL.mail));
+  poser('mail_norm', CI.normaliserMail(valeurs[COL.mail]));
+  poser('date_contact', dateContact);
+  poser('capacite_emprunt', val(valeurs, COL.capacite_emprunt));
+  poser('attribution_cr', val(valeurs, COL.attribution_cr));
+  poser('reference_bien', val(valeurs, COL.reference_bien));
+  poser('suivi_lead', val(valeurs, COL.suivi_lead));
+  const champs = Object.keys(maj);
+  if (!champs.length) return;
+  const sql = 'UPDATE courtage_fiches SET ' + champs.map((c) => c + ' = ?').join(', ') + ", updated_at = datetime('now') WHERE id = ?";
+  db.prepare(sql).run(...champs.map((c) => maj[c]), fiche.id);
+}
+
+// POST /import — Marine et admin. Mode simulation : aucun ecriture metier.
+router.post('/import', importation, (req, res) => {
+  const b = req.body || {};
+  if (!Array.isArray(b.lignes)) return res.status(400).json({ error: 'Le tableau lignes est requis' });
+  const simulation = !!b.simulation;
+  const fichier = b.fichier ? String(b.fichier).slice(0, 255) : null;
+
+  let bilan;
+  try {
+    bilan = simulation
+      ? traiterLignes(b.lignes, false)
+      : db.transaction(() => traiterLignes(b.lignes, true))();
+  } catch (e) {
+    return res.status(500).json({ error: "Echec de l'import : " + e.message });
+  }
+
+  // Bilan trace meme en simulation (tracabilite, simulation=1).
+  db.prepare(`INSERT INTO courtage_imports
+    (user_id, fichier, simulation, lignes_lues, creees, doublons, exclues, blacklistees, ignorees, deja_importees, detail)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(
+    req.user.id, fichier, simulation ? 1 : 0,
+    bilan.lignes_lues, bilan.creees, bilan.doublons, bilan.exclues,
+    bilan.blacklistees, bilan.ignorees, bilan.deja_importees,
+    JSON.stringify(bilan.parCategorie)
+  );
+
+  res.json({ simulation, ...bilan });
+});
+
+// GET /imports — journal des 20 derniers imports (admin + courtage).
+router.get('/imports', importation, (req, res) => {
+  const rows = db.prepare(`SELECT i.*, u.nom AS user_nom, u.prenom AS user_prenom
+    FROM courtage_imports i LEFT JOIN users u ON u.id = i.user_id
+    ORDER BY i.created_at DESC, i.id DESC LIMIT 20`).all();
+  res.json(rows);
 });
 
 module.exports = router;

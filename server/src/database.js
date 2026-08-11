@@ -180,6 +180,30 @@ db.exec(`
   );
 `);
 
+// Import du cahier des messages (courtage V2) — journal ligne a ligne (idempotence)
+// et bilan par import.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS courtage_import_lignes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    hash TEXT UNIQUE NOT NULL, onglet TEXT, ligne INTEGER,
+    fiche_id INTEGER REFERENCES courtage_fiches(id) ON DELETE SET NULL,
+    resultat TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_courtage_import_hash ON courtage_import_lignes(hash);
+  CREATE TABLE IF NOT EXISTS courtage_imports (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, fichier TEXT,
+    simulation INTEGER NOT NULL DEFAULT 0,
+    lignes_lues INTEGER, creees INTEGER, doublons INTEGER, exclues INTEGER,
+    blacklistees INTEGER, ignorees INTEGER, deja_importees INTEGER,
+    detail TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+`);
+// Colonnes d'origine sur les fiches (idempotent : bases creees avant la V2).
+const fCols = db.prepare('PRAGMA table_info(courtage_fiches)').all().map((c) => c.name);
+if (!fCols.includes('source_onglet')) db.exec('ALTER TABLE courtage_fiches ADD COLUMN source_onglet TEXT');
+if (!fCols.includes('source_ligne')) db.exec('ALTER TABLE courtage_fiches ADD COLUMN source_ligne INTEGER');
+if (!fCols.includes('suivi_lead')) db.exec('ALTER TABLE courtage_fiches ADD COLUMN suivi_lead TEXT');
+
 // Seed default admin
 const existingAdmin = db.prepare('SELECT id FROM users WHERE email = ?').get('admin@lequai-immobilier.com');
 if (!existingAdmin) {
@@ -224,6 +248,11 @@ Bien cordialement,
 Marine Rosain — Conseillère en financement
 Le Quai de l'Immobilier`],
  ['courtage_exclusion_agents', 'POITEVIN Lyes,BARRETO Nolan'],
+ // Import V2 : latence par categorie (jours) et heuristique de classement OUI Gabby.
+ ['courtage_latence_oui_agent', '0'],
+ ['courtage_latence_oui_gabby', '3'],
+ ['courtage_latence_a_qualifier', '7'],
+ ['courtage_heuristique_gabby', 'PS_OUI'],
 ].forEach(([c, v]) => insertParam.run(c, v));
 
 // Seed Marine (rôle courtage) — idempotent.
