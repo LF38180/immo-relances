@@ -84,7 +84,10 @@ router.get('/fiches/relances-jour', lireSeule, (req, res) => {
     WHERE f.statut NOT IN ('gagne','perdu','ne_plus_contacter')
       AND f.prochaine_relance IS NOT NULL
       AND f.prochaine_relance <= date('now')
-    ORDER BY f.priorite ASC, f.prochaine_relance ASC
+    -- Priorite d'abord (1 CI Facile, 2 OUI agent, 3 OUI Gabby, 4 a qualifier), puis du
+    -- plus ancien au plus recent SUR LA DATE DU MESSAGE (pas sur prochaine_relance, qui
+    -- bouge a chaque report et ferait perdre l'anciennete d'origine du lead).
+    ORDER BY f.priorite ASC, COALESCE(f.date_contact, f.created_at) ASC, f.prochaine_relance ASC
   `).all();
   res.json(rows);
 });
