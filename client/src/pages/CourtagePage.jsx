@@ -393,6 +393,7 @@ function FicheCard({ fiche, onRefresh, onOpenDetail }) {
   const [nouveauStatut, setNouveauStatut] = useState('')
   const [dateTropTot, setDateTropTot] = useState('')
   const [injoignable, setInjoignable] = useState(null) // { tentatives } après pas-de-reponse
+  const [mailOuvert, setMailOuvert] = useState(false)  // Outlook ouvert, en attente de confirmation
   const [confirmNPC, setConfirmNPC] = useState(false)
   const [busy, setBusy] = useState(false)
 
@@ -456,11 +457,19 @@ function FicheCard({ fiche, onRefresh, onOpenDetail }) {
     onRefresh()
   })
 
+  // Etape 1 : ouvrir Outlook. On n'enregistre RIEN ici — un clic par erreur, ou un mail
+  // finalement pas envoye, ne doit pas faire disparaitre la fiche de la liste.
   const preparerMail = () => run(async () => {
     const { data } = await api.get(`/courtage/mail-modele/${fiche.id}`)
     window.location.href = data.mailto
+    setMailOuvert(true)
+  })
+
+  // Etape 2 : Marine confirme l'envoi -> la fiche sort de la liste, relance a J+7.
+  const confirmerEnvoi = () => run(async () => {
     await api.post(`/courtage/fiches/${fiche.id}/mail-propose`)
-    toast.success('Mail préparé — relance dans 7 jours')
+    toast.success('Mail enregistré — relance dans 7 jours')
+    setMailOuvert(false)
     setInjoignable(null)
     onRefresh()
   })
@@ -526,12 +535,30 @@ function FicheCard({ fiche, onRefresh, onOpenDetail }) {
             <div className="flex text-sm font-medium text-amber-800 mb-2 items-center gap-1.5">
               <Icon name="phone-off" size="sm" /> {raisonMail}
             </div>
-            {fiche.mail ? (
+            {!fiche.mail ? (
+              <div className="text-xs text-amber-700 italic">Pas d'email renseigné</div>
+            ) : mailOuvert ? (
+              <div className="bg-white border border-quai-border rounded-lg p-3">
+                <div className="text-sm text-quai-navy mb-1">Avez-vous envoyé le mail à {fiche.mail} ?</div>
+                <div className="text-xs text-quai-muted mb-2">
+                  Confirmez seulement après l&apos;envoi : la fiche quittera cette liste et sera relancée dans 7 jours.
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button onClick={confirmerEnvoi} disabled={busy} className="btn-primary btn-sm inline-flex items-center gap-1.5">
+                    <Icon name="check-circle-2" size="sm" /> Oui, mail envoyé
+                  </button>
+                  <button onClick={preparerMail} disabled={busy} className="btn-secondary btn-sm inline-flex items-center gap-1.5">
+                    <Icon name="refresh-cw" size="sm" /> Rouvrir le mail
+                  </button>
+                  <button onClick={() => setMailOuvert(false)} disabled={busy} className="btn-secondary btn-sm">
+                    Pas encore
+                  </button>
+                </div>
+              </div>
+            ) : (
               <button onClick={preparerMail} disabled={busy} className="btn-primary btn-sm inline-flex items-center gap-1.5">
                 <Icon name="mail" size="sm" /> Préparer le mail
               </button>
-            ) : (
-              <div className="text-xs text-amber-700 italic">Pas d'email renseigné</div>
             )}
           </div>
         )}

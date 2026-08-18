@@ -419,6 +419,21 @@ setTimeout(async () => {
     const maintAgent = await req('POST', '/api/courtage/fiches/sortir-sans-telephone', agent, {});
     test('maintenance : agent (Chrystelle) 403', maintAgent.status === 403, maintAgent.status);
 
+    // 7septies) MAIL EN DEUX TEMPS : consulter le modele ne doit rien enregistrer ;
+    // seule la confirmation explicite fait sortir la fiche (anti fausse manipulation).
+    await req('POST', '/api/courtage/fiches', marine, { nom: 'MAIL2TEMPS', prenom: 'Anne', telephone: '/', mail: 'anne2t@test.fr' });
+    const avantOuverture = (await req('GET', '/api/courtage/fiches/a-mailer', marine)).body;
+    const fiche2t = avantOuverture.find(f => f.nom === 'MAIL2TEMPS');
+    test('mail 2 temps : la fiche est bien dans la liste', !!fiche2t, avantOuverture.map(f => f.nom).join(','));
+    await req('GET', `/api/courtage/mail-modele/${fiche2t.id}`, marine);   // etape 1 : ouverture Outlook
+    const apresOuverture = (await req('GET', '/api/courtage/fiches/a-mailer', marine)).body.map(f => f.nom);
+    test('mail 2 temps : consulter le modele ne sort pas la fiche', apresOuverture.includes('MAIL2TEMPS'), apresOuverture.join(','));
+    const ficheApresConsult = (await req('GET', `/api/courtage/fiches/${fiche2t.id}`, marine)).body;
+    test('mail 2 temps : mail_propose_le reste vide sans confirmation', !ficheApresConsult.mail_propose_le, String(ficheApresConsult.mail_propose_le));
+    await req('POST', `/api/courtage/fiches/${fiche2t.id}/mail-propose`, marine, {});   // etape 2 : confirmation
+    const apresConfirm = (await req('GET', '/api/courtage/fiches/a-mailer', marine)).body.map(f => f.nom);
+    test('mail 2 temps : la confirmation sort la fiche', !apresConfirm.includes('MAIL2TEMPS'), apresConfirm.join(','));
+
     // 8) Journal des imports.
     const jr = await req('GET', '/api/courtage/imports', admin);
     test('journal : admin GET /imports 200', jr.status === 200, jr.status);
