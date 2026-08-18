@@ -444,6 +444,24 @@ setTimeout(async () => {
     test('journal : Marine GET /imports 200', jrM.status === 200, jrM.status);
     const jrA = await req('GET', '/api/courtage/imports', agent);
     test('journal : agent GET /imports 403', jrA.status === 403, jrA.status);
+
+    // 9) REMISE A ZERO (admin) — en dernier : elle vide fiches, liste noire et journal.
+    const sansConf = await req('DELETE', '/api/courtage/donnees', admin, {});
+    test('remise a zero : refusee sans confirmation', sansConf.status === 400, sansConf.status);
+    const parMarine = await req('DELETE', '/api/courtage/donnees', marine, { confirmation: 'EFFACER' });
+    test('remise a zero : refusee a Marine (non admin)', parMarine.status === 403, parMarine.status);
+    const parAgent = await req('DELETE', '/api/courtage/donnees', agent, { confirmation: 'EFFACER' });
+    test('remise a zero : refusee a l agent', parAgent.status === 403, parAgent.status);
+    const avantRaz = (await req('GET', '/api/courtage/fiches', marine)).body.length;
+    const raz = await req('DELETE', '/api/courtage/donnees', admin, { confirmation: 'EFFACER' });
+    test('remise a zero : admin autorise', raz.status === 200, raz.status);
+    test('remise a zero : compte les fiches supprimees', raz.body.supprime.fiches === avantRaz,
+      `${raz.body.supprime.fiches} vs ${avantRaz}`);
+    const apresRaz = (await req('GET', '/api/courtage/fiches', marine)).body;
+    test('remise a zero : plus aucune fiche', apresRaz.length === 0, String(apresRaz.length));
+    const modeleApresRaz = (await req('GET', '/api/courtage/modele-mail', marine)).body;
+    test('remise a zero : le modele de mail est conserve', !!modeleApresRaz.objet, String(modeleApresRaz.objet));
+
   } catch (e) {
     console.error('  FAIL exception : ' + e.message + '\n' + e.stack); process.exitCode = 1;
   } finally { srv.kill(); }

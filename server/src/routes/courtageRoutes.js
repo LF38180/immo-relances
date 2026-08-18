@@ -271,6 +271,32 @@ router.post('/fiches/sortir-sans-telephone', ecriture, (req, res) => {
   res.json({ traitees: cibles.length, versMail, versPerdu });
 });
 
+// DELETE /donnees — remise a zero de l'espace courtage. RESERVE ADMIN, destructif.
+// Exige { confirmation: 'EFFACER' } dans le corps : garde-fou contre l'appel accidentel.
+// Supprime fiches, actions, demandes, liste noire et journal d'import ; le modele de mail
+// et les parametres sont conserves.
+router.delete('/donnees', requireRole('admin'), (req, res) => {
+  if ((req.body || {}).confirmation !== 'EFFACER') {
+    return res.status(400).json({ error: "Confirmation requise : { confirmation: 'EFFACER' }" });
+  }
+  const avant = {
+    fiches: db.prepare('SELECT COUNT(*) c FROM courtage_fiches').get().c,
+    actions: db.prepare('SELECT COUNT(*) c FROM courtage_actions').get().c,
+    blacklist: db.prepare('SELECT COUNT(*) c FROM courtage_blacklist').get().c,
+    lignes_import: db.prepare('SELECT COUNT(*) c FROM courtage_import_lignes').get().c,
+  };
+  db.transaction(() => {
+    // Ordre : enfants d'abord (les FK sont en CASCADE, mais on reste explicite).
+    db.exec('DELETE FROM courtage_actions');
+    db.exec('DELETE FROM courtage_demandes');
+    db.exec('DELETE FROM courtage_import_lignes');
+    db.exec('DELETE FROM courtage_imports');
+    db.exec('DELETE FROM courtage_blacklist');
+    db.exec('DELETE FROM courtage_fiches');
+  })();
+  res.json({ ok: true, supprime: avant });
+});
+
 // GET /modele-mail — le modele courant (objet + corps + telephone), pour edition par Marine.
 router.get('/modele-mail', lireSeule, (req, res) => {
   res.json({
