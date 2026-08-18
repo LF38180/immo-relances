@@ -297,6 +297,27 @@ router.delete('/donnees', requireRole('admin'), (req, res) => {
   res.json({ ok: true, supprime: avant });
 });
 
+// POST /fiches/renormaliser-telephones — maintenance : reapplique la normalisation aux
+// fiches existantes (les numeros francais notes 33.../330... deviennent 0X...). Les
+// numeros etrangers (41 Suisse, 32 Belgique...) ne sont pas touches. Idempotent.
+router.post('/fiches/renormaliser-telephones', ecriture, (req, res) => {
+  const fiches = db.prepare('SELECT id, telephone, telephone_norm FROM courtage_fiches WHERE telephone IS NOT NULL').all();
+  let corrigees = 0;
+  const exemples = [];
+  db.transaction(() => {
+    for (const f of fiches) {
+      const nouveau = CI.normaliserTelephone(f.telephone);
+      if (nouveau && nouveau !== f.telephone_norm) {
+        db.prepare("UPDATE courtage_fiches SET telephone_norm = ?, updated_at = datetime('now') WHERE id = ?")
+          .run(nouveau, f.id);
+        corrigees++;
+        if (exemples.length < 5) exemples.push({ avant: f.telephone_norm, apres: nouveau });
+      }
+    }
+  })();
+  res.json({ examinees: fiches.length, corrigees, exemples });
+});
+
 // GET /modele-mail — le modele courant (objet + corps + telephone), pour edition par Marine.
 router.get('/modele-mail', lireSeule, (req, res) => {
   res.json({

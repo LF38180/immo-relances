@@ -22,6 +22,16 @@ test('tel : serie de date Excel (45870) implausible -> null', L.normaliserTeleph
 test('tel : vide -> null', L.normaliserTelephone('') === null && L.normaliserTelephone(null) === null);
 test('tel : 9 chiffres sans 0 initial -> 0 ajoute', L.normaliserTelephone(612345678) === '0612345678', String(L.normaliserTelephone(612345678)));
 
+// --- normalisation des formats internationaux : convertir le FR, preserver l'etranger --
+test('tel FR : 33658892801 -> 0658892801', L.normaliserTelephone('33658892801') === '0658892801', String(L.normaliserTelephone('33658892801')));
+test('tel FR : 330773552231 -> 0773552231', L.normaliserTelephone('330773552231') === '0773552231', String(L.normaliserTelephone('330773552231')));
+test('tel FR : 0033612345678 -> 0612345678', L.normaliserTelephone('0033612345678') === '0612345678', String(L.normaliserTelephone('0033612345678')));
+test('tel FR : 00330612345678 -> 0612345678', L.normaliserTelephone('00330612345678') === '0612345678', String(L.normaliserTelephone('00330612345678')));
+test('tel etranger : Suisse 41783096700 preserve', L.normaliserTelephone('41783096700') === '41783096700', String(L.normaliserTelephone('41783096700')));
+test('tel etranger : Belgique 32470715376 preserve', L.normaliserTelephone('32470715376') === '32470715376', String(L.normaliserTelephone('32470715376')));
+test('tel etranger : UK 447415659988 preserve', L.normaliserTelephone('447415659988') === '447415659988', String(L.normaliserTelephone('447415659988')));
+test('tel etranger : Bulgarie 359879310886 preserve', L.normaliserTelephone('359879310886') === '359879310886', String(L.normaliserTelephone('359879310886')));
+
 // --- causeFauxNumero : ecarter les numeros bidons sans jamais ecarter un vrai ---------
 const faux = (n) => L.causeFauxNumero(L.normaliserTelephone(n));
 test('faux : 0600000001 (remplissage) detecte', !!faux('0600000001'), String(faux('0600000001')));
@@ -444,6 +454,15 @@ setTimeout(async () => {
     test('journal : Marine GET /imports 200', jrM.status === 200, jrM.status);
     const jrA = await req('GET', '/api/courtage/imports', agent);
     test('journal : agent GET /imports 403', jrA.status === 403, jrA.status);
+
+    // 8bis) RENORMALISATION DES TELEPHONES sur les fiches existantes.
+    const rn = await req('POST', '/api/courtage/fiches/renormaliser-telephones', marine, {});
+    test('renormalisation : route accessible a Marine', rn.status === 200, rn.status);
+    test('renormalisation : renvoie les compteurs', typeof rn.body.examinees === 'number' && typeof rn.body.corrigees === 'number', JSON.stringify(rn.body));
+    const rn2 = await req('POST', '/api/courtage/fiches/renormaliser-telephones', marine, {});
+    test('renormalisation : idempotente', rn2.body.corrigees === 0, JSON.stringify(rn2.body));
+    const rnAgent = await req('POST', '/api/courtage/fiches/renormaliser-telephones', agent, {});
+    test('renormalisation : agent (Chrystelle) 403', rnAgent.status === 403, rnAgent.status);
 
     // 9) REMISE A ZERO (admin) — en dernier : elle vide fiches, liste noire et journal.
     const sansConf = await req('DELETE', '/api/courtage/donnees', admin, {});

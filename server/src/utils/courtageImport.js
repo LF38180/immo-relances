@@ -28,9 +28,13 @@ function normaliserTelephone(v) {
   let brut = typeof v === 'number' ? String(v) : String(v);
   let d = brut.replace(/\D/g, '');
   if (!d) return null;
-  // Format international francais.
-  if (d.length === 11 && d.startsWith('33')) d = '0' + d.slice(2);
-  else if (d.length === 12 && d.startsWith('0033')) d = '0' + d.slice(4);
+  // Formats internationaux FRANCAIS -> ramenes en 0X... (10 chiffres).
+  // Attention : ne convertir QUE le prefixe 33. Les numeros etrangers (41 Suisse,
+  // 32 Belgique, 44 UK, 359 Bulgarie...) doivent rester tels quels, ils sont valides.
+  if (d.length === 14 && d.startsWith('00330')) d = d.slice(4);          // 0033 0612345678
+  else if (d.length === 13 && d.startsWith('0033')) d = '0' + d.slice(4); // 0033 612345678
+  else if (d.length === 12 && d.startsWith('330')) d = d.slice(2);        // 33 0612345678
+  else if (d.length === 11 && d.startsWith('33')) d = '0' + d.slice(2);   // 33 612345678
   // Numero francais sans le 0 initial (ex. cellule numerique 612345678).
   if (d.length === 9 && /^[1-9]/.test(d)) d = '0' + d;
   if (d.length < 9) return null;      // trop court : parasite ("TEL" -> '', deja sorti)
