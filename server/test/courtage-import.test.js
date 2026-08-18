@@ -309,6 +309,62 @@ setTimeout(async () => {
     const fichesMultilot = (await req('GET', '/api/courtage/fiches', marine)).body.filter(f => f.nom === 'MULTILOT');
     test('simulation multi-lots : aucune ecriture en base', fichesMultilot.length === 0, String(fichesMultilot.length));
 
+    // 7ter) SANS TELEPHONE / FAUX NUMERO -> onglet "a contacter par mail", hors file d'appel.
+    const ligneMail = (l, nom, tel, mail) => ({
+      onglet: 'AOUT 2026', ligne: l,
+      valeurs: ['05/08/2026', '10h', 'Appel', 'leboncoin', 'ZOPPAS TARA', nom, 'T',
+        tel, mail, 'REF', 'com', null, 'OUI', null, null, 'NON', null, null, 'NON'],
+    });
+    await req('POST', '/api/courtage/import', marine, { fichier: 'mail.xlsx', simulation: false, lignes: [
+      ligneMail(200, 'MAILAVECTEL', '06 12 34 56 78', 'avectel@t.fr'),
+      ligneMail(201, 'MAILSANSTEL', '', 'sanstel@t.fr'),
+      ligneMail(202, 'MAILFAUXNUM', '0600000001', 'fauxnum@t.fr'),
+      ligneMail(203, 'MAILRIEN', '', ''),
+    ] });
+    const parNom = (liste, nom) => liste.find(f => f.nom === nom);
+    const toutes = (await req('GET', '/api/courtage/fiches', marine)).body;
+    test('sans telephone + mail -> statut injoignable',
+      parNom(toutes, 'MAILSANSTEL')?.statut === 'injoignable', parNom(toutes, 'MAILSANSTEL')?.statut);
+    test('sans telephone ni mail -> statut perdu',
+      parNom(toutes, 'MAILRIEN')?.statut === 'perdu', parNom(toutes, 'MAILRIEN')?.statut);
+    test('avec telephone valide -> reste en relance',
+      parNom(toutes, 'MAILAVECTEL')?.statut === 'en_relance', parNom(toutes, 'MAILAVECTEL')?.statut);
+    const fileJour = (await req('GET', '/api/courtage/fiches/relances-jour', marine)).body.map(f => f.nom);
+    test('file d appel : seul le contact joignable par telephone',
+      fileJour.includes('MAILAVECTEL') && !fileJour.includes('MAILSANSTEL') && !fileJour.includes('MAILFAUXNUM'),
+      fileJour.join(','));
+    const aMailer = (await req('GET', '/api/courtage/fiches/a-mailer', marine)).body.map(f => f.nom);
+    test('liste mail : sans telephone et faux numero presents',
+      aMailer.includes('MAILSANSTEL') && aMailer.includes('MAILFAUXNUM'), aMailer.join(','));
+    test('liste mail : le joignable par telephone absent', !aMailer.includes('MAILAVECTEL'), aMailer.join(','));
+    test('liste mail : celui sans aucun canal absent', !aMailer.includes('MAILRIEN'), aMailer.join(','));
+    const cibleMail = (await req('GET', '/api/courtage/fiches/a-mailer', marine)).body.find(f => f.nom === 'MAILSANSTEL');
+    await req('POST', `/api/courtage/fiches/${cibleMail.id}/mail-propose`, marine, {});
+    const apresMail = (await req('GET', '/api/courtage/fiches/a-mailer', marine)).body.map(f => f.nom);
+    test('liste mail : la fiche sort apres envoi du mail', !apresMail.includes('MAILSANSTEL'), apresMail.join(','));
+    const accesAgent = await req('GET', '/api/courtage/fiches/a-mailer', agent);
+    test('liste mail : agent (Chrystelle) 403', accesAgent.status === 403, accesAgent.status);
+
+    // 7quater) MODELE DE MAIL editable par Marine (et par elle seule).
+    const modeleInit = await req('GET', '/api/courtage/modele-mail', marine);
+    test('modele mail : lecture 200 avec objet et corps',
+      modeleInit.status === 200 && !!modeleInit.body.objet && !!modeleInit.body.corps, JSON.stringify(modeleInit.body).slice(0, 80));
+    const maj = await req('PUT', '/api/courtage/modele-mail', marine, {
+      objet: 'Nouvel objet test', corps: 'Bonjour [Prénom], bien [BIEN], tel [TEL_MARINE].', telephone: '06 44 55 66 77',
+    });
+    test('modele mail : Marine peut modifier', maj.status === 200 && maj.body.objet === 'Nouvel objet test', maj.status);
+    const cibleModele = (await req('GET', '/api/courtage/fiches', marine)).body.find(f => f.mail);
+    const genere = await req('GET', `/api/courtage/mail-modele/${cibleModele.id}`, marine);
+    const decode = decodeURIComponent(genere.body.mailto || '');
+    test('modele mail : le nouvel objet est utilise', decode.includes('Nouvel objet test'), decode.slice(0, 70));
+    test('modele mail : le telephone est injecte', decode.includes('06 44 55 66 77'), decode.slice(0, 120));
+    test('modele mail : plus de variables non remplacees',
+      !decode.includes('[Prénom]') && !decode.includes('[TEL_MARINE]') && !decode.includes('[BIEN]'), decode.slice(0, 120));
+    const videObjet = await req('PUT', '/api/courtage/modele-mail', marine, { objet: '   ' });
+    test('modele mail : objet vide refuse (400)', videObjet.status === 400, videObjet.status);
+    const agentModele = await req('PUT', '/api/courtage/modele-mail', agent, { objet: 'pirate' });
+    test('modele mail : agent (Chrystelle) 403', agentModele.status === 403, agentModele.status);
+
     // 8) Journal des imports.
     const jr = await req('GET', '/api/courtage/imports', admin);
     test('journal : admin GET /imports 200', jr.status === 200, jr.status);

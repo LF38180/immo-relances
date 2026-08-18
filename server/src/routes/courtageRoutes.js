@@ -99,6 +99,25 @@ router.get('/fiches/relances-jour', lireSeule, (req, res) => {
   res.json(rows);
 });
 
+// GET /fiches/a-mailer — fiches joignables uniquement par mail : injoignables (2 tentatives),
+// sans numero, ou faux numero. Uniquement celles qui ont un mail et pas encore contactees.
+// Marine deroule la liste, un mail a la fois (mailto = un envoi par clic).
+router.get('/fiches/a-mailer', lireSeule, (req, res) => {
+  const rows = db.prepare(`
+    SELECT f.*,
+      (SELECT a.commentaire FROM courtage_actions a
+        WHERE a.fiche_id = f.id AND a.commentaire IS NOT NULL
+        ORDER BY a.created_at DESC, a.id DESC LIMIT 1) AS dernier_commentaire
+    FROM courtage_fiches f
+    WHERE f.mail_norm IS NOT NULL
+      AND f.statut NOT IN ('gagne','perdu','ne_plus_contacter')
+      AND f.mail_propose_le IS NULL
+      AND (f.statut IN ('injoignable','faux_numero') OR f.telephone_norm IS NULL)
+    ORDER BY f.priorite ASC, COALESCE(f.date_contact, f.created_at) DESC
+  `).all();
+  res.json(rows);
+});
+
 // GET /fiches/:id — détail avec historique
 router.get('/fiches/:id', lireSeule, (req, res) => {
   const fiche = getFiche(req.params.id);
@@ -199,6 +218,33 @@ router.get('/mail-modele/:id', lireSeule, (req, res) => {
   res.json({ mailto });
 });
 
+// GET /modele-mail — le modele courant (objet + corps + telephone), pour edition par Marine.
+router.get('/modele-mail', lireSeule, (req, res) => {
+  res.json({
+    objet: param('courtage_mail_objet', ''),
+    corps: param('courtage_mail_corps', ''),
+    telephone: param('courtage_tel_marine', ''),
+  });
+});
+
+// PUT /modele-mail — Marine ajuste son modele elle-meme (sans passer par l'admin).
+router.put('/modele-mail', ecriture, (req, res) => {
+  const { objet, corps, telephone } = req.body || {};
+  if (objet !== undefined && !String(objet).trim()) return res.status(400).json({ error: "L'objet ne peut pas etre vide" });
+  if (corps !== undefined && !String(corps).trim()) return res.status(400).json({ error: 'Le corps ne peut pas etre vide' });
+  const set = db.prepare('INSERT OR REPLACE INTO parametres (cle, valeur) VALUES (?,?)');
+  db.transaction(() => {
+    if (objet !== undefined) set.run('courtage_mail_objet', String(objet));
+    if (corps !== undefined) set.run('courtage_mail_corps', String(corps));
+    if (telephone !== undefined) set.run('courtage_tel_marine', String(telephone));
+  })();
+  res.json({
+    objet: param('courtage_mail_objet', ''),
+    corps: param('courtage_mail_corps', ''),
+    telephone: param('courtage_tel_marine', ''),
+  });
+});
+
 // GET /dashboard — indicateurs courtage
 router.get('/dashboard', lireSeule, (req, res) => {
   const parStatut = db.prepare('SELECT statut, COUNT(*) AS cnt FROM courtage_fiches GROUP BY statut').all();
@@ -262,7 +308,7 @@ function traiterLignes(lignes, ecrire, etat) {
   };
   const bilan = {
     lignes_lues: 0, creees: 0, doublons: 0, exclues: 0,
-    blacklistees: 0, ignorees: 0, deja_importees: 0, faux_numeros: 0,
+    blacklistees: 0, ignorees: 0, deja_importees: 0, faux_numeros: 0, sans_telephone: 0,
     parCategorie: { oui_agent: 0, oui_gabby: 0, a_qualifier: 0 },
   };
 
@@ -371,10 +417,20 @@ function traiterLignes(lignes, ecrire, etat) {
     // Numero manifestement faux (0600000001, 0000000000, suite...) : la fiche est creee
     // mais marquee 'faux_numero' et sortie de la file (Marine ne perd pas d'appel dessus).
     const fauxNumero = tel ? CI.causeFauxNumero(tel) : null;
-    const statutInitial = fauxNumero ? 'faux_numero' : 'en_relance';
+    // Sans telephone : inutile de la mettre dans la file d'appel. Avec un mail elle part
+    // dans l'onglet "a contacter par mail" (statut injoignable) ; sans mail ni telephone,
+    // le contact n'est joignable par aucun canal -> perdu.
+    const sansTel = !tel;
+    const sansAucunCanal = sansTel && !mail;
+    const statutInitial = sansAucunCanal ? 'perdu'
+      : fauxNumero ? 'faux_numero'
+      : sansTel ? 'injoignable'
+      : 'en_relance';
+    const horsFile = statutInitial !== 'en_relance';
 
     bilan.creees++;
     if (fauxNumero) bilan.faux_numeros = (bilan.faux_numeros || 0) + 1;
+    if (sansTel) bilan.sans_telephone = (bilan.sans_telephone || 0) + 1;
     if (bilan.parCategorie[categorie] !== undefined) bilan.parCategorie[categorie]++;
 
     if (ecrire) {
@@ -388,15 +444,17 @@ function traiterLignes(lignes, ecrire, etat) {
         dateContact, reference_bien,
         CI.normaliserSource(valeurs[COL.source]), val(valeurs, COL.attribution_cr),
         val(valeurs, COL.capacite_emprunt), categorie, verdict.priorite,
-        statutInitial, fauxNumero ? null : prochaine_relance,
+        statutInitial, horsFile ? null : prochaine_relance,
         val(valeurs, COL.commentaire), val(valeurs, COL.suivi_lead),
         onglet, numLigne
       );
       const id = r.lastInsertRowid;
       action(id, 'creation', { commentaire: val(valeurs, COL.commentaire), prochaine_relance });
-      if (fauxNumero) {
-        action(id, 'statut', { statut_avant: 'en_relance', statut_apres: 'faux_numero',
-          commentaire: 'Detecte a l import : ' + fauxNumero });
+      if (horsFile) {
+        const motif = fauxNumero ? 'Detecte a l import : ' + fauxNumero
+          : sansAucunCanal ? 'Ni telephone ni mail a l import'
+          : 'Pas de telephone a l import — a contacter par mail';
+        action(id, 'statut', { statut_avant: 'en_relance', statut_apres: statutInitial, commentaire: motif });
       }
       if (reference_bien) {
         db.prepare('INSERT INTO courtage_demandes (fiche_id, reference_bien, date_demande) VALUES (?,?,?)')

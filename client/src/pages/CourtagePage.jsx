@@ -62,6 +62,11 @@ export default function CourtagePage() {
   const [relances, setRelances] = useState([])
   const [tri, setTri] = useState('recent')   // 'recent' (defaut) | 'ancien' : sens sur la date du cahier
   const [qualification, setQualification] = useState('')  // '' | 'qualifie' | 'a_qualifier'
+  const [aMailer, setAMailer] = useState([])   // injoignables / sans numero, joignables par mail
+  const [modele, setModele] = useState(null)          // { objet, corps, telephone }
+  const [editModele, setEditModele] = useState(false)
+  const [modeleForm, setModeleForm] = useState({ objet: '', corps: '', telephone: '' })
+  const [modeleBusy, setModeleBusy] = useState(false)
   // Rappel entrant : recherche par telephone/nom pendant la session d'appel (comme Chrystelle).
   const [rappel, setRappel] = useState('')
   const [resultatsRappel, setResultatsRappel] = useState([])
@@ -85,6 +90,24 @@ export default function CourtagePage() {
     return () => clearTimeout(t)
   }, [rappel])
 
+  const loadAMailer = useCallback(() => api.get('/courtage/fiches/a-mailer').then(r => setAMailer(r.data)).catch(() => {}), [])
+
+  const loadModele = useCallback(() => api.get('/courtage/modele-mail')
+    .then(r => { setModele(r.data); setModeleForm(r.data) }).catch(() => {}), [])
+
+  const enregistrerModele = async () => {
+    if (!modeleForm.objet.trim() || !modeleForm.corps.trim()) {
+      toast.error('L\'objet et le corps sont obligatoires'); return
+    }
+    setModeleBusy(true)
+    try {
+      const { data } = await api.put('/courtage/modele-mail', modeleForm)
+      setModele(data); setModeleForm(data); setEditModele(false)
+      toast.success('Modèle de mail enregistré')
+    } catch { toast.error('Erreur lors de l\'enregistrement') }
+    finally { setModeleBusy(false) }
+  }
+
   const loadRelances = useCallback(() => api.get(`/courtage/fiches/relances-jour?tri=${tri}&qualification=${qualification}`).then(r => setRelances(r.data)), [tri, qualification])
   const loadFiches = useCallback(() => {
     const params = {}
@@ -94,12 +117,12 @@ export default function CourtagePage() {
   }, [filtreStatut, recherche])
 
   const refresh = useCallback(() => {
-    Promise.all([loadRelances(), loadFiches()]).catch(() => {})
-  }, [loadRelances, loadFiches])
+    Promise.all([loadRelances(), loadFiches(), loadAMailer()]).catch(() => {})
+  }, [loadRelances, loadFiches, loadAMailer])
 
   useEffect(() => {
     setLoading(true)
-    Promise.all([loadRelances(), loadFiches()]).catch(() => {}).finally(() => setLoading(false))
+    Promise.all([loadRelances(), loadFiches(), loadAMailer(), loadModele()]).catch(() => {}).finally(() => setLoading(false))
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -109,6 +132,7 @@ export default function CourtagePage() {
 
   const TABS = [
     ['relances', `Relances du jour (${relances.length})`, 'phone-call'],
+    ['mails', `À contacter par mail (${aMailer.length})`, 'mail'],
     ['fiches', 'Fiches', 'users'],
     ['dashboard', 'Tableau de bord', 'layout-dashboard'],
   ]
@@ -217,6 +241,64 @@ export default function CourtagePage() {
             </div>
           )}
 
+          {!loading && tab === 'mails' && (
+            <div className="space-y-4">
+              <div className="card bg-quai-light/60">
+                <div className="text-sm text-quai-navy">
+                  Contacts joignables uniquement par mail : injoignables après 2 tentatives, sans numéro, ou numéro invalide.
+                </div>
+                <div className="text-xs text-quai-muted mt-1">
+                  Un clic ouvre Outlook avec le message prérempli. Après envoi, la fiche sort de cette liste et une relance est programmée à J+7.
+                </div>
+                <button onClick={() => { setModeleForm(modele || { objet: '', corps: '', telephone: '' }); setEditModele(v => !v) }}
+                  className="btn-secondary btn-sm inline-flex items-center gap-1.5 mt-3">
+                  <Icon name="pencil" size="sm" /> {editModele ? 'Fermer' : 'Modifier le modèle de mail'}
+                </button>
+
+                {editModele && (
+                  <div className="mt-3 border-t border-quai-border pt-3 space-y-3">
+                    <div>
+                      <label className="block text-xs font-medium text-quai-muted mb-1">Objet</label>
+                      <input className="input" value={modeleForm.objet}
+                        onChange={e => setModeleForm(f => ({ ...f, objet: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-quai-muted mb-1">Corps du message</label>
+                      <textarea className="input resize-y font-mono text-xs" rows={12} value={modeleForm.corps}
+                        onChange={e => setModeleForm(f => ({ ...f, corps: e.target.value }))} />
+                      <div className="text-xs text-quai-muted mt-1">
+                        Variables remplacées automatiquement : <span className="font-mono">[Prénom]</span>,
+                        {' '}<span className="font-mono">[BIEN]</span> (référence du bien),
+                        {' '}<span className="font-mono">[TEL_MARINE]</span> (votre téléphone).
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-quai-muted mb-1">Votre téléphone</label>
+                      <input className="input max-w-xs" value={modeleForm.telephone}
+                        onChange={e => setModeleForm(f => ({ ...f, telephone: e.target.value }))} placeholder="06 12 34 56 78" />
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={enregistrerModele} disabled={modeleBusy} className="btn-primary btn-sm">
+                        {modeleBusy ? 'Enregistrement…' : 'Enregistrer le modèle'}
+                      </button>
+                      <button onClick={() => { setModeleForm(modele); setEditModele(false) }} className="btn-secondary btn-sm">Annuler</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+              {aMailer.length === 0 && (
+                <div className="text-center py-16">
+                  <Icon name="check-circle-2" size="xl" className="text-emerald-600 mx-auto mb-3" />
+                  <div className="text-quai-navy font-medium">Aucun mail à envoyer</div>
+                  <div className="text-sm text-quai-muted mt-1">Tout est à jour.</div>
+                </div>
+              )}
+              {aMailer.map(f => (
+                <FicheCard key={f.id} fiche={f} onRefresh={refresh} onOpenDetail={setDetailId} />
+              ))}
+            </div>
+          )}
+
           {!loading && tab === 'fiches' && (
             <div>
               <div className="flex flex-wrap gap-3 mb-4">
@@ -264,7 +346,13 @@ function FicheCard({ fiche, onRefresh, onOpenDetail }) {
   const statutInfo = STATUTS_COURTAGE[fiche.statut] || { label: fiche.statut, color: 'bg-quai-light text-quai-muted' }
   const categorieInfo = CATEGORIES_COURTAGE[fiche.categorie] || null
   const dernierCommentaire = fiche.dernier_commentaire || fiche.commentaire
+  // Panneau mail : injoignable (2 tentatives), faux numero, ou aucun telephone —
+  // dans tous ces cas l'appel est impossible et le mail est le seul canal restant.
   const estInjoignable = fiche.statut === 'injoignable' || !!injoignable
+    || fiche.statut === 'faux_numero' || !fiche.telephone
+  const raisonMail = injoignable || fiche.statut === 'injoignable'
+    ? `Injoignable (${injoignable?.tentatives ?? fiche.tentatives_sans_reponse} tentatives)`
+    : fiche.statut === 'faux_numero' ? 'Numéro invalide' : 'Pas de numéro de téléphone'
   const enRetard = fiche.prochaine_relance && fiche.prochaine_relance < plusJours(0)
 
   const run = async (fn) => {
@@ -373,8 +461,8 @@ function FicheCard({ fiche, onRefresh, onOpenDetail }) {
 
         {estInjoignable && (
           <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-3">
-            <div className="text-sm font-medium text-amber-800 mb-2 inline-flex items-center gap-1.5">
-              <Icon name="phone-off" size="sm" /> Injoignable ({injoignable?.tentatives ?? fiche.tentatives_sans_reponse} tentatives)
+            <div className="flex text-sm font-medium text-amber-800 mb-2 items-center gap-1.5">
+              <Icon name="phone-off" size="sm" /> {raisonMail}
             </div>
             {fiche.mail ? (
               <button onClick={preparerMail} disabled={busy} className="btn-primary btn-sm inline-flex items-center gap-1.5">
