@@ -208,9 +208,18 @@ router.get('/mail-modele/:id', lireSeule, (req, res) => {
   const fiche = getFiche(req.params.id);
   if (!fiche) return res.status(404).json({ error: 'Fiche introuvable' });
   if (!fiche.mail) return res.status(400).json({ error: 'Cette fiche n\'a pas d\'adresse mail' });
-  const remplacer = (t) => t
+  // Variables disponibles dans le modele (voir VARIABLES_MAIL, expose au client).
+  const jolieDate = (d) => (d ? new Date(d.slice(0, 10) + 'T12:00:00').toLocaleDateString('fr-FR') : '');
+  const remplacer = (t) => String(t || '')
     .replace(/\[Prénom\]/g, fiche.prenom || '')
+    .replace(/\[Prenom\]/g, fiche.prenom || '')
+    .replace(/\[NOM\]/g, (fiche.nom || '').toUpperCase())
+    .replace(/\[Nom complet\]/g, [fiche.prenom, (fiche.nom || '').toUpperCase()].filter(Boolean).join(' '))
     .replace(/\[BIEN\]/g, fiche.reference_bien ? `(${fiche.reference_bien})` : 'immobilier')
+    .replace(/\[REFERENCE\]/g, fiche.reference_bien || '')
+    .replace(/\[SOURCE\]/g, fiche.source || '')
+    .replace(/\[DATE_CONTACT\]/g, jolieDate(fiche.date_contact))
+    .replace(/\[MONTANT\]/g, fiche.montant_projet || '')
     .replace(/\[TEL_MARINE\]/g, param('courtage_tel_marine', ''));
   const objet = remplacer(param('courtage_mail_objet', ''));
   const corps = remplacer(param('courtage_mail_corps', ''));
@@ -218,12 +227,26 @@ router.get('/mail-modele/:id', lireSeule, (req, res) => {
   res.json({ mailto });
 });
 
+// Variables utilisables dans le modele de mail — source unique, affichee cote client.
+const VARIABLES_MAIL = [
+  { cle: '[Prénom]', libelle: 'Prénom', exemple: 'Sophie' },
+  { cle: '[NOM]', libelle: 'NOM', exemple: 'DURAND' },
+  { cle: '[Nom complet]', libelle: 'Prénom NOM', exemple: 'Sophie DURAND' },
+  { cle: '[BIEN]', libelle: 'Le bien (phrase)', exemple: '(REF-042)' },
+  { cle: '[REFERENCE]', libelle: 'Référence du bien', exemple: 'REF-042' },
+  { cle: '[SOURCE]', libelle: 'Source du contact', exemple: 'LeBonCoin' },
+  { cle: '[DATE_CONTACT]', libelle: 'Date du contact', exemple: '05/08/2026' },
+  { cle: '[MONTANT]', libelle: 'Montant du projet', exemple: '250000' },
+  { cle: '[TEL_MARINE]', libelle: 'Votre téléphone', exemple: '06 44 55 66 77' },
+];
+
 // GET /modele-mail — le modele courant (objet + corps + telephone), pour edition par Marine.
 router.get('/modele-mail', lireSeule, (req, res) => {
   res.json({
     objet: param('courtage_mail_objet', ''),
     corps: param('courtage_mail_corps', ''),
     telephone: param('courtage_tel_marine', ''),
+    variables: VARIABLES_MAIL,
   });
 });
 

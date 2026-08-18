@@ -365,6 +365,31 @@ setTimeout(async () => {
     const agentModele = await req('PUT', '/api/courtage/modele-mail', agent, { objet: 'pirate' });
     test('modele mail : agent (Chrystelle) 403', agentModele.status === 403, agentModele.status);
 
+    // 7quinquies) TOUTES les variables du modele de mail sont remplacees.
+    const ficheVar = (await req('POST', '/api/courtage/fiches', marine, {
+      nom: 'durand', prenom: 'Sophie', telephone: '0612345678', mail: 's.durand@test.fr',
+      date_contact: '2026-08-05', reference_bien: 'REF-042', montant_projet: '250000', source: 'LeBonCoin',
+    })).body;
+    const listeVars = (await req('GET', '/api/courtage/modele-mail', marine)).body.variables;
+    test('modele mail : la liste des variables est exposee',
+      Array.isArray(listeVars) && listeVars.length >= 9, String(listeVars && listeVars.length));
+    await req('PUT', '/api/courtage/modele-mail', marine, {
+      objet: 'Projet de [Prénom] [NOM]',
+      corps: 'Bonjour [Prénom]. Contact du [DATE_CONTACT] via [SOURCE] pour [BIEN] ref [REFERENCE]. '
+        + 'Montant [MONTANT]. Complet : [Nom complet]. Tel [TEL_MARINE].',
+      telephone: '06 44 55 66 77',
+    });
+    const genVar = decodeURIComponent((await req('GET', `/api/courtage/mail-modele/${ficheVar.id}`, marine)).body.mailto || '');
+    test('variable [Prénom] remplacee', genVar.includes('Bonjour Sophie'), genVar.slice(0, 90));
+    test('variable [NOM] en majuscules', genVar.includes('DURAND'), genVar.slice(0, 60));
+    test('variable [DATE_CONTACT] au format francais', genVar.includes('05/08/2026'), genVar.slice(0, 140));
+    test('variable [SOURCE] remplacee', genVar.includes('LeBonCoin'), genVar.slice(0, 140));
+    test('variable [REFERENCE] remplacee', genVar.includes('REF-042'), genVar.slice(0, 160));
+    test('variable [MONTANT] remplacee', genVar.includes('250000'), genVar.slice(0, 180));
+    test('variable [Nom complet] remplacee', genVar.includes('Sophie DURAND'), genVar.slice(0, 200));
+    test('aucune variable non remplacee ne subsiste',
+      !/\[(Prénom|Prenom|NOM|Nom complet|BIEN|REFERENCE|SOURCE|DATE_CONTACT|MONTANT|TEL_MARINE)\]/.test(genVar), genVar.slice(0, 200));
+
     // 8) Journal des imports.
     const jr = await req('GET', '/api/courtage/imports', admin);
     test('journal : admin GET /imports 200', jr.status === 200, jr.status);

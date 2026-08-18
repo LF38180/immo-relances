@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import toast from 'react-hot-toast'
 import api from '../utils/api'
 import { useAuth } from '../hooks/useAuth'
@@ -67,6 +67,29 @@ export default function CourtagePage() {
   const [editModele, setEditModele] = useState(false)
   const [modeleForm, setModeleForm] = useState({ objet: '', corps: '', telephone: '' })
   const [modeleBusy, setModeleBusy] = useState(false)
+  // Apercu : remplace les variables par les exemples renvoyes par le serveur.
+  const apercuVariables = (texte) => (modele?.variables || [])
+    .reduce((t, v) => t.split(v.cle).join(v.exemple), String(texte || ''))
+
+  const corpsRef = useRef(null)
+  const objetRef = useRef(null)
+  const [dernierChamp, setDernierChamp] = useState('corps')  // ou l'insertion doit aller
+
+  // Insere une variable a la position du curseur (corps ou objet selon le dernier champ actif).
+  const insererVariable = (cle) => {
+    const ref = dernierChamp === 'objet' ? objetRef : corpsRef
+    const champ = dernierChamp === 'objet' ? 'objet' : 'corps'
+    const el = ref.current
+    if (!el) { setModeleForm(f => ({ ...f, [champ]: (f[champ] || '') + cle })); return }
+    const debut = el.selectionStart ?? el.value.length
+    const fin = el.selectionEnd ?? el.value.length
+    const avant = el.value.slice(0, debut)
+    const apres = el.value.slice(fin)
+    const valeur = avant + cle + apres
+    setModeleForm(f => ({ ...f, [champ]: valeur }))
+    // Replace le curseur juste apres la variable inseree.
+    requestAnimationFrame(() => { el.focus(); el.setSelectionRange(debut + cle.length, debut + cle.length) })
+  }
   // Rappel entrant : recherche par telephone/nom pendant la session d'appel (comme Chrystelle).
   const [rappel, setRappel] = useState('')
   const [resultatsRappel, setResultatsRappel] = useState([])
@@ -259,19 +282,49 @@ export default function CourtagePage() {
                   <div className="mt-3 border-t border-quai-border pt-3 space-y-3">
                     <div>
                       <label className="block text-xs font-medium text-quai-muted mb-1">Objet</label>
-                      <input className="input" value={modeleForm.objet}
+                      <input ref={objetRef} className="input" value={modeleForm.objet}
+                        onFocus={() => setDernierChamp('objet')}
                         onChange={e => setModeleForm(f => ({ ...f, objet: e.target.value }))} />
                     </div>
+
                     <div>
-                      <label className="block text-xs font-medium text-quai-muted mb-1">Corps du message</label>
-                      <textarea className="input resize-y font-mono text-xs" rows={12} value={modeleForm.corps}
-                        onChange={e => setModeleForm(f => ({ ...f, corps: e.target.value }))} />
-                      <div className="text-xs text-quai-muted mt-1">
-                        Variables remplacées automatiquement : <span className="font-mono">[Prénom]</span>,
-                        {' '}<span className="font-mono">[BIEN]</span> (référence du bien),
-                        {' '}<span className="font-mono">[TEL_MARINE]</span> (votre téléphone).
+                      <div className="text-xs font-medium text-quai-muted mb-1">
+                        Ajouter une variable <span className="font-normal">(insérée dans {dernierChamp === 'objet' ? "l'objet" : 'le message'}, à l&apos;endroit du curseur)</span>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {(modele?.variables || []).map(v => (
+                          <button key={v.cle} type="button" onClick={() => insererVariable(v.cle)}
+                            title={`${v.cle} — exemple : ${v.exemple}`}
+                            className="px-2 py-1 rounded border border-quai-border bg-white text-xs text-quai-navy hover:bg-quai-gold/20 hover:border-quai-gold transition-colors inline-flex items-center gap-1">
+                            <Icon name="plus" size="sm" /> {v.libelle}
+                          </button>
+                        ))}
                       </div>
                     </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-quai-muted mb-1">Corps du message</label>
+                      <textarea ref={corpsRef} className="input resize-y text-sm" rows={12} value={modeleForm.corps}
+                        onFocus={() => setDernierChamp('corps')}
+                        onChange={e => setModeleForm(f => ({ ...f, corps: e.target.value }))} />
+                      <div className="text-xs text-quai-muted mt-1">
+                        Message en texte simple (le format des liens mail ne permet pas le gras ni le souligné).
+                        Votre <strong>signature Outlook</strong> — logo, couleurs, coordonnées — s'ajoute automatiquement à l'envoi :
+                        configurez-la une fois dans Outlook, Fichier &gt; Options &gt; Courrier &gt; Signatures.
+                      </div>
+                    </div>
+
+                    {modeleForm.corps && (
+                      <div>
+                        <div className="text-xs font-medium text-quai-muted mb-1">Aperçu avec un exemple de contact</div>
+                        <div className="bg-white border border-quai-border rounded-lg p-3 text-sm text-quai-text whitespace-pre-wrap">
+                          <div className="font-medium text-quai-navy mb-2 pb-2 border-b border-quai-border">
+                            {apercuVariables(modeleForm.objet)}
+                          </div>
+                          {apercuVariables(modeleForm.corps)}
+                        </div>
+                      </div>
+                    )}
                     <div>
                       <label className="block text-xs font-medium text-quai-muted mb-1">Votre téléphone</label>
                       <input className="input max-w-xs" value={modeleForm.telephone}
