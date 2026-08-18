@@ -13,7 +13,10 @@ const ecriture = requireRole('courtage');
 const importation = requireRole('courtage', 'admin');
 
 // Helpers
-const normTel = (t) => { let d = String(t || '').replace(/\D/g, ''); if (d.startsWith('33') && d.length === 11) d = '0' + d.slice(2); return d || null; };
+// Normalisation du telephone : DELEGUEE a la lib d'import pour que la saisie manuelle et
+// l'import appliquent exactement la meme regle. Un fragment ("336") ou un "/" ne doit pas
+// passer pour un numero appelable d'un cote et etre rejete de l'autre.
+const normTel = (t) => CI.normaliserTelephone(t);
 const normMail = (m) => (m || '').trim().toLowerCase() || null;
 const param = (cle, defaut) => { const r = db.prepare('SELECT valeur FROM parametres WHERE cle=?').get(cle); return r ? r.valeur : defaut; };
 const dansNJours = (n) => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
@@ -239,6 +242,34 @@ const VARIABLES_MAIL = [
   { cle: '[MONTANT]', libelle: 'Montant du projet', exemple: '250000' },
   { cle: '[TEL_MARINE]', libelle: 'Votre téléphone', exemple: '06 44 55 66 77' },
 ];
+
+// POST /fiches/sortir-sans-telephone — maintenance : sort de la file d'appel les fiches
+// sans numero exploitable (champ vide, "/", fragment). Elles ont ete importees avant que
+// la regle ne soit en place. Avec un mail -> onglet "a contacter par mail" (injoignable) ;
+// sans mail -> perdu (aucun canal). Idempotent : ne touche que ce qui est encore en file.
+router.post('/fiches/sortir-sans-telephone', ecriture, (req, res) => {
+  const cibles = db.prepare(`
+    SELECT id, statut, mail_norm FROM courtage_fiches
+    WHERE (telephone_norm IS NULL OR telephone_norm = '')
+      AND prochaine_relance IS NOT NULL
+      AND statut NOT IN ('gagne','perdu','ne_plus_contacter','faux_numero')
+  `).all();
+  let versMail = 0, versPerdu = 0;
+  db.transaction(() => {
+    for (const f of cibles) {
+      const nouveau = f.mail_norm ? 'injoignable' : 'perdu';
+      action(f.id, 'statut', {
+        statut_avant: f.statut, statut_apres: nouveau,
+        commentaire: f.mail_norm ? 'Pas de numero exploitable — a contacter par mail'
+          : 'Ni telephone ni mail exploitables',
+      });
+      db.prepare(`UPDATE courtage_fiches SET statut = ?, prochaine_relance = NULL,
+        updated_at = datetime('now') WHERE id = ?`).run(nouveau, f.id);
+      if (f.mail_norm) versMail++; else versPerdu++;
+    }
+  })();
+  res.json({ traitees: cibles.length, versMail, versPerdu });
+});
 
 // GET /modele-mail — le modele courant (objet + corps + telephone), pour edition par Marine.
 router.get('/modele-mail', lireSeule, (req, res) => {

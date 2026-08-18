@@ -401,11 +401,16 @@ function FicheCard({ fiche, onRefresh, onOpenDetail }) {
   const dernierCommentaire = fiche.dernier_commentaire || fiche.commentaire
   // Panneau mail : injoignable (2 tentatives), faux numero, ou aucun telephone —
   // dans tous ces cas l'appel est impossible et le mail est le seul canal restant.
+  // Un numero exploitable = celui que le serveur a normalise (telephone_norm). Le champ
+  // brut peut contenir "/" ou un fragment ("336") : appelable en apparence, pas en realite.
+  const telAppelable = !!fiche.telephone_norm
   const estInjoignable = fiche.statut === 'injoignable' || !!injoignable
-    || fiche.statut === 'faux_numero' || !fiche.telephone
-  const raisonMail = injoignable || fiche.statut === 'injoignable'
+    || fiche.statut === 'faux_numero' || !telAppelable
+  const raisonMail = injoignable || (fiche.statut === 'injoignable' && telAppelable)
     ? `Injoignable (${injoignable?.tentatives ?? fiche.tentatives_sans_reponse} tentatives)`
-    : fiche.statut === 'faux_numero' ? 'Numéro invalide' : 'Pas de numéro de téléphone'
+    : fiche.statut === 'faux_numero' ? 'Numéro invalide'
+    : fiche.telephone && String(fiche.telephone).trim() ? 'Numéro inexploitable'
+    : 'Pas de numéro de téléphone'
   const enRetard = fiche.prochaine_relance && fiche.prochaine_relance < plusJours(0)
 
   const run = async (fn) => {
@@ -488,7 +493,7 @@ function FicheCard({ fiche, onRefresh, onOpenDetail }) {
       </button>
 
       <div className="px-4 pb-4">
-        {fiche.telephone ? (
+        {telAppelable ? (
           <div className="bg-quai-navy rounded-xl p-4 my-3">
             <div className="text-xs text-quai-gold font-medium uppercase tracking-wider mb-1">Téléphone</div>
             <a href={`tel:${fiche.telephone}`} className="text-2xl md:text-3xl font-bold text-white hover:text-quai-gold transition-colors inline-flex items-center gap-2">
@@ -496,7 +501,11 @@ function FicheCard({ fiche, onRefresh, onOpenDetail }) {
             </a>
           </div>
         ) : (
-          <div className="text-sm text-quai-muted my-3 italic">Pas de téléphone renseigné</div>
+          <div className="text-sm text-quai-muted my-3 italic">
+            {fiche.telephone && String(fiche.telephone).trim()
+              ? `Numéro inexploitable dans le cahier : « ${String(fiche.telephone).trim()} »`
+              : 'Pas de téléphone renseigné'}
+          </div>
         )}
 
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-quai-muted mb-2">

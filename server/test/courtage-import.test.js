@@ -390,6 +390,35 @@ setTimeout(async () => {
     test('aucune variable non remplacee ne subsiste',
       !/\[(Prénom|Prenom|NOM|Nom complet|BIEN|REFERENCE|SOURCE|DATE_CONTACT|MONTANT|TEL_MARINE)\]/.test(genVar), genVar.slice(0, 200));
 
+    // 7sexies) NUMEROS INEXPLOITABLES ("/" , fragment) : meme regle a la saisie manuelle
+    // qu'a l'import, et maintenance qui sort de la file les fiches heritees.
+    const aujMaint = new Date().toISOString().slice(0, 10);
+    for (const f of [
+      { nom: 'MT_SLASH', telephone: '/', mail: 'mtslash@t.fr', prochaine_relance: aujMaint },
+      { nom: 'MT_FRAGMENT', telephone: '336', mail: 'mtfrag@t.fr', prochaine_relance: aujMaint },
+      { nom: 'MT_SANSRIEN', telephone: '/', prochaine_relance: aujMaint },
+      { nom: 'MT_VALIDE', telephone: '06 12 34 56 79', mail: 'mtok@t.fr', prochaine_relance: aujMaint },
+    ]) await req('POST', '/api/courtage/fiches', marine, f);
+    const apresCrea = (await req('GET', '/api/courtage/fiches', marine)).body;
+    const trouve = (n) => apresCrea.find(f => f.nom === n);
+    test('saisie manuelle : "/" non retenu comme numero', !trouve('MT_SLASH').telephone_norm, String(trouve('MT_SLASH').telephone_norm));
+    test('saisie manuelle : fragment "336" non retenu', !trouve('MT_FRAGMENT').telephone_norm, String(trouve('MT_FRAGMENT').telephone_norm));
+    test('saisie manuelle : numero avec espaces normalise', trouve('MT_VALIDE').telephone_norm === '0612345679', String(trouve('MT_VALIDE').telephone_norm));
+    const maint = await req('POST', '/api/courtage/fiches/sortir-sans-telephone', marine, {});
+    test('maintenance : traite les fiches sans numero exploitable', maint.body.traitees >= 3, JSON.stringify(maint.body));
+    const fileApres = (await req('GET', '/api/courtage/fiches/relances-jour', marine)).body.map(f => f.nom);
+    test('maintenance : les inexploitables sortent de la file',
+      !fileApres.includes('MT_SLASH') && !fileApres.includes('MT_FRAGMENT') && !fileApres.includes('MT_SANSRIEN'), fileApres.join(','));
+    test('maintenance : le numero valide reste en file', fileApres.includes('MT_VALIDE'), fileApres.join(','));
+    const mailApres = (await req('GET', '/api/courtage/fiches/a-mailer', marine)).body.map(f => f.nom);
+    test('maintenance : avec mail -> onglet mail',
+      mailApres.includes('MT_SLASH') && mailApres.includes('MT_FRAGMENT'), mailApres.join(','));
+    test('maintenance : sans mail -> perdu, hors onglet mail', !mailApres.includes('MT_SANSRIEN'), mailApres.join(','));
+    const maint2 = await req('POST', '/api/courtage/fiches/sortir-sans-telephone', marine, {});
+    test('maintenance : idempotente (0 au second passage)', maint2.body.traitees === 0, JSON.stringify(maint2.body));
+    const maintAgent = await req('POST', '/api/courtage/fiches/sortir-sans-telephone', agent, {});
+    test('maintenance : agent (Chrystelle) 403', maintAgent.status === 403, maintAgent.status);
+
     // 8) Journal des imports.
     const jr = await req('GET', '/api/courtage/imports', admin);
     test('journal : admin GET /imports 200', jr.status === 200, jr.status);
