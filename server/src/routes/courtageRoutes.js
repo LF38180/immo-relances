@@ -75,6 +75,8 @@ router.get('/fiches', lireSeule, (req, res) => {
 
 // GET /fiches/relances-jour — fiches à relancer aujourd'hui (ou en retard)
 router.get('/fiches/relances-jour', lireSeule, (req, res) => {
+  // tri = 'recent' (defaut) | 'ancien' : sens sur la date du message, choisi par Marine.
+  const sens = req.query.tri === 'ancien' ? 'ASC' : 'DESC';
   const rows = db.prepare(`
     SELECT f.*,
       (SELECT a.commentaire FROM courtage_actions a
@@ -84,10 +86,10 @@ router.get('/fiches/relances-jour', lireSeule, (req, res) => {
     WHERE f.statut NOT IN ('gagne','perdu','ne_plus_contacter')
       AND f.prochaine_relance IS NOT NULL
       AND f.prochaine_relance <= date('now')
-    -- Priorite d'abord (1 CI Facile, 2 OUI agent, 3 OUI Gabby, 4 a qualifier), puis du
-    -- plus ancien au plus recent SUR LA DATE DU MESSAGE (pas sur prochaine_relance, qui
-    -- bouge a chaque report et ferait perdre l'anciennete d'origine du lead).
-    ORDER BY f.priorite ASC, COALESCE(f.date_contact, f.created_at) ASC, f.prochaine_relance ASC
+    -- Priorite d'abord (1 CI Facile, 2 OUI agent, 3 OUI Gabby, 4 a qualifier), puis tri
+    -- sur la DATE DU MESSAGE (pas prochaine_relance, qui bouge a chaque report et ferait
+    -- perdre l'anciennete d'origine du lead). Sens par defaut : plus recent d'abord.
+    ORDER BY f.priorite ASC, COALESCE(f.date_contact, f.created_at) ${sens}, f.prochaine_relance ${sens}
   `).all();
   res.json(rows);
 });

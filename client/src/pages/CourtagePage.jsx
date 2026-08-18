@@ -20,6 +20,14 @@ export const STATUTS_COURTAGE = {
   ne_plus_contacter: { label: 'Ne plus contacter',  color: 'bg-quai-navy text-white' },
 }
 
+// Qualification d'origine du lead (colonne M du cahier des messages) affichee en carte.
+export const CATEGORIES_COURTAGE = {
+  manuel:      { label: 'CI Facile',                     color: 'bg-quai-navy text-white' },
+  oui_agent:   { label: 'Intéressé courtage : OUI (agent)', color: 'bg-emerald-50 text-emerald-700 border border-emerald-200' },
+  oui_gabby:   { label: 'Intéressé courtage : OUI (Gabby)', color: 'bg-teal-50 text-teal-700 border border-teal-200' },
+  a_qualifier: { label: 'À qualifier',                   color: 'bg-quai-light text-quai-muted border border-quai-border' },
+}
+
 const TYPES_ACTION = {
   creation: 'Création',
   relance: 'Relance',
@@ -50,6 +58,10 @@ export default function CourtagePage() {
   const { user, logout } = useAuth()
   const [tab, setTab] = useState('relances')
   const [relances, setRelances] = useState([])
+  const [tri, setTri] = useState('recent')   // 'recent' (defaut) | 'ancien' : sens sur la date du cahier
+  // Rappel entrant : recherche par telephone/nom pendant la session d'appel (comme Chrystelle).
+  const [rappel, setRappel] = useState('')
+  const [resultatsRappel, setResultatsRappel] = useState([])
   const [fiches, setFiches] = useState([])
   const [filtreStatut, setFiltreStatut] = useState('')
   const [recherche, setRecherche] = useState('')
@@ -58,7 +70,19 @@ export default function CourtagePage() {
   const [showImport, setShowImport] = useState(false)
   const [detailId, setDetailId] = useState(null)
 
-  const loadRelances = useCallback(() => api.get('/courtage/fiches/relances-jour').then(r => setRelances(r.data)), [])
+  // Recherche debouncee du rappel entrant (min. 3 caracteres).
+  useEffect(() => {
+    const q = rappel.trim()
+    if (q.length < 3) { setResultatsRappel([]); return }
+    const t = setTimeout(() => {
+      api.get(`/courtage/fiches?q=${encodeURIComponent(q)}`)
+        .then(r => setResultatsRappel(r.data.slice(0, 8)))
+        .catch(() => setResultatsRappel([]))
+    }, 300)
+    return () => clearTimeout(t)
+  }, [rappel])
+
+  const loadRelances = useCallback(() => api.get(`/courtage/fiches/relances-jour?tri=${tri}`).then(r => setRelances(r.data)), [tri])
   const loadFiches = useCallback(() => {
     const params = {}
     if (filtreStatut) params.statut = filtreStatut
@@ -121,10 +145,54 @@ export default function CourtagePage() {
             </div>
           </div>
 
+          <div className="relative mb-4">
+            <div className="flex items-center gap-2">
+              <Icon name="search" size="sm" className="text-quai-muted" />
+              <input
+                className="input flex-1"
+                placeholder="Rappel entrant ? Rechercher par numéro ou nom…"
+                value={rappel}
+                onChange={e => setRappel(e.target.value)}
+              />
+            </div>
+            {resultatsRappel.length > 0 && (
+              <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-quai-border rounded-lg shadow-lg max-h-72 overflow-y-auto">
+                {resultatsRappel.map(f => (
+                  <button key={f.id} onClick={() => { setDetailId(f.id); setRappel(''); setResultatsRappel([]) }}
+                    className="w-full text-left px-3 py-2 hover:bg-quai-light border-b border-quai-border last:border-0">
+                    <div className="text-sm font-medium text-quai-navy">{f.nom}{f.prenom ? ' ' + f.prenom : ''}</div>
+                    <div className="text-xs text-quai-muted">
+                      {f.telephone || '—'}
+                      {f.date_contact ? ' · cahier du ' + formatDateFr(f.date_contact) : ''}
+                      {' · ' + ((STATUTS_COURTAGE[f.statut] || {}).label || f.statut)}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+            {rappel.trim().length >= 3 && resultatsRappel.length === 0 && (
+              <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-quai-border rounded-lg shadow-lg px-3 py-2 text-sm text-quai-muted">
+                Aucune fiche trouvée pour « {rappel.trim()} »
+              </div>
+            )}
+          </div>
+
           {loading && <div className="text-center text-quai-muted animate-pulse py-12 text-sm">Chargement…</div>}
 
           {!loading && tab === 'relances' && (
             <div className="space-y-4">
+              {relances.length > 0 && (
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="text-sm text-quai-muted">{relances.length} fiche(s) à relancer</div>
+                  <label className="inline-flex items-center gap-2 text-sm text-quai-muted">
+                    Trier par date du cahier
+                    <select className="input w-auto text-sm" value={tri} onChange={e => setTri(e.target.value)} aria-label="Trier les relances">
+                      <option value="recent">Plus récent d'abord</option>
+                      <option value="ancien">Plus ancien d'abord</option>
+                    </select>
+                  </label>
+                </div>
+              )}
               {relances.length === 0 && (
                 <div className="text-center py-16">
                   <Icon name="check-circle-2" size="xl" className="text-emerald-600 mx-auto mb-3" />
@@ -183,6 +251,7 @@ function FicheCard({ fiche, onRefresh, onOpenDetail }) {
   const [busy, setBusy] = useState(false)
 
   const statutInfo = STATUTS_COURTAGE[fiche.statut] || { label: fiche.statut, color: 'bg-quai-light text-quai-muted' }
+  const categorieInfo = CATEGORIES_COURTAGE[fiche.categorie] || null
   const dernierCommentaire = fiche.dernier_commentaire || fiche.commentaire
   const estInjoignable = fiche.statut === 'injoignable' || !!injoignable
   const enRetard = fiche.prochaine_relance && fiche.prochaine_relance < plusJours(0)
@@ -249,6 +318,12 @@ function FicheCard({ fiche, onRefresh, onOpenDetail }) {
             </div>
             <div className="flex flex-wrap items-center gap-2 mt-1">
               <span className={`badge ${statutInfo.color}`}>{statutInfo.label}</span>
+              {categorieInfo && <span className={`badge ${categorieInfo.color}`}>{categorieInfo.label}</span>}
+              {fiche.date_contact && (
+                <span className="text-xs text-quai-muted inline-flex items-center gap-1">
+                  <Icon name="calendar" size="sm" /> Cahier du {formatDateFr(fiche.date_contact)}
+                </span>
+              )}
               {fiche.prochaine_relance && (
                 <span className={`text-xs ${enRetard ? 'text-red-600 font-medium' : 'text-quai-muted'}`}>
                   Relance prévue le {formatDateFr(fiche.prochaine_relance)}
