@@ -53,6 +53,17 @@ const plusJours = (n) => {
   const d = new Date(Date.now() + n * 86400000)
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
+// Affiche un numero francais par paires (06 12 34 56 78). Les numeros etrangers sont
+// laisses tels quels. On part TOUJOURS du numero normalise (telephone_norm), pas du texte
+// brut du cahier qui peut contenir "33...", des points ou des espaces incoherents.
+const formatTel = (norm) => {
+  if (!norm) return ''
+  const d = String(norm)
+  return /^0\d{9}$/.test(d) ? d.replace(/(\d{2})(?=\d)/g, '$1 ').trim() : d
+}
+// Nom de famille toujours en majuscules (le cahier melange "durand", "Durand", "DURAND").
+const nomMaj = (n) => (n || '').toLocaleUpperCase('fr-FR')
+
 const formatDateFr = (s) => s ? new Date(s.slice(0, 10) + 'T12:00:00').toLocaleDateString('fr-FR') : ''
 const formatDateHeureFr = (s) => s ? new Date(s.replace(' ', 'T') + 'Z').toLocaleString('fr-FR', { timeZone: 'Europe/Paris', dateStyle: 'short', timeStyle: 'short' }) : ''
 
@@ -210,9 +221,9 @@ export default function CourtagePage() {
                 {resultatsRappel.map(f => (
                   <button key={f.id} onClick={() => { setDetailId(f.id); setRappel(''); setResultatsRappel([]) }}
                     className="w-full text-left px-3 py-2 hover:bg-quai-light border-b border-quai-border last:border-0">
-                    <div className="text-sm font-medium text-quai-navy">{f.nom}{f.prenom ? ' ' + f.prenom : ''}</div>
+                    <div className="text-sm font-medium text-quai-navy">{nomMaj(f.nom)}{f.prenom ? ' ' + f.prenom : ''}</div>
                     <div className="text-xs text-quai-muted">
-                      {f.telephone || '—'}
+                      {formatTel(f.telephone_norm) || '—'}
                       {f.date_contact ? ' · cahier du ' + formatDateFr(f.date_contact) : ''}
                       {' · ' + ((STATUTS_COURTAGE[f.statut] || {}).label || f.statut)}
                     </div>
@@ -480,7 +491,7 @@ function FicheCard({ fiche, onRefresh, onOpenDetail }) {
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div>
             <div className="text-lg font-display font-bold text-quai-navy">
-              {fiche.nom}{fiche.prenom ? ' ' + fiche.prenom : ''}
+              {nomMaj(fiche.nom)}{fiche.prenom ? ' ' + fiche.prenom : ''}
             </div>
             <div className="flex flex-wrap items-center gap-2 mt-1">
               <span className={`badge ${statutInfo.color}`}>{statutInfo.label}</span>
@@ -505,8 +516,8 @@ function FicheCard({ fiche, onRefresh, onOpenDetail }) {
         {telAppelable ? (
           <div className="bg-quai-navy rounded-xl p-4 my-3">
             <div className="text-xs text-quai-gold font-medium uppercase tracking-wider mb-1">Téléphone</div>
-            <a href={`tel:${fiche.telephone}`} className="text-2xl md:text-3xl font-bold text-white hover:text-quai-gold transition-colors inline-flex items-center gap-2">
-              <Icon name="phone" size="lg" /> {fiche.telephone}
+            <a href={`tel:${fiche.telephone_norm}`} className="text-2xl md:text-3xl font-bold text-white hover:text-quai-gold transition-colors inline-flex items-center gap-2">
+              <Icon name="phone" size="lg" /> {formatTel(fiche.telephone_norm)}
             </a>
           </div>
         ) : (
@@ -664,7 +675,7 @@ function DetailFicheModal({ ficheId, onClose }) {
   }, [ficheId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <Modal title={fiche ? `${fiche.nom}${fiche.prenom ? ' ' + fiche.prenom : ''}` : 'Fiche'} onClose={onClose}>
+    <Modal title={fiche ? `${nomMaj(fiche.nom)}${fiche.prenom ? ' ' + fiche.prenom : ''}` : 'Fiche'} onClose={onClose}>
       {!fiche && <div className="text-center text-quai-muted animate-pulse py-8 text-sm">Chargement…</div>}
       {fiche && (
         <div className="space-y-4">
