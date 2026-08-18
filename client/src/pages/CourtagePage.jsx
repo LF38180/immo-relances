@@ -18,6 +18,7 @@ export const STATUTS_COURTAGE = {
   perdu:             { label: 'Perdu',              color: 'bg-red-50 text-red-700 border border-red-200' },
   injoignable:       { label: 'Injoignable',        color: 'bg-amber-50 text-amber-700 border border-amber-200' },
   ne_plus_contacter: { label: 'Ne plus contacter',  color: 'bg-quai-navy text-white' },
+  faux_numero:       { label: 'Faux numéro',        color: 'bg-orange-50 text-orange-700 border border-orange-200' },
 }
 
 // Qualification d'origine du lead (colonne M du cahier des messages) affichee en carte.
@@ -39,6 +40,7 @@ const TYPES_ACTION = {
 
 // Boutons de changement rapide de statut sur les cartes.
 const STATUTS_RAPIDES = [
+  ['faux_numero', 'Faux numéro'],
   ['simulation_faite', 'Simulation faite'],
   ['dossier_en_cours', 'Dossier en cours'],
   ['gagne', 'Gagné'],
@@ -59,6 +61,7 @@ export default function CourtagePage() {
   const [tab, setTab] = useState('relances')
   const [relances, setRelances] = useState([])
   const [tri, setTri] = useState('recent')   // 'recent' (defaut) | 'ancien' : sens sur la date du cahier
+  const [qualification, setQualification] = useState('')  // '' | 'qualifie' | 'a_qualifier'
   // Rappel entrant : recherche par telephone/nom pendant la session d'appel (comme Chrystelle).
   const [rappel, setRappel] = useState('')
   const [resultatsRappel, setResultatsRappel] = useState([])
@@ -82,7 +85,7 @@ export default function CourtagePage() {
     return () => clearTimeout(t)
   }, [rappel])
 
-  const loadRelances = useCallback(() => api.get(`/courtage/fiches/relances-jour?tri=${tri}`).then(r => setRelances(r.data)), [tri])
+  const loadRelances = useCallback(() => api.get(`/courtage/fiches/relances-jour?tri=${tri}&qualification=${qualification}`).then(r => setRelances(r.data)), [tri, qualification])
   const loadFiches = useCallback(() => {
     const params = {}
     if (filtreStatut) params.statut = filtreStatut
@@ -181,9 +184,17 @@ export default function CourtagePage() {
 
           {!loading && tab === 'relances' && (
             <div className="space-y-4">
-              {relances.length > 0 && (
+              {(relances.length > 0 || qualification) && (
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="text-sm text-quai-muted">{relances.length} fiche(s) à relancer</div>
+                  <label className="inline-flex items-center gap-2 text-sm text-quai-muted">
+                    Afficher
+                    <select className="input w-auto text-sm" value={qualification} onChange={e => setQualification(e.target.value)} aria-label="Filtrer par qualification">
+                      <option value="">Tous les leads</option>
+                      <option value="qualifie">Qualifiés (OUI + CI Facile)</option>
+                      <option value="a_qualifier">À qualifier</option>
+                    </select>
+                  </label>
                   <label className="inline-flex items-center gap-2 text-sm text-quai-muted">
                     Trier par date du cahier
                     <select className="input w-auto text-sm" value={tri} onChange={e => setTri(e.target.value)} aria-label="Trier les relances">

@@ -22,6 +22,22 @@ test('tel : serie de date Excel (45870) implausible -> null', L.normaliserTeleph
 test('tel : vide -> null', L.normaliserTelephone('') === null && L.normaliserTelephone(null) === null);
 test('tel : 9 chiffres sans 0 initial -> 0 ajoute', L.normaliserTelephone(612345678) === '0612345678', String(L.normaliserTelephone(612345678)));
 
+// --- causeFauxNumero : ecarter les numeros bidons sans jamais ecarter un vrai ---------
+const faux = (n) => L.causeFauxNumero(L.normaliserTelephone(n));
+test('faux : 0600000001 (remplissage) detecte', !!faux('0600000001'), String(faux('0600000001')));
+test('faux : 0700000000 (remplissage) detecte', !!faux('0700000000'), String(faux('0700000000')));
+test('faux : 0000000000 detecte', !!faux('0000000000'), String(faux('0000000000')));
+test('faux : 1111111111 (chiffre repete) detecte', !!faux('1111111111'), String(faux('1111111111')));
+test('faux : 0123456789 (suite) detecte', !!faux('0123456789'), String(faux('0123456789')));
+test('faux : 0606060606 (repetitif) detecte', !!faux('0606060606'), String(faux('0606060606')));
+test('faux : 0012345678 (indicatif 0) detecte', !!faux('0012345678'), String(faux('0012345678')));
+// Aucun vrai numero ne doit etre ecarte : c'est le risque a eviter absolument.
+test('vrai : 0612345678 conserve', faux('0612345678') === null, String(faux('0612345678')));
+test('vrai : 0476123456 (fixe Grenoble) conserve', faux('0476123456') === null, String(faux('0476123456')));
+test('vrai : 0755667788 conserve', faux('0755667788') === null, String(faux('0755667788')));
+test('vrai : 0699887766 conserve', faux('0699887766') === null, String(faux('0699887766')));
+test('vrai : +33 6 12 34 56 78 conserve', faux('+33 6 12 34 56 78') === null, String(faux('+33 6 12 34 56 78')));
+
 // --- normaliserMail --------------------------------------------------------
 test('mail : casse et espaces', L.normaliserMail('  Alice.Durand@Test.FR ') === 'alice.durand@test.fr', String(L.normaliserMail('  Alice.Durand@Test.FR ')));
 test('mail : sans arobase -> null', L.normaliserMail('pas-un-mail') === null);

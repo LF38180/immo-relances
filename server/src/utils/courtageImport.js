@@ -39,6 +39,28 @@ function normaliserTelephone(v) {
   return d;
 }
 
+// Numero manifestement faux (saisi pour remplir la case) : Marine perdrait son temps.
+// Prudent volontairement : on n'ecarte que l'evident, un vrai numero ne doit jamais sortir.
+// Renvoie la cause (string) si faux, null si le numero est plausible.
+function causeFauxNumero(tel) {
+  if (!tel) return null;                                    // pas de numero : traite ailleurs
+  const d = String(tel).replace(/\D/g, '');
+  if (!d) return null;
+  if (/^0+$/.test(d)) return 'que des zeros';
+  if (new Set(d.split('')).size === 1) return 'chiffre repete';           // 1111111111
+  const sansZero = d.startsWith('0') ? d.slice(1) : d;
+  if (new Set(sansZero.split('')).size === 1) return 'chiffre repete';    // 0111111111
+  if (/^0?(123456789|1234567890|0123456789|987654321)/.test(d)) return 'suite de chiffres';
+  // Indicatif suivi d'une longue serie de zeros : 0600000001, 0700000000, 0100000042...
+  if (/^0[1-9]0{5,}/.test(d)) return 'numero de remplissage';
+  // Moins de 3 chiffres distincts sur 10 positions : 0606060606, 0612121212...
+  if (d.length === 10 && new Set(d.split('')).size <= 2) return 'chiffres repetitifs';
+  // Numero francais : 10 chiffres commencant par 0, indicatif 1-9 (le 0 n'existe pas).
+  if (d.length === 10 && !/^0[1-9]/.test(d)) return 'indicatif invalide';
+  if (d.length !== 10 && !(d.length > 10 && !d.startsWith('0'))) return 'longueur invalide (' + d.length + ')';
+  return null;
+}
+
 function normaliserMail(v) {
   if (v === null || v === undefined) return null;
   const m = String(v).trim().toLowerCase();
@@ -195,6 +217,6 @@ function ajouterJours(iso, n) {
 
 module.exports = {
   COL, CATEGORIES, EN_TETES_REPETES,
-  normaliserTexte, normaliserTelephone, normaliserMail, normaliserDate,
+  normaliserTexte, normaliserTelephone, causeFauxNumero, normaliserMail, normaliserDate,
   normaliserSource, estAgentExclu, categoriser, hashLigne, latencePour, ajouterJours,
 };

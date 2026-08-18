@@ -132,6 +132,29 @@ if (!userCols.includes('last_login')) db.exec("ALTER TABLE users ADD COLUMN last
 const uCols = db.prepare("PRAGMA table_info(users)").all().map(c => c.name);
 if (!uCols.includes('must_change_password')) db.exec("ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0");
 
+// Migration : ajoute le statut 'faux_numero' au CHECK de courtage_fiches.
+// SQLite ne modifie pas un CHECK en place -> table-swap. courtage_actions et
+// courtage_demandes referencent courtage_fiches : FK OFF + transaction + DROP IF EXISTS.
+function migrerStatutsCourtage() {
+  const t = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='courtage_fiches'").get();
+  if (!t || /'faux_numero'/.test(t.sql)) return;
+  const colonnes = db.prepare('PRAGMA table_info(courtage_fiches)').all().map((c) => c.name).join(',');
+  const nouveau = t.sql
+    .replace(/CREATE TABLE\s+courtage_fiches/i, 'CREATE TABLE courtage_fiches_new')
+    .replace("'gagne','perdu','injoignable','ne_plus_contacter'", "'gagne','perdu','injoignable','ne_plus_contacter','faux_numero'");
+  db.pragma('foreign_keys = OFF');
+  db.transaction(() => {
+    db.exec('DROP TABLE IF EXISTS courtage_fiches_new');
+    db.exec(nouveau);
+    db.exec(`INSERT INTO courtage_fiches_new (${colonnes}) SELECT ${colonnes} FROM courtage_fiches`);
+    db.exec('DROP TABLE courtage_fiches');
+    db.exec('ALTER TABLE courtage_fiches_new RENAME TO courtage_fiches');
+    db.exec('CREATE INDEX IF NOT EXISTS idx_courtage_fiches_relance ON courtage_fiches(prochaine_relance)');
+    db.exec('CREATE INDEX IF NOT EXISTS idx_courtage_fiches_tel ON courtage_fiches(telephone_norm)');
+  })();
+  db.pragma('foreign_keys = ON');
+}
+
 // Tables courtage (espace cloisonné Marine) — aucune interaction avec contacts/relances.
 db.exec(`
   CREATE TABLE IF NOT EXISTS courtage_fiches (
@@ -148,7 +171,7 @@ db.exec(`
     priorite INTEGER NOT NULL DEFAULT 1,
     statut TEXT NOT NULL DEFAULT 'en_relance' CHECK(statut IN
       ('a_qualifier','en_relance','simulation_faite','dossier_en_cours',
-       'gagne','perdu','injoignable','ne_plus_contacter')),
+       'gagne','perdu','injoignable','ne_plus_contacter','faux_numero')),
     prochaine_relance TEXT,
     tentatives_sans_reponse INTEGER NOT NULL DEFAULT 0,
     mail_propose_le TEXT,
@@ -179,6 +202,9 @@ db.exec(`
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 `);
+
+// Applique la migration du CHECK statut sur les bases creees avant 'faux_numero'.
+migrerStatutsCourtage();
 
 // Import du cahier des messages (courtage V2) — journal ligne a ligne (idempotence)
 // et bilan par import.

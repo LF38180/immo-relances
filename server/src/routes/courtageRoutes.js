@@ -19,7 +19,7 @@ const param = (cle, defaut) => { const r = db.prepare('SELECT valeur FROM parame
 const dansNJours = (n) => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
 const enListeNoire = (tel, mail) => !!db.prepare('SELECT 1 FROM courtage_blacklist WHERE (telephone_norm IS NOT NULL AND telephone_norm = ?) OR (mail_norm IS NOT NULL AND mail_norm = ?)').get(tel || '∅', mail || '∅');
 
-const STATUTS = ['a_qualifier', 'en_relance', 'simulation_faite', 'dossier_en_cours', 'gagne', 'perdu', 'injoignable', 'ne_plus_contacter'];
+const STATUTS = ['a_qualifier', 'en_relance', 'simulation_faite', 'dossier_en_cours', 'gagne', 'perdu', 'injoignable', 'ne_plus_contacter', 'faux_numero'];
 
 const insertAction = db.prepare(`INSERT INTO courtage_actions (fiche_id, type, commentaire, prochaine_relance, statut_avant, statut_apres)
   VALUES (@fiche_id, @type, @commentaire, @prochaine_relance, @statut_avant, @statut_apres)`);
@@ -77,15 +77,20 @@ router.get('/fiches', lireSeule, (req, res) => {
 router.get('/fiches/relances-jour', lireSeule, (req, res) => {
   // tri = 'recent' (defaut) | 'ancien' : sens sur la date du message, choisi par Marine.
   const sens = req.query.tri === 'ancien' ? 'ASC' : 'DESC';
+  // qualification = 'qualifie' (OUI agent/Gabby + CI Facile) | 'a_qualifier' | '' (tout).
+  const q = req.query.qualification;
+  const filtreQualif = q === 'qualifie' ? " AND f.categorie IN ('manuel','oui_agent','oui_gabby')"
+    : q === 'a_qualifier' ? " AND f.categorie = 'a_qualifier'" : '';
   const rows = db.prepare(`
     SELECT f.*,
       (SELECT a.commentaire FROM courtage_actions a
         WHERE a.fiche_id = f.id AND a.commentaire IS NOT NULL
         ORDER BY a.created_at DESC, a.id DESC LIMIT 1) AS dernier_commentaire
     FROM courtage_fiches f
-    WHERE f.statut NOT IN ('gagne','perdu','ne_plus_contacter')
+    WHERE f.statut NOT IN ('gagne','perdu','ne_plus_contacter','faux_numero')
       AND f.prochaine_relance IS NOT NULL
       AND f.prochaine_relance <= date('now')
+      ${filtreQualif}
     -- Priorite d'abord (1 CI Facile, 2 OUI agent, 3 OUI Gabby, 4 a qualifier), puis tri
     -- sur la DATE DU MESSAGE (pas prochaine_relance, qui bouge a chaque report et ferait
     -- perdre l'anciennete d'origine du lead). Sens par defaut : plus recent d'abord.
@@ -161,7 +166,7 @@ router.put('/fiches/:id/statut', ecriture, (req, res) => {
       .run(fiche.telephone_norm, fiche.mail_norm, 'ne_plus_contacter');
     prochaine_relance = null;
   }
-  if (statut === 'gagne' || statut === 'perdu') prochaine_relance = null;
+  if (statut === 'gagne' || statut === 'perdu' || statut === 'faux_numero') prochaine_relance = null;
   action(fiche.id, 'statut', { statut_avant: fiche.statut, statut_apres: statut });
   db.prepare(`UPDATE courtage_fiches SET statut = ?, prochaine_relance = ?, updated_at = datetime('now') WHERE id = ?`)
     .run(statut, prochaine_relance, fiche.id);
@@ -257,7 +262,7 @@ function traiterLignes(lignes, ecrire, etat) {
   };
   const bilan = {
     lignes_lues: 0, creees: 0, doublons: 0, exclues: 0,
-    blacklistees: 0, ignorees: 0, deja_importees: 0,
+    blacklistees: 0, ignorees: 0, deja_importees: 0, faux_numeros: 0,
     parCategorie: { oui_agent: 0, oui_gabby: 0, a_qualifier: 0 },
   };
 
@@ -363,7 +368,13 @@ function traiterLignes(lignes, ecrire, etat) {
       ? CI.ajouterJours(dateContact, latence)
       : CI.ajouterJours(new Date().toISOString().slice(0, 10), latence);
 
+    // Numero manifestement faux (0600000001, 0000000000, suite...) : la fiche est creee
+    // mais marquee 'faux_numero' et sortie de la file (Marine ne perd pas d'appel dessus).
+    const fauxNumero = tel ? CI.causeFauxNumero(tel) : null;
+    const statutInitial = fauxNumero ? 'faux_numero' : 'en_relance';
+
     bilan.creees++;
+    if (fauxNumero) bilan.faux_numeros = (bilan.faux_numeros || 0) + 1;
     if (bilan.parCategorie[categorie] !== undefined) bilan.parCategorie[categorie]++;
 
     if (ecrire) {
@@ -377,12 +388,16 @@ function traiterLignes(lignes, ecrire, etat) {
         dateContact, reference_bien,
         CI.normaliserSource(valeurs[COL.source]), val(valeurs, COL.attribution_cr),
         val(valeurs, COL.capacite_emprunt), categorie, verdict.priorite,
-        'en_relance', prochaine_relance,
+        statutInitial, fauxNumero ? null : prochaine_relance,
         val(valeurs, COL.commentaire), val(valeurs, COL.suivi_lead),
         onglet, numLigne
       );
       const id = r.lastInsertRowid;
       action(id, 'creation', { commentaire: val(valeurs, COL.commentaire), prochaine_relance });
+      if (fauxNumero) {
+        action(id, 'statut', { statut_avant: 'en_relance', statut_apres: 'faux_numero',
+          commentaire: 'Detecte a l import : ' + fauxNumero });
+      }
       if (reference_bien) {
         db.prepare('INSERT INTO courtage_demandes (fiche_id, reference_bien, date_demande) VALUES (?,?,?)')
           .run(id, reference_bien, dateContact);
