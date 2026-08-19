@@ -287,10 +287,6 @@ if (!marine) {
   db.prepare('INSERT INTO users (nom, prenom, email, password, role, must_change_password) VALUES (?,?,?,?,?,1)')
     .run('Rosain', 'Marine', 'marine.rosain@lequai-immobilier.com', bcrypt.hashSync('MarineLeQuai', 10), 'courtage');
 }
-// TEMPORAIRE : Loïck teste le compte Marine avec le mot de passe convenu — on désactive
-// le changement obligatoire. AVANT de remettre les accès à Marine : supprimer cette ligne
-// et repasser must_change_password à 1 (le mécanisme de gate reste en place et testé).
-db.prepare("UPDATE users SET must_change_password = 0 WHERE email = 'marine.rosain@lequai-immobilier.com'").run();
 
 // Default scripts
 const existingScripts = db.prepare('SELECT COUNT(*) as cnt FROM scripts').get();

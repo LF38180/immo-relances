@@ -72,13 +72,11 @@ test('colonnes must_change_password et last_login presentes', () => {
   assert.ok(cols.includes('last_login'))
 })
 
-test('Marine existe : role courtage, active', () => {
+test('Marine existe : role courtage, active, mot de passe a changer', () => {
   const m = db.prepare('SELECT * FROM users WHERE email = ?').get('marine.rosain@lequai-immobilier.com')
   assert.ok(m, 'Marine absente')
   assert.strictEqual(m.role, 'courtage')
-  // TEMPORAIRE : gate désactivée le temps des tests de Loïck (voir database.js) —
-  // repasser cette assertion à 1 quand la ligne temporaire sera retirée.
-  assert.strictEqual(m.must_change_password, 0)
+  assert.strictEqual(m.must_change_password, 1)
   assert.strictEqual(m.actif, 1)
   assert.ok(bcrypt.compareSync('MarineLeQuai', m.password))
 })
