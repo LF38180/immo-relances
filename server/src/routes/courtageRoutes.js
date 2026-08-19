@@ -100,7 +100,15 @@ router.get('/fiches/relances-jour', lireSeule, (req, res) => {
     SELECT f.*,
       (SELECT a.commentaire FROM courtage_actions a
         WHERE a.fiche_id = f.id AND a.commentaire IS NOT NULL
-        ORDER BY a.created_at DESC, a.id DESC LIMIT 1) AS dernier_commentaire
+        ORDER BY a.created_at DESC, a.id DESC LIMIT 1) AS dernier_commentaire,
+      -- Derniere action de Marine (hors creation) : permet d'afficher "n'a pas repondu"
+      -- meme quand aucun commentaire n'a ete saisi.
+      (SELECT a.type FROM courtage_actions a
+        WHERE a.fiche_id = f.id AND a.type <> 'creation'
+        ORDER BY a.created_at DESC, a.id DESC LIMIT 1) AS derniere_action,
+      (SELECT a.created_at FROM courtage_actions a
+        WHERE a.fiche_id = f.id AND a.type <> 'creation'
+        ORDER BY a.created_at DESC, a.id DESC LIMIT 1) AS derniere_action_le
     FROM courtage_fiches f
     WHERE f.statut NOT IN ('gagne','perdu','ne_plus_contacter','faux_numero')
       AND f.prochaine_relance IS NOT NULL
@@ -157,7 +165,15 @@ router.get('/fiches/a-mailer', lireSeule, (req, res) => {
     SELECT f.*,
       (SELECT a.commentaire FROM courtage_actions a
         WHERE a.fiche_id = f.id AND a.commentaire IS NOT NULL
-        ORDER BY a.created_at DESC, a.id DESC LIMIT 1) AS dernier_commentaire
+        ORDER BY a.created_at DESC, a.id DESC LIMIT 1) AS dernier_commentaire,
+      -- Derniere action de Marine (hors creation) : permet d'afficher "n'a pas repondu"
+      -- meme quand aucun commentaire n'a ete saisi.
+      (SELECT a.type FROM courtage_actions a
+        WHERE a.fiche_id = f.id AND a.type <> 'creation'
+        ORDER BY a.created_at DESC, a.id DESC LIMIT 1) AS derniere_action,
+      (SELECT a.created_at FROM courtage_actions a
+        WHERE a.fiche_id = f.id AND a.type <> 'creation'
+        ORDER BY a.created_at DESC, a.id DESC LIMIT 1) AS derniere_action_le
     FROM courtage_fiches f
     WHERE f.mail_norm IS NOT NULL
       AND f.statut NOT IN ('gagne','perdu','ne_plus_contacter')
@@ -217,10 +233,35 @@ router.post('/fiches/:id/pas-de-reponse', ecriture, (req, res) => {
     statut = 'injoignable';
   }
   const demain = dansNJours(1);
-  action(fiche.id, 'pas_de_reponse', { prochaine_relance: demain });
+  // Commentaire optionnel ("repondeur", "rappelle ce soir") : trace l'appel dans l'historique.
+  const commentaire = (req.body || {}).commentaire;
+  action(fiche.id, 'pas_de_reponse', {
+    prochaine_relance: demain,
+    commentaire: commentaire && String(commentaire).trim() ? String(commentaire).trim() : null,
+  });
   db.prepare(`UPDATE courtage_fiches SET tentatives_sans_reponse = ?, statut = ?, prochaine_relance = ?, updated_at = datetime('now') WHERE id = ?`)
     .run(tentatives, statut, demain, fiche.id);
   res.json({ tentatives, statut });
+});
+
+// PUT /fiches/:id/categorie — Marine corrige une qualification erronee de l'import
+// (un OUI classe Gabby alors qu'il vient d'un agent, un a-qualifier en fait qualifie...).
+// La priorite suit automatiquement la categorie, la fiche se replace dans la file.
+const PRIORITE_PAR_CATEGORIE = { manuel: 1, oui_agent: 2, oui_gabby: 3, a_qualifier: 4 };
+router.put('/fiches/:id/categorie', ecriture, (req, res) => {
+  const fiche = getFiche(req.params.id);
+  if (!fiche) return res.status(404).json({ error: 'Fiche introuvable' });
+  const { categorie } = req.body || {};
+  if (!Object.prototype.hasOwnProperty.call(PRIORITE_PAR_CATEGORIE, categorie)) {
+    return res.status(400).json({ error: 'Catégorie invalide' });
+  }
+  const priorite = PRIORITE_PAR_CATEGORIE[categorie];
+  action(fiche.id, 'statut', {
+    commentaire: `Qualification corrigée : ${fiche.categorie} -> ${categorie}`,
+  });
+  db.prepare(`UPDATE courtage_fiches SET categorie = ?, priorite = ?, updated_at = datetime('now') WHERE id = ?`)
+    .run(categorie, priorite, fiche.id);
+  res.json(getFiche(fiche.id));
 });
 
 // PUT /fiches/:id/statut — changement de statut

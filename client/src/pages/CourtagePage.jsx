@@ -445,7 +445,7 @@ export default function CourtagePage() {
 
       {showNouvelle && <NouvelleFicheModal onClose={() => setShowNouvelle(false)} onCreated={() => { setShowNouvelle(false); refresh() }} />}
       {showImport && <ImportCahierModal onClose={() => setShowImport(false)} onImported={refresh} />}
-      {detailId && <DetailFicheModal ficheId={detailId} onClose={() => setDetailId(null)} />}
+      {detailId && <DetailFicheModal ficheId={detailId} onClose={() => setDetailId(null)} onSaved={refresh} />}
     </div>
   )
 }
@@ -505,8 +505,17 @@ function FicheCard({ fiche, onRefresh, onOpenDetail, montrerRelance = false }) {
     onRefresh()
   })
 
-  const pasDeReponse = () => run(async () => {
-    const { data } = await api.post(`/courtage/fiches/${fiche.id}/pas-de-reponse`)
+  // Correction d'une qualification erronee de l'import (OUI Gabby vs OUI agent...).
+  const changerCategorie = (cat) => run(async () => {
+    await api.put(`/courtage/fiches/${fiche.id}/categorie`, { categorie: cat })
+    toast.success('Qualification corrigée')
+    setMode(null)
+    onRefresh()
+  })
+
+  const pasDeReponse = (note) => run(async () => {
+    const { data } = await api.post(`/courtage/fiches/${fiche.id}/pas-de-reponse`, { commentaire: note || '' })
+    setMode(null); setCommentaire('')
     if (data.statut === 'injoignable') {
       setInjoignable({ tentatives: data.tentatives })
       toast(`Injoignable après ${data.tentatives} tentatives`)
@@ -550,7 +559,15 @@ function FicheCard({ fiche, onRefresh, onOpenDetail, montrerRelance = false }) {
             </div>
             <div className="flex flex-wrap items-center gap-2 mt-1">
               <span className={`badge ${statutInfo.color}`}>{statutInfo.label}</span>
-              {categorieInfo && <span className={`badge ${categorieInfo.color}`}>{categorieInfo.label}</span>}
+              {categorieInfo && (
+                <span role="button" tabIndex={0}
+                  onClick={(e) => { e.stopPropagation(); setMode(mode === 'categorie' ? null : 'categorie') }}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); setMode('categorie') } }}
+                  title="Cliquer pour corriger la qualification"
+                  className={`badge ${categorieInfo.color} cursor-pointer hover:opacity-80`}>
+                  {categorieInfo.label}
+                </span>
+              )}
               {fiche.date_contact && (
                 <span className="text-xs text-quai-muted inline-flex items-center gap-1">
                   <Icon name="calendar" size="sm" /> Cahier du {formatDateFr(fiche.date_contact)}
@@ -590,6 +607,19 @@ function FicheCard({ fiche, onRefresh, onOpenDetail, montrerRelance = false }) {
           {fiche.reference_bien && <span className="inline-flex items-center gap-1"><Icon name="tag" size="sm" /> {fiche.reference_bien}</span>}
           {fiche.mail && <span className="inline-flex items-center gap-1"><Icon name="mail" size="sm" /> {fiche.mail}</span>}
         </div>
+
+        {/* Trace du dernier appel : ce que Marine a fait la derniere fois, avec la date.
+            Visible meme sans commentaire (ex. un simple "pas de reponse"). */}
+        {fiche.derniere_action && (
+          <div className="flex items-center gap-2 text-xs text-quai-navy bg-quai-light rounded-lg px-3 py-2 mb-2">
+            <Icon name="history" size="sm" className="text-quai-muted flex-shrink-0" />
+            <span>
+              <span className="font-medium">{TYPES_ACTION[fiche.derniere_action] || fiche.derniere_action}</span>
+              {fiche.derniere_action_le && ' — ' + formatDateHeureFr(fiche.derniere_action_le)}
+              {fiche.tentatives_sans_reponse > 0 && ` · ${fiche.tentatives_sans_reponse} tentative${fiche.tentatives_sans_reponse > 1 ? 's' : ''} sans réponse`}
+            </span>
+          </div>
+        )}
 
         {dernierCommentaire && (
           <div className="bg-quai-gold/10 border border-quai-gold/30 rounded-lg p-2.5 text-sm text-quai-text mb-3 flex gap-2">
@@ -660,6 +690,40 @@ function FicheCard({ fiche, onRefresh, onOpenDetail, montrerRelance = false }) {
           </div>
         )}
 
+        {mode === 'categorie' && (
+          <div className="border border-quai-border rounded-lg p-3 mb-3 bg-quai-light/60">
+            <div className="text-xs font-medium text-quai-muted mb-2">
+              Corriger la qualification <span className="font-normal">(l&apos;ordre dans la file suivra)</span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {Object.entries(CATEGORIES_COURTAGE).map(([cle, info]) => (
+                <button key={cle} onClick={() => changerCategorie(cle)} disabled={busy || cle === fiche.categorie}
+                  className={`badge ${info.color} ${cle === fiche.categorie ? 'opacity-40 cursor-default' : 'cursor-pointer hover:opacity-80'}`}>
+                  {info.label}{cle === fiche.categorie ? ' (actuelle)' : ''}
+                </button>
+              ))}
+              <button onClick={() => setMode(null)} className="btn-secondary btn-sm">Annuler</button>
+            </div>
+          </div>
+        )}
+
+        {mode === 'pasDeReponse' && (
+          <div className="border border-quai-border rounded-lg p-3 mb-3 bg-quai-light/60 space-y-2">
+            <label className="block text-xs font-medium text-quai-muted">
+              Commentaire <span className="font-normal">(facultatif — répondeur, rappelle ce soir…)</span>
+            </label>
+            <input className="input" value={commentaire} autoFocus
+              onChange={e => setCommentaire(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') pasDeReponse(commentaire) }} />
+            <div className="flex gap-2">
+              <button onClick={() => pasDeReponse(commentaire)} disabled={busy} className="btn-primary btn-sm">
+                Enregistrer l&apos;appel sans réponse
+              </button>
+              <button onClick={() => { setMode(null); setCommentaire('') }} className="btn-secondary btn-sm">Annuler</button>
+            </div>
+          </div>
+        )}
+
         {mode === 'tropTotDate' && (
           <div className="border border-quai-border rounded-lg p-3 mb-3 bg-quai-light/60 flex flex-wrap items-end gap-2">
             <div>
@@ -682,7 +746,7 @@ function FicheCard({ fiche, onRefresh, onOpenDetail, montrerRelance = false }) {
               </button>
               <button onClick={() => setMode('tropTotDate')} className="text-xs text-quai-muted hover:text-quai-navy underline">choisir une date</button>
             </span>
-            <button onClick={pasDeReponse} disabled={busy} className="btn-secondary btn-sm inline-flex items-center gap-1.5">
+            <button onClick={() => setMode('pasDeReponse')} disabled={busy} className="btn-secondary btn-sm inline-flex items-center gap-1.5">
               <Icon name="phone-off" size="sm" /> Pas de réponse
             </button>
           </div>
@@ -721,15 +785,40 @@ function FicheCard({ fiche, onRefresh, onOpenDetail, montrerRelance = false }) {
 
 // ------------------------------------------------------------- Détail / historique
 
-function DetailFicheModal({ ficheId, onClose }) {
+function DetailFicheModal({ ficheId, onClose, onSaved }) {
   const [fiche, setFiche] = useState(null)
+  // Saisie d'appel depuis la fiche : sert notamment au rappel entrant (Marine cherche
+  // le numero, ouvre la fiche et note l'echange sans repasser par la file).
+  const [commentaire, setCommentaire] = useState('')
+  const [prochaine, setProchaine] = useState(plusJours(7))
+  const [nouveauStatut, setNouveauStatut] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const charger = () => api.get(`/courtage/fiches/${ficheId}`).then(r => setFiche(r.data))
 
   useEffect(() => {
-    api.get(`/courtage/fiches/${ficheId}`).then(r => setFiche(r.data)).catch(() => {
+    charger().catch(() => {
       toast.error('Fiche introuvable')
       onClose()
     })
   }, [ficheId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const enregistrerAppel = async () => {
+    if (!commentaire.trim()) { toast.error('Le commentaire est requis'); return }
+    setBusy(true)
+    try {
+      await api.post(`/courtage/fiches/${ficheId}/relance`, {
+        commentaire: commentaire.trim(),
+        prochaine_relance: prochaine,
+        ...(nouveauStatut ? { statut: nouveauStatut } : {}),
+      })
+      toast.success('Appel enregistré')
+      setCommentaire(''); setNouveauStatut('')
+      await charger()
+      if (onSaved) onSaved()
+    } catch { toast.error('Erreur lors de l\'enregistrement') }
+    finally { setBusy(false) }
+  }
 
   return (
     <Modal title={fiche ? `${nomMaj(fiche.nom)}${fiche.prenom ? ' ' + fiche.prenom : ''}` : 'Fiche'} onClose={onClose}>
@@ -747,6 +836,28 @@ function DetailFicheModal({ ficheId, onClose }) {
             {fiche.reference_bien && <div><span className="text-quai-muted">Référence bien : </span><span className="font-medium text-quai-navy">{fiche.reference_bien}</span></div>}
             {fiche.date_contact && <div><span className="text-quai-muted">Date de la simulation : </span><span className="font-medium text-quai-navy">{formatDateFr(fiche.date_contact)}</span></div>}
             {fiche.source && <div><span className="text-quai-muted">Source : </span><span className="font-medium text-quai-navy">{fiche.source}</span></div>}
+          </div>
+
+          <div className="border border-quai-gold/40 bg-quai-gold/10 rounded-lg p-3 space-y-2">
+            <div className="text-sm font-semibold text-quai-navy">Noter cet appel</div>
+            <textarea className="input resize-none" rows={2} placeholder="Ce qui s'est dit…"
+              value={commentaire} onChange={e => setCommentaire(e.target.value)} />
+            <div className="flex flex-wrap items-end gap-2">
+              <div>
+                <label className="block text-xs font-medium text-quai-muted mb-1">Prochaine relance</label>
+                <input type="date" className="input w-auto text-sm" value={prochaine} onChange={e => setProchaine(e.target.value)} />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-quai-muted mb-1">Statut (facultatif)</label>
+                <select className="input w-auto text-sm" value={nouveauStatut} onChange={e => setNouveauStatut(e.target.value)}>
+                  <option value="">Inchangé</option>
+                  {Object.entries(STATUTS_COURTAGE).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                </select>
+              </div>
+              <button onClick={enregistrerAppel} disabled={busy} className="btn-primary btn-sm">
+                {busy ? 'Enregistrement…' : 'Enregistrer'}
+              </button>
+            </div>
           </div>
 
           {fiche.demandes?.length > 0 && (

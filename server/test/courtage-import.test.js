@@ -485,6 +485,36 @@ setTimeout(async () => {
     const btAgent = await req('GET', '/api/courtage/fiches/boites', agent);
     test('boites : agent (Chrystelle) 403', btAgent.status === 403, btAgent.status);
 
+    // 8quater) HISTORIQUE D'APPEL, commentaire sur "pas de reponse", changement de categorie.
+    const fh = (await req('POST', '/api/courtage/fiches', marine, {
+      nom: 'HISTO', prenom: 'Paul', telephone: '0612349999', mail: 'histo@t.fr',
+      date_contact: '2026-08-10', categorie: 'oui_gabby', priorite: 3, prochaine_relance: aujB,
+    })).body;
+    const pdr = await req('POST', `/api/courtage/fiches/${fh.id}/pas-de-reponse`, marine, { commentaire: 'repondeur, rappeler ce soir' });
+    test('pas de reponse : accepte un commentaire', pdr.status === 200, pdr.status);
+    const detailH = (await req('GET', `/api/courtage/fiches/${fh.id}`, marine)).body;
+    const actionPdr = detailH.actions.find(a => a.type === 'pas_de_reponse');
+    test('pas de reponse : le commentaire est historise',
+      actionPdr && actionPdr.commentaire === 'repondeur, rappeler ce soir', JSON.stringify(actionPdr && actionPdr.commentaire));
+    // la derniere action doit remonter dans la liste (pour l'afficher sur la carte)
+    await req('POST', `/api/courtage/fiches/${fh.id}/trop-tot`, marine, { date: aujB });
+    const listeH = (await req('GET', '/api/courtage/fiches/relances-jour?boite=relances', marine)).body;
+    const carteH = listeH.find(f => f.nom === 'HISTO');
+    test('liste : la derniere action est renvoyee', !!carteH && !!carteH.derniere_action, JSON.stringify(carteH && carteH.derniere_action));
+    test('liste : les tentatives sont renvoyees', !!carteH && carteH.tentatives_sans_reponse === 1, String(carteH && carteH.tentatives_sans_reponse));
+    // changement de categorie : la priorite suit
+    const cat = await req('PUT', `/api/courtage/fiches/${fh.id}/categorie`, marine, { categorie: 'oui_agent' });
+    test('categorie : changement accepte', cat.status === 200 && cat.body.categorie === 'oui_agent', JSON.stringify(cat.body.categorie));
+    test('categorie : la priorite suit (oui_agent -> 2)', cat.body.priorite === 2, String(cat.body.priorite));
+    const catInvalide = await req('PUT', `/api/courtage/fiches/${fh.id}/categorie`, marine, { categorie: 'nimportequoi' });
+    test('categorie : valeur invalide refusee (400)', catInvalide.status === 400, catInvalide.status);
+    const catAgent = await req('PUT', `/api/courtage/fiches/${fh.id}/categorie`, agent, { categorie: 'oui_agent' });
+    test('categorie : agent (Chrystelle) 403', catAgent.status === 403, catAgent.status);
+    const detailFinal = (await req('GET', `/api/courtage/fiches/${fh.id}`, marine)).body;
+    test('categorie : la correction est tracee dans l historique',
+      detailFinal.actions.some(a => /Qualification corrigée/.test(a.commentaire || '')),
+      detailFinal.actions.map(a => a.commentaire).join(' | '));
+
     // 8bis) RENORMALISATION DES TELEPHONES sur les fiches existantes.
     const rn = await req('POST', '/api/courtage/fiches/renormaliser-telephones', marine, {});
     test('renormalisation : route accessible a Marine', rn.status === 200, rn.status);
