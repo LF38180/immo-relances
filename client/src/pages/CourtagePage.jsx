@@ -73,6 +73,8 @@ export default function CourtagePage() {
   const [relances, setRelances] = useState([])
   const [tri, setTri] = useState('recent')   // 'recent' (defaut) | 'ancien' : sens sur la date du cahier
   const [qualification, setQualification] = useState('')  // '' | 'qualifie' | 'a_qualifier'
+  const [boites, setBoites] = useState({ relancesPrevues: 0, mois: [] })
+  const [boite, setBoite] = useState(null)   // null = ecran des boites ; sinon 'relances' | 'AAAA-MM'
   const [aMailer, setAMailer] = useState([])   // injoignables / sans numero, joignables par mail
   const [modele, setModele] = useState(null)          // { objet, corps, telephone }
   const [editModele, setEditModele] = useState(false)
@@ -142,7 +144,10 @@ export default function CourtagePage() {
     finally { setModeleBusy(false) }
   }
 
-  const loadRelances = useCallback(() => api.get(`/courtage/fiches/relances-jour?tri=${tri}&qualification=${qualification}`).then(r => setRelances(r.data)), [tri, qualification])
+  const loadBoites = useCallback(() => api.get('/courtage/fiches/boites')
+    .then(r => setBoites(r.data)).catch(() => {}), [])
+
+  const loadRelances = useCallback(() => api.get(`/courtage/fiches/relances-jour?tri=${tri}&qualification=${qualification}&boite=${boite || ''}`).then(r => setRelances(r.data)), [tri, qualification, boite])
   const loadFiches = useCallback(() => {
     const params = {}
     if (filtreStatut) params.statut = filtreStatut
@@ -151,12 +156,12 @@ export default function CourtagePage() {
   }, [filtreStatut, recherche])
 
   const refresh = useCallback(() => {
-    Promise.all([loadRelances(), loadFiches(), loadAMailer()]).catch(() => {})
-  }, [loadRelances, loadFiches, loadAMailer])
+    Promise.all([loadRelances(), loadFiches(), loadAMailer(), loadBoites()]).catch(() => {})
+  }, [loadRelances, loadFiches, loadAMailer, loadBoites])
 
   useEffect(() => {
     setLoading(true)
-    Promise.all([loadRelances(), loadFiches(), loadAMailer(), loadModele()]).catch(() => {}).finally(() => setLoading(false))
+    Promise.all([loadRelances(), loadFiches(), loadAMailer(), loadModele(), loadBoites()]).catch(() => {}).finally(() => setLoading(false))
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -240,8 +245,58 @@ export default function CourtagePage() {
 
           {loading && <div className="text-center text-quai-muted animate-pulse py-12 text-sm">Chargement…</div>}
 
-          {!loading && tab === 'relances' && (
+          {/* Ecran des boites : une par mois du cahier + celle des relances de Marine. */}
+          {!loading && tab === 'relances' && !boite && (
             <div className="space-y-4">
+              <div className="text-sm text-quai-muted">
+                Choisissez la série de contacts à traiter.
+              </div>
+
+              <button onClick={() => setBoite('relances')}
+                className="w-full text-left card border-2 border-quai-gold bg-quai-gold/10 hover:bg-quai-gold/20 transition-colors">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <Icon name="calendar-clock" size="lg" className="text-quai-navy" />
+                    <div>
+                      <div className="font-display font-bold text-quai-navy">Mes relances prévues</div>
+                      <div className="text-xs text-quai-muted">Contacts que vous avez déjà appelés ou planifiés</div>
+                    </div>
+                  </div>
+                  <div className="text-3xl font-bold text-quai-navy">{boites.relancesPrevues}</div>
+                </div>
+              </button>
+
+              <div className="text-xs font-semibold text-quai-muted uppercase tracking-wide pt-2">
+                Cahier des messages — leads jamais appelés
+              </div>
+              {boites.mois.length === 0 && (
+                <div className="text-sm text-quai-muted">Aucun lead en attente.</div>
+              )}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {boites.mois.map(m => (
+                  <button key={m.cle} onClick={() => setBoite(m.cle)}
+                    className="text-left card hover:border-quai-gold hover:shadow-md transition-all">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="font-medium text-quai-navy capitalize">{m.libelle}</div>
+                      <div className="text-2xl font-bold text-quai-navy">{m.total}</div>
+                    </div>
+                    <div className="text-xs text-quai-muted mt-0.5">contact{m.total > 1 ? 's' : ''} à appeler</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {!loading && tab === 'relances' && boite && (
+            <div className="space-y-4">
+              <button onClick={() => { setBoite(null); loadBoites() }}
+                className="text-sm text-quai-muted hover:text-quai-navy inline-flex items-center gap-1.5">
+                <Icon name="arrow-left" size="sm" /> Retour aux séries
+              </button>
+              <div className="font-display font-bold text-quai-navy text-lg">
+                {boite === 'relances' ? 'Mes relances prévues'
+                  : (boites.mois.find(m => m.cle === boite)?.libelle || boite)}
+              </div>
               {(relances.length > 0 || qualification) && (
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="text-sm text-quai-muted">{relances.length} fiche(s) à relancer</div>
@@ -270,7 +325,7 @@ export default function CourtagePage() {
                 </div>
               )}
               {relances.map(f => (
-                <FicheCard key={f.id} fiche={f} onRefresh={refresh} onOpenDetail={setDetailId} />
+                <FicheCard key={f.id} fiche={f} onRefresh={refresh} onOpenDetail={setDetailId} montrerRelance={boite === 'relances'} />
               ))}
             </div>
           )}
@@ -378,7 +433,7 @@ export default function CourtagePage() {
               <div className="space-y-4">
                 {fiches.length === 0 && <div className="text-center text-quai-muted py-12 text-sm">Aucune fiche.</div>}
                 {fiches.map(f => (
-                  <FicheCard key={f.id} fiche={f} onRefresh={refresh} onOpenDetail={setDetailId} />
+                  <FicheCard key={f.id} fiche={f} onRefresh={refresh} onOpenDetail={setDetailId} montrerRelance />
                 ))}
               </div>
             </div>
@@ -397,7 +452,7 @@ export default function CourtagePage() {
 
 // ---------------------------------------------------------------- Carte fiche
 
-function FicheCard({ fiche, onRefresh, onOpenDetail }) {
+function FicheCard({ fiche, onRefresh, onOpenDetail, montrerRelance = false }) {
   const [mode, setMode] = useState(null) // null | 'relance' | 'tropTotDate'
   const [commentaire, setCommentaire] = useState('')
   const [prochaine, setProchaine] = useState(plusJours(7))
@@ -501,7 +556,9 @@ function FicheCard({ fiche, onRefresh, onOpenDetail }) {
                   <Icon name="calendar" size="sm" /> Cahier du {formatDateFr(fiche.date_contact)}
                 </span>
               )}
-              {fiche.prochaine_relance && (
+              {/* Date de relance affichee UNIQUEMENT dans la boite "Mes relances prevues" :
+                  ailleurs ce sont des leads bruts, c'est Marine qui fixera la date. */}
+              {montrerRelance && fiche.prochaine_relance && (
                 <span className={`text-xs ${enRetard ? 'text-red-600 font-medium' : 'text-quai-muted'}`}>
                   Relance prévue le {formatDateFr(fiche.prochaine_relance)}
                 </span>

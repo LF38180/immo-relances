@@ -84,6 +84,18 @@ router.get('/fiches/relances-jour', lireSeule, (req, res) => {
   const q = req.query.qualification;
   const filtreQualif = q === 'qualifie' ? " AND f.categorie IN ('manuel','oui_agent','oui_gabby')"
     : q === 'a_qualifier' ? " AND f.categorie = 'a_qualifier'" : '';
+  // boite = 'relances' (fiches deja travaillees par Marine) | 'AAAA-MM' (mois du cahier,
+  // uniquement les leads jamais travailles) | '' (tout, comportement historique).
+  const boite = req.query.boite;
+  const dejaTravaillee = "EXISTS (SELECT 1 FROM courtage_actions a WHERE a.fiche_id = f.id AND a.type <> 'creation')";
+  let filtreBoite = '';
+  const argsBoite = [];
+  if (boite === 'relances') {
+    filtreBoite = ` AND ${dejaTravaillee}`;
+  } else if (/^\d{4}-\d{2}$/.test(boite || '')) {
+    filtreBoite = ` AND NOT ${dejaTravaillee} AND substr(COALESCE(f.date_contact, f.created_at), 1, 7) = ?`;
+    argsBoite.push(boite);
+  }
   const rows = db.prepare(`
     SELECT f.*,
       (SELECT a.commentaire FROM courtage_actions a
@@ -94,12 +106,47 @@ router.get('/fiches/relances-jour', lireSeule, (req, res) => {
       AND f.prochaine_relance IS NOT NULL
       AND f.prochaine_relance <= date('now')
       ${filtreQualif}
+      ${filtreBoite}
     -- Priorite d'abord (1 CI Facile, 2 OUI agent, 3 OUI Gabby, 4 a qualifier), puis tri
     -- sur la DATE DU MESSAGE (pas prochaine_relance, qui bouge a chaque report et ferait
     -- perdre l'anciennete d'origine du lead). Sens par defaut : plus recent d'abord.
     ORDER BY f.priorite ASC, COALESCE(f.date_contact, f.created_at) ${sens}, f.prochaine_relance ${sens}
-  `).all();
+  `).all(...argsBoite);
   res.json(rows);
+});
+
+// GET /fiches/boites — regroupement de la file en "boites" cliquables :
+// une boite par mois du cahier (leads jamais travailles) + une boite "Mes relances
+// prevues" (fiches deja appelees/planifiees par Marine). Renvoie les compteurs.
+router.get('/fiches/boites', lireSeule, (req, res) => {
+  // Une fiche est "travaillee" des qu'une action de Marine existe (relance, trop tot,
+  // pas de reponse, mail, changement de statut) — la creation ne compte pas.
+  const rows = db.prepare(`
+    SELECT f.id, f.date_contact, f.created_at, f.priorite,
+      EXISTS (SELECT 1 FROM courtage_actions a
+              WHERE a.fiche_id = f.id AND a.type <> 'creation') AS travaillee
+    FROM courtage_fiches f
+    WHERE f.statut NOT IN ('gagne','perdu','ne_plus_contacter','faux_numero')
+      AND f.prochaine_relance IS NOT NULL
+  `).all();
+
+  const MOIS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
+  const boites = new Map();
+  let relancesPrevues = 0;
+  for (const f of rows) {
+    if (f.travaillee) { relancesPrevues++; continue; }
+    const d = String(f.date_contact || f.created_at || '').slice(0, 7);   // AAAA-MM
+    if (!/^\d{4}-\d{2}$/.test(d)) continue;
+    if (!boites.has(d)) {
+      const [an, m] = d.split('-');
+      boites.set(d, { cle: d, libelle: `${MOIS[parseInt(m, 10) - 1]} ${an}`, total: 0 });
+    }
+    boites.get(d).total++;
+  }
+  res.json({
+    relancesPrevues,
+    mois: [...boites.values()].sort((a, b) => b.cle.localeCompare(a.cle)),   // plus recent d'abord
+  });
 });
 
 // GET /fiches/a-mailer — fiches joignables uniquement par mail : injoignables (2 tentatives),

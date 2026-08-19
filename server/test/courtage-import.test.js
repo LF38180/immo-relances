@@ -455,6 +455,36 @@ setTimeout(async () => {
     const jrA = await req('GET', '/api/courtage/imports', agent);
     test('journal : agent GET /imports 403', jrA.status === 403, jrA.status);
 
+    // 8ter) BOITES : regroupement par mois du cahier + boite des relances de Marine.
+    const aujB = new Date().toISOString().slice(0, 10);
+    const creerB = (nom, tel, dateContact) => req('POST', '/api/courtage/fiches', marine,
+      { nom, telephone: tel, date_contact: dateContact, prochaine_relance: aujB });
+    await creerB('BOITE_AOUT1', '0612340001', '2026-08-05');
+    await creerB('BOITE_AOUT2', '0612340002', '2026-08-12');
+    await creerB('BOITE_JUIL', '0612340003', '2026-07-08');
+    const ficheTravaillee = (await creerB('BOITE_TRAVAILLEE', '0612340005', '2026-08-01')).body;
+    await req('POST', `/api/courtage/fiches/${ficheTravaillee.id}/relance`, marine,
+      { commentaire: 'deja rappelee', prochaine_relance: aujB });
+    const bt = await req('GET', '/api/courtage/fiches/boites', marine);
+    test('boites : route accessible', bt.status === 200, bt.status);
+    test('boites : la fiche travaillee compte dans les relances prevues',
+      bt.body.relancesPrevues >= 1, JSON.stringify(bt.body.relancesPrevues));
+    const aout = bt.body.mois.find(m => m.cle === '2026-08');
+    test('boites : boite du mois presente avec libelle francais',
+      !!aout && /août 2026/i.test(aout.libelle), JSON.stringify(aout));
+    const contenuAout = (await req('GET', '/api/courtage/fiches/relances-jour?boite=2026-08', marine)).body.map(f => f.nom);
+    test('boites : le mois contient ses leads bruts',
+      contenuAout.includes('BOITE_AOUT1') && contenuAout.includes('BOITE_AOUT2'), contenuAout.join(','));
+    test('boites : la fiche travaillee n est PAS dans son mois',
+      !contenuAout.includes('BOITE_TRAVAILLEE'), contenuAout.join(','));
+    const contenuRelances = (await req('GET', '/api/courtage/fiches/relances-jour?boite=relances', marine)).body.map(f => f.nom);
+    test('boites : la fiche travaillee est dans les relances prevues',
+      contenuRelances.includes('BOITE_TRAVAILLEE'), contenuRelances.join(','));
+    test('boites : les leads bruts ne sont pas dans les relances prevues',
+      !contenuRelances.includes('BOITE_AOUT1'), contenuRelances.join(','));
+    const btAgent = await req('GET', '/api/courtage/fiches/boites', agent);
+    test('boites : agent (Chrystelle) 403', btAgent.status === 403, btAgent.status);
+
     // 8bis) RENORMALISATION DES TELEPHONES sur les fiches existantes.
     const rn = await req('POST', '/api/courtage/fiches/renormaliser-telephones', marine, {});
     test('renormalisation : route accessible a Marine', rn.status === 200, rn.status);
