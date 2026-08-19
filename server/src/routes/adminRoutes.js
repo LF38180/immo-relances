@@ -27,10 +27,16 @@ router.post('/users', requireRole('admin'), (req, res) => {
 });
 
 router.put('/users/:id', requireRole('admin'), (req, res) => {
-  const { nom, prenom, email, role, actif, password } = req.body;
+  const { nom, prenom, email, role, actif, password, must_change_password } = req.body;
   if (role !== undefined && !ROLES_VALIDES.includes(role)) return res.status(400).json({ error: 'Rôle invalide' });
   if (password) {
     db.prepare('UPDATE users SET password = ? WHERE id = ?').run(bcrypt.hashSync(password, 10), req.params.id);
+  }
+  // Forcer (1) ou lever (0) le changement de mot de passe a la prochaine connexion :
+  // utile quand on confie un mot de passe provisoire a un nouvel utilisateur.
+  if (must_change_password !== undefined) {
+    db.prepare('UPDATE users SET must_change_password = ? WHERE id = ?')
+      .run(must_change_password ? 1 : 0, req.params.id);
   }
   db.prepare(`UPDATE users SET nom = COALESCE(?, nom), prenom = COALESCE(?, prenom),
     email = COALESCE(?, email), role = COALESCE(?, role), actif = COALESCE(?, actif) WHERE id = ?`)
