@@ -485,7 +485,10 @@ function etatSimulation(id) {
 
 // Traite un lot de lignes. ecrire = false -> aucune ecriture (mode simulation).
 // etat : porte le dedoublonnage entre les lots d'une meme session de simulation.
-function traiterLignes(lignes, ecrire, etat) {
+function traiterLignes(lignes, ecrire, etat, options = {}) {
+  // ouisSeulement : n'importe que les OUI (agent/Gabby). Les "NON QUALIFIE" sont comptes
+  // comme ignores. Utile pour demarrer sur les seuls leads chauds.
+  const ouisSeulement = !!options.ouisSeulement;
   const opts = {
     exclusionAgents: param('courtage_exclusion_agents', ''),
     heuristiqueGabby: param('courtage_heuristique_gabby', 'PS_OUI'),
@@ -596,6 +599,11 @@ function traiterLignes(lignes, ecrire, etat) {
 
     // Creation.
     const categorie = verdict.categorie;
+    if (ouisSeulement && categorie !== 'oui_agent' && categorie !== 'oui_gabby') {
+      bilan.ignorees++;
+      if (ecrire) journal.run(hash, onglet, numLigne, null, 'ignore');
+      continue;
+    }
     const latence = CI.latencePour(categorie, latences);
     // Si la date obtenue est passee, la fiche est disponible immediatement :
     // on ne repousse pas (decision du spec, l'historique entre dans la file).
@@ -698,11 +706,13 @@ router.post('/import', importation, (req, res) => {
   // present dans deux onglets/lots differents.
   const sessionId = simulation && b.session_id ? String(b.session_id).slice(0, 100) : null;
 
+  const options = { ouisSeulement: !!b.ouis_seulement };
+
   let bilan;
   try {
     bilan = simulation
-      ? traiterLignes(b.lignes, false, etatSimulation(sessionId))
-      : db.transaction(() => traiterLignes(b.lignes, true))();
+      ? traiterLignes(b.lignes, false, etatSimulation(sessionId), options)
+      : db.transaction(() => traiterLignes(b.lignes, true, null, options))();
   } catch (e) {
     return res.status(500).json({ error: "Echec de l'import : " + e.message });
   }

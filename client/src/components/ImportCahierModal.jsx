@@ -79,6 +79,7 @@ const BILAN_VIDE = {
 export default function ImportCahierModal({ onClose, onImported }) {
   const [fichier, setFichier] = useState(null)      // { nom, lignes, brutes, onglets }
   const [simulation, setSimulation] = useState(true)
+  const [ouisSeulement, setOuisSeulement] = useState(false)   // n'importer que les OUI agent/Gabby
   const [encours, setEncours] = useState(false)
   const [progression, setProgression] = useState(null) // { lot, total }
   const [rapport, setRapport] = useState(null)      // { simulation, ...bilan }
@@ -125,6 +126,7 @@ export default function ImportCahierModal({ onClose, onImported }) {
           fichier: fichier.nom,
           simulation: enSimulation,
           session_id: sessionId,
+          ouis_seulement: ouisSeulement,
           lignes: lots[i],
         })
         cumul = cumuler(cumul, data)
@@ -225,6 +227,16 @@ export default function ImportCahierModal({ onClose, onImported }) {
               <span className="font-medium text-quai-navy">Simuler sans enregistrer</span>
               <span className="block text-xs text-quai-muted mt-0.5">
                 Recommandé : affiche le rapport complet sans créer aucune fiche.
+              </span>
+            </span>
+          </label>
+
+          <label className="flex items-start gap-2 rounded-lg border border-quai-border p-3 cursor-pointer">
+            <input type="checkbox" className="mt-0.5" checked={ouisSeulement} onChange={e => setOuisSeulement(e.target.checked)} />
+            <span className="text-sm text-quai-text">
+              <span className="font-medium text-quai-navy">Importer uniquement les « OUI »</span>
+              <span className="block text-xs text-quai-muted mt-0.5">
+                Ne crée que les prospects intéressés (OUI agent et OUI Gabby). Les « non qualifiés » sont ignorés.
               </span>
             </span>
           </label>

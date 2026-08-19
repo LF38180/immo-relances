@@ -515,6 +515,28 @@ setTimeout(async () => {
       detailFinal.actions.some(a => /Qualification corrigée/.test(a.commentaire || '')),
       detailFinal.actions.map(a => a.commentaire).join(' | '));
 
+    // 8quinquies) IMPORT "OUI SEULEMENT" : ignore les non-qualifies, garde la liste noire.
+    const lgOui = (l, nom, m, pp, ss) => ({ onglet: 'AOUT 2026', ligne: l,
+      valeurs: ['05/08/2026', '10h', 'Appel', 'leboncoin', 'ZOPPAS TARA', nom, 'T',
+        '06999900' + String(l).padStart(2, '0'), nom + '@oui.fr', 'REF', 'com', null, m,
+        null, null, pp || 'NON', null, null, ss || 'NON'] });
+    const impOui = await req('POST', '/api/courtage/import', marine, {
+      fichier: 'ouis.xlsx', simulation: false, ouis_seulement: true,
+      lignes: [lgOui(300, 'SEUL_AGENT', 'OUI', 'NON', 'NON'), lgOui(301, 'SEUL_GABBY', 'OUI', 'OUI', 'NON'),
+        lgOui(302, 'SEUL_AQUAL', 'NON QUALIFIÉ'), lgOui(303, 'SEUL_REFUS', 'NON')],
+    });
+    test('ouis seulement : ne cree que les 2 OUI', impOui.body.creees === 2, JSON.stringify(impOui.body.creees));
+    test('ouis seulement : le non-qualifie est ignore',
+      impOui.body.parCategorie.a_qualifier === 0, JSON.stringify(impOui.body.parCategorie));
+    test('ouis seulement : le NON alimente quand meme la liste noire',
+      impOui.body.blacklistees === 1, String(impOui.body.blacklistees));
+    const apresOui = (await req('GET', '/api/courtage/fiches', marine)).body.map(f => f.nom);
+    test('ouis seulement : le non-qualifie n existe pas en base',
+      !apresOui.includes('SEUL_AQUAL'), apresOui.filter(n => n.startsWith('SEUL_')).join(','));
+    test('ouis seulement : les OUI existent bien',
+      apresOui.includes('SEUL_AGENT') && apresOui.includes('SEUL_GABBY'),
+      apresOui.filter(n => n.startsWith('SEUL_')).join(','));
+
     // 8bis) RENORMALISATION DES TELEPHONES sur les fiches existantes.
     const rn = await req('POST', '/api/courtage/fiches/renormaliser-telephones', marine, {});
     test('renormalisation : route accessible a Marine', rn.status === 200, rn.status);
