@@ -33,37 +33,55 @@ export default function SessionHub() {
   const agents = utilisateurs.filter(u => u.role === 'agent')
   const courtiers = utilisateurs.filter(u => u.role === 'courtage')
 
-  return (
-    <div>
-      <div className="flex flex-wrap items-center gap-2 mb-4">
-        <span className="text-sm text-quai-muted inline-flex items-center gap-1.5">
-          <Icon name="eye" size="sm" /> Vue
-        </span>
-        <select className="input w-auto" value={vue} onChange={e => setVue(e.target.value)}
-          aria-label="Choisir la vue à afficher">
-          <option value="moi">Ma session</option>
-          {agents.length > 0 && (
-            <optgroup label="Agents — file d'appel">
-              {agents.map(a => <option key={a.id} value={`agent:${a.id}`}>{a.prenom} {a.nom}</option>)}
-            </optgroup>
-          )}
-          {courtiers.length > 0 && (
-            <optgroup label="Courtage — boîtes mensuelles">
-              {courtiers.map(c => <option key={c.id} value="courtage">{c.prenom} {c.nom}</option>)}
-            </optgroup>
-          )}
-        </select>
-        {vue !== 'moi' && (
-          <span className="text-xs bg-quai-light border border-quai-border rounded-full px-3 py-1 text-quai-muted">
-            Lecture seule
-          </span>
+  // "Ma session" : SessionPage porte deja son propre conteneur defilable (flex-1
+  // overflow-y-auto). On empile donc le selecteur au-dessus SANS ajouter un second
+  // conteneur de defilement, qui casserait le sien.
+  // Les vues d'observation, elles, sont du contenu brut : c'est ici qu'on fournit
+  // le conteneur defilable, faute de quoi les listes longues sont coupees a l'ecran.
+  const selecteur = (
+    <div className="flex flex-wrap items-center gap-2 px-4 md:px-6 pt-4 pb-2 bg-quai-light flex-shrink-0">
+      <span className="text-sm text-quai-muted inline-flex items-center gap-1.5">
+        <Icon name="eye" size="sm" /> Vue
+      </span>
+      <select className="input w-auto" value={vue} onChange={e => setVue(e.target.value)}
+        aria-label="Choisir la vue à afficher">
+        <option value="moi">Ma session</option>
+        {agents.length > 0 && (
+          <optgroup label="Agents — file d'appel">
+            {agents.map(a => <option key={a.id} value={`agent:${a.id}`}>{a.prenom} {a.nom}</option>)}
+          </optgroup>
         )}
-      </div>
-
-      {vue === 'moi' && <Suspense fallback={<Chargement />}><SessionPage /></Suspense>}
-      {vue.startsWith('agent:') && <VueAgent id={vue.slice(6)} />}
-      {vue === 'courtage' && <VueCourtage />}
+        {courtiers.length > 0 && (
+          <optgroup label="Courtage — boîtes mensuelles">
+            {courtiers.map(c => <option key={c.id} value="courtage">{c.prenom} {c.nom}</option>)}
+          </optgroup>
+        )}
+      </select>
+      {vue !== 'moi' && (
+        <span className="text-xs bg-white border border-quai-border rounded-full px-3 py-1 text-quai-muted">
+          Lecture seule
+        </span>
+      )}
     </div>
+  )
+
+  if (vue === 'moi') {
+    return (
+      <>
+        {selecteur}
+        <Suspense fallback={<Chargement />}><SessionPage /></Suspense>
+      </>
+    )
+  }
+
+  return (
+    <>
+      {selecteur}
+      <div className="flex-1 overflow-y-auto px-4 md:px-6 pb-24 md:pb-6 bg-quai-light">
+        {vue.startsWith('agent:') && <VueAgent id={vue.slice(6)} />}
+        {vue === 'courtage' && <VueCourtage />}
+      </div>
+    </>
   )
 }
 
