@@ -451,6 +451,36 @@ router.get('/dashboard', lireSeule, (req, res) => {
   res.json({ parStatut, relancesSemaine, simulations, dossiers, tauxOuiSimulation, tauxSimulationDossier, aRelancerAujourdhui });
 });
 
+// Suivi de l'activite courtage pour le manager/admin : ce que Marine a fait,
+// jour par jour, et le detail des appels d'une journee. Lecture seule (lireSeule).
+// Equivalent de /admin/relances-jour cote agents classiques.
+router.get('/activite', lireSeule, (req, res) => {
+  // Journees d'activite (30 derniers jours), en heure de Paris.
+  const jours = db.prepare(`
+    SELECT DATE(created_at, 'localtime') AS jour,
+           COUNT(*) AS actions,
+           SUM(CASE WHEN type = 'relance' THEN 1 ELSE 0 END) AS relances,
+           SUM(CASE WHEN type = 'pas_de_reponse' THEN 1 ELSE 0 END) AS sans_reponse,
+           SUM(CASE WHEN type = 'mail_propose' THEN 1 ELSE 0 END) AS mails,
+           MIN(created_at) AS debut, MAX(created_at) AS fin
+    FROM courtage_actions
+    WHERE type <> 'creation' AND created_at >= datetime('now','-30 days')
+    GROUP BY jour ORDER BY jour DESC
+  `).all();
+
+  // Detail d'une journee si demandee (?date=AAAA-MM-JJ), sinon la plus recente.
+  const date = req.query.date || (jours[0] && jours[0].jour) || null;
+  const detail = date ? db.prepare(`
+    SELECT a.id, a.type, a.commentaire, a.created_at,
+           f.id AS fiche_id, f.nom, f.prenom, f.telephone_norm, f.statut, f.categorie
+    FROM courtage_actions a JOIN courtage_fiches f ON f.id = a.fiche_id
+    WHERE a.type <> 'creation' AND DATE(a.created_at, 'localtime') = ?
+    ORDER BY a.created_at ASC
+  `).all(date) : [];
+
+  res.json({ jours, date, detail });
+});
+
 // ---------------------------------------------------------------------------
 // Import du cahier des messages (V2). Le client parse le .xlsx et envoie les
 // lignes brutes ; le serveur applique les regles (voir utils/courtageImport.js).

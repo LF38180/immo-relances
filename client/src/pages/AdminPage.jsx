@@ -74,7 +74,7 @@ export default function AdminPage() {
         <PageHeader title="Administration" />
 
         <div className="flex border-b border-quai-border mb-6">
-          {[['users','Utilisateurs','users'],['params','Paramètres','settings'],...(estAdmin ? [['imports','Imports courtage','file-up'],['donnees','Données','database']] : [])].map(([t, lbl, ic]) => (
+          {[['users','Utilisateurs','users'],['params','Paramètres','settings'],['courtage','Suivi Marine','phone-call'],...(estAdmin ? [['imports','Imports courtage','file-up'],['donnees','Données','database']] : [])].map(([t, lbl, ic]) => (
             <button key={t} onClick={() => setTab(t)}
               className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors inline-flex items-center gap-2 ${tab === t ? 'border-quai-gold text-quai-navy' : 'border-transparent text-quai-muted hover:text-quai-navy'}`}>
               <Icon name={ic} size="sm" /> {lbl}
@@ -234,6 +234,8 @@ export default function AdminPage() {
           </div>
         )}
 
+        {tab === 'courtage' && <SuiviCourtage />}
+
         {tab === 'imports' && estAdmin && <ImportsCourtage />}
 
         {tab === 'donnees' && estAdmin && (
@@ -335,6 +337,137 @@ function ImportsCourtage() {
       <p className="text-xs text-quai-muted mt-2">Les 20 derniers imports. Les simulations sont journalisées mais n'ont rien enregistré.</p>
 
       {showImport && <ImportCahierModal onClose={() => setShowImport(false)} onImported={charger} />}
+    </div>
+  )
+}
+
+// Suivi de l'activite courtage de Marine : ses journees d'appels, le detail de chacune,
+// et l'etat de son portefeuille. Lecture seule (le backend refuse toute ecriture au manager).
+function SuiviCourtage() {
+  const [dash, setDash] = useState(null)
+  const [activite, setActivite] = useState({ jours: [], date: null, detail: [] })
+  const [jour, setJour] = useState(null)
+  const [chargement, setChargement] = useState(true)
+
+  useEffect(() => {
+    Promise.all([
+      api.get('/courtage/dashboard').then(r => setDash(r.data)),
+      api.get('/courtage/activite').then(r => { setActivite(r.data); setJour(r.data.date) }),
+    ]).catch(() => toast.error('Chargement du suivi courtage impossible'))
+      .finally(() => setChargement(false))
+  }, [])
+
+  // Changement de journee : on ne recharge que le detail.
+  const choisirJour = (d) => {
+    setJour(d)
+    api.get('/courtage/activite', { params: { date: d } })
+      .then(r => setActivite(a => ({ ...a, date: d, detail: r.data.detail })))
+      .catch(() => toast.error('Chargement de la journée impossible'))
+  }
+
+  if (chargement) return <div className="text-quai-muted text-sm">Chargement…</div>
+
+  const LIB_TYPE = {
+    relance: 'Relance faite', pas_de_reponse: 'Pas de réponse', mail_propose: 'Mail envoyé',
+    trop_tot: 'Trop tôt', statut: 'Changement de statut', categorie: 'Requalification',
+  }
+  const parStatut = {}
+  ;(dash?.parStatut || []).forEach(r => { parStatut[r.statut] = r.cnt })
+  const LIB_STATUT = {
+    en_relance: 'En relance', injoignable: 'Injoignable', simulation_faite: 'Simulation faite',
+    dossier_en_cours: 'Dossier en cours', gagne: 'Gagné', perdu: 'Perdu',
+    faux_numero: 'Faux numéro', ne_plus_contacter: 'Ne plus contacter',
+  }
+
+  return (
+    <div>
+      <h2 className="font-semibold text-quai-navy mb-4">Suivi de l'activité — Marine Rosain</h2>
+
+      {/* Chiffres clefs du portefeuille courtage. */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+        {[
+          ['À relancer aujourd\'hui', dash?.aRelancerAujourdhui],
+          ['Relances (7 jours)', dash?.relancesSemaine],
+          ['Simulations', dash?.simulations],
+          ['Dossiers en cours', dash?.dossiers],
+        ].map(([lbl, val]) => (
+          <div key={lbl} className="bg-white border border-quai-border rounded-lg p-4">
+            <div className="text-2xl font-bold text-quai-navy">{val ?? 0}</div>
+            <div className="text-xs text-quai-muted mt-0.5">{lbl}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Repartition du portefeuille par statut. */}
+      <div className="flex flex-wrap gap-2 mb-6">
+        {Object.entries(LIB_STATUT).map(([cle, lbl]) => (
+          <span key={cle} className="text-xs bg-quai-light border border-quai-border rounded-full px-3 py-1 text-quai-navy">
+            {lbl} <b>{parStatut[cle] || 0}</b>
+          </span>
+        ))}
+      </div>
+
+      <div className="grid md:grid-cols-3 gap-4">
+        {/* Journees d'activite. */}
+        <div className="md:col-span-1">
+          <h3 className="text-sm font-medium text-quai-muted mb-2">Sessions d'appels</h3>
+          {activite.jours.length === 0 && (
+            <p className="text-sm text-quai-muted">Aucune activité enregistrée pour l'instant.</p>
+          )}
+          <div className="space-y-1">
+            {activite.jours.map(j => (
+              <button key={j.jour} onClick={() => choisirJour(j.jour)}
+                className={`w-full text-left px-3 py-2 rounded-lg border transition-colors ${jour === j.jour ? 'border-quai-gold bg-quai-light' : 'border-quai-border bg-white hover:border-quai-gold'}`}>
+                <div className="text-sm font-medium text-quai-navy">
+                  {new Date(j.jour + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}
+                </div>
+                <div className="text-xs text-quai-muted">
+                  {j.actions} action(s) · {j.relances} relance(s) · {j.sans_reponse} sans réponse
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Detail de la journee selectionnee. */}
+        <div className="md:col-span-2">
+          <h3 className="text-sm font-medium text-quai-muted mb-2">
+            Détail {jour ? `du ${new Date(jour + 'T12:00:00').toLocaleDateString('fr-FR')}` : ''}
+          </h3>
+          {activite.detail.length === 0 && (
+            <p className="text-sm text-quai-muted">Rien à afficher pour cette journée.</p>
+          )}
+          <div className="space-y-2">
+            {activite.detail.map(a => (
+              <div key={a.id} className="bg-white border border-quai-border rounded-lg p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium text-quai-navy truncate">
+                      {(a.nom || '').toUpperCase()} {a.prenom || ''}
+                      {a.telephone_norm && <span className="text-quai-muted font-normal"> · {a.telephone_norm}</span>}
+                    </div>
+                    <div className="text-xs text-quai-muted mt-0.5">
+                      {LIB_TYPE[a.type] || a.type}
+                      {' · '}
+                      {new Date(a.created_at.replace(' ', 'T') + 'Z').toLocaleTimeString('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit' })}
+                    </div>
+                    {a.commentaire && (
+                      <div className="text-sm text-quai-navy mt-1.5 whitespace-pre-wrap">{a.commentaire}</div>
+                    )}
+                  </div>
+                  <span className="shrink-0 text-xs bg-quai-light border border-quai-border rounded-full px-2 py-0.5 text-quai-muted">
+                    {LIB_STATUT[a.statut] || a.statut}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <p className="text-xs text-quai-muted mt-4">
+        Lecture seule : vous consultez l'activité de Marine, vous ne pouvez pas modifier ses fiches.
+      </p>
     </div>
   )
 }

@@ -169,6 +169,11 @@ export default function CourtagePage() {
     return () => clearTimeout(t)
   }, [loadFiches])
 
+  // Recharge la file d'appel des que la boite, le tri ou le filtre changent.
+  // Sans cet effet, l'ecran de boite s'ouvre mais la liste reste celle du chargement
+  // initial : toutes les boites affichent les memes contacts.
+  useEffect(() => { loadRelances().catch(() => {}) }, [loadRelances])
+
   const TABS = [
     ['relances', `Relances du jour (${relances.length})`, 'phone-call'],
     ['mails', `À contacter par mail (${aMailer.length})`, 'mail'],
