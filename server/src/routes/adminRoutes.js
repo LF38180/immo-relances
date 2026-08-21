@@ -140,4 +140,54 @@ router.get('/relances-jour', (req, res) => {
   res.json({ agent, date, relances, stats });
 });
 
+// Vue "par-dessus l'epaule" d'un agent classique (Chrystelle & co), en lecture seule.
+// Renvoie ce qu'il/elle a devant les yeux aujourd'hui : sa file d'appel du moment,
+// ses rappels planifies et son activite du jour. Aucune ecriture, aucun effet de bord
+// sur sa session : on ne fait que lire les memes tables que SessionPage.
+router.get('/vue-agent/:id', (req, res) => {
+  const agentId = parseInt(req.params.id, 10);
+  const agent = db.prepare('SELECT id, nom, prenom, role FROM users WHERE id = ?').get(agentId);
+  if (!agent) return res.status(404).json({ error: 'agent introuvable' });
+
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Paris' });
+
+  // Meme requete que GET /contacts/file-relances : la file est commune aux agents.
+  const file = db.prepare(`
+    SELECT contacts.id, contacts.nom, contacts.prenom, contacts.telephone, contacts.ville,
+           contacts.statut, contacts.score_priorite, contacts.prochain_contact, contacts.categorie,
+           CASE WHEN contacts.statut = 'a_contacter' THEN 0 ELSE 1 END AS priorite_groupe
+    FROM contacts
+    WHERE contacts.statut NOT IN ('pas_interesse', 'inactif')
+      AND (contacts.statut = 'a_contacter'
+        OR (contacts.statut IN ('tente_sans_reponse','rappel_planifie','a_recontacter')
+            AND contacts.prochain_contact IS NOT NULL AND contacts.prochain_contact <= ?))
+    ORDER BY priorite_groupe ASC, contacts.score_priorite DESC, contacts.prochain_contact ASC
+    LIMIT 100
+  `).all(today);
+
+  // Ses rappels a elle : ceux qu'elle a planifies et qui lui restent a traiter.
+  const rappels = db.prepare(`
+    SELECT c.id, c.nom, c.prenom, c.telephone, c.prochain_contact, c.statut
+    FROM contacts c
+    WHERE c.prochain_contact IS NOT NULL
+      AND c.statut IN ('rappel_planifie','a_recontacter','tente_sans_reponse')
+      AND EXISTS (SELECT 1 FROM relances r WHERE r.contact_id = c.id AND r.agent_id = ?)
+    ORDER BY c.prochain_contact ASC LIMIT 100
+  `).all(agentId);
+
+  // Son activite du jour (heure de Paris), pour savoir ou elle en est.
+  const offsetMin = parisOffsetMinutes(today);
+  const debutUtc = isoUtcMoins(`${today}T00:00:00`, offsetMin);
+  const finUtc = isoUtcMoins(`${today}T24:00:00`, offsetMin);
+  const dujour = db.prepare(`
+    SELECT r.id, r.statut, r.notes, r.prochain_contact, r.created_at,
+           c.nom, c.prenom, c.telephone
+    FROM relances r JOIN contacts c ON c.id = r.contact_id
+    WHERE r.agent_id = ? AND r.created_at >= ? AND r.created_at < ?
+    ORDER BY r.created_at DESC
+  `).all(agentId, debutUtc, finUtc);
+
+  res.json({ agent, date: today, file, rappels, dujour });
+});
+
 module.exports = router;

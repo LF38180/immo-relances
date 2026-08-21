@@ -6,7 +6,7 @@ import Layout from './components/Layout'
 
 // Pages chargées à la demande (chunks séparés) — allège le bundle initial.
 const DashboardPage = lazy(() => import('./pages/DashboardPage'))
-const SessionPage = lazy(() => import('./pages/SessionPage'))
+const SessionHub = lazy(() => import('./pages/SessionHub'))
 const ContactsPage = lazy(() => import('./pages/ContactsPage'))
 const ScriptsPage = lazy(() => import('./pages/ScriptsPage'))
 const SupervisionPage = lazy(() => import('./pages/SupervisionPage'))
@@ -49,7 +49,7 @@ function AppInner() {
   const renderPage = () => {
     switch (page) {
       case 'dashboard': return <DashboardPage onNavigate={setPage} />
-      case 'session': return <SessionPage />
+      case 'session': return <SessionHub />
       case 'contacts': return <ContactsPage />
       case 'scripts': return <ScriptsPage />
       case 'supervision': return <SupervisionPage />
