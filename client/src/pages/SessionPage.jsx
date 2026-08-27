@@ -34,6 +34,10 @@ export default function SessionPage() {
   const [recherche, setRecherche] = useState('')
   const [resultats, setResultats] = useState([])
   const [contactOuvert, setContactOuvert] = useState(null)
+  // Contact appele hors file (trouve par la recherche : rappel entrant, message laisse
+  // la veille…). Il prend la place du contact courant pour beneficier du meme ecran et
+  // des memes boutons d'action ; l'enregistrement compte donc dans les stats de session.
+  const [horsFile, setHorsFile] = useState(null)
   const [rappels, setRappels] = useState({ retard: [], aujourdhui: [], aVenir: [] })
   const [showRappels, setShowRappels] = useState(false)
   // 2-step flow state
@@ -45,7 +49,7 @@ export default function SessionPage() {
   const [confirmSuppr, setConfirmSuppr] = useState(false)
   const { user } = useAuth()
 
-  const contact = file[index]
+  const contact = horsFile || file[index]
 
   const telecharger = async () => {
     if (actionsSession.length === 0) { toast.error('Aucune action a exporter pour le moment'); return }
@@ -65,6 +69,16 @@ export default function SessionPage() {
       setDone(false)
       loadFile()
     } catch { toast.error('Erreur generation du recap') }
+  }
+
+  // Rafraichit les donnees de la file SANS bouger la position courante : apres une
+  // note ajoutee depuis la fiche, la "derniere trace" doit apparaitre sans faire
+  // perdre sa place a l'agent (loadFile remet l'index a 0).
+  const rafraichirFile = async () => {
+    try {
+      const r = await api.get('/contacts/file-relances')
+      setFile(r.data.contacts)
+    } catch { /* silencieux : simple rafraichissement d'affichage */ }
   }
 
   const loadFile = async () => {
@@ -146,7 +160,13 @@ export default function SessionPage() {
       else toast.success('Relance enregistree')
       chargerRappels()
 
-      if (index + 1 >= file.length) {
+      // Appel hors file : on revient a la file sans consommer de contact.
+      // Sinon : on avance normalement dans la file.
+      if (horsFile) {
+        setHorsFile(null)
+        setRecherche('')
+        setResultats([])
+      } else if (index + 1 >= file.length) {
         setDone(true)
       } else {
         setIndex(i => i + 1)
@@ -156,12 +176,27 @@ export default function SessionPage() {
     } finally {
       setSubmitting(false)
     }
-  }, [contact, submitting, notes, dateRappel, nouvelleAdresse, adresseInconnue, index, file.length])
+  }, [contact, submitting, notes, dateRappel, nouvelleAdresse, adresseInconnue, index, file.length, horsFile])
+
+  // Ouvre un contact trouve par la recherche dans l'ecran d'appel (hors file).
+  // On recharge la fiche complete : la liste de recherche est allegee et ne porte
+  // pas la derniere trace ni tous les champs affiches par l'ecran d'appel.
+  const ouvrirHorsFile = useCallback(async (c) => {
+    try {
+      const r = await api.get(`/contacts/${c.id}`)
+      setHorsFile(r.data)
+    } catch {
+      setHorsFile(c)   // repli : on affiche au moins ce que la recherche a renvoye
+    }
+    setRecherche('')
+    setResultats([])
+  }, [])
 
   const skip = useCallback(() => {
+    if (horsFile) { setHorsFile(null); return }   // hors file : on revient a la file
     if (index + 1 >= file.length) setDone(true)
     else setIndex(i => i + 1)
-  }, [index, file.length])
+  }, [index, file.length, horsFile])
 
   const supprimerContact = async () => {
     if (!contact) return
@@ -196,7 +231,7 @@ export default function SessionPage() {
 
   if (loading) return <div className="flex-1 flex items-center justify-center bg-quai-light"><div className="animate-pulse text-quai-muted">Chargement de la file…</div></div>
 
-  if (done || file.length === 0) {
+  if (!horsFile && (done || file.length === 0)) {
     return (
       <div className="flex-1 flex items-center justify-center p-8 bg-quai-light">
         <div className="text-center max-w-md">
@@ -257,11 +292,23 @@ export default function SessionPage() {
           {resultats.length > 0 && (
             <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-quai-border rounded-lg shadow-lg max-h-72 overflow-y-auto">
               {resultats.map(c => (
-                <button key={c.id} onClick={() => { setContactOuvert(c); setRecherche(''); setResultats([]) }}
-                  className="w-full text-left px-3 py-2 hover:bg-quai-light border-b border-quai-border last:border-0">
+                <div key={c.id} className="px-3 py-2 border-b border-quai-border last:border-0 hover:bg-quai-light">
                   <div className="text-sm font-medium text-quai-navy">{c.civilite ? c.civilite + ' ' : ''}{c.prenom} {c.nom}</div>
-                  <div className="text-xs text-quai-muted">{c.telephone || c.telephone2 || '—'}{c.ville ? ' · ' + c.ville : ''}</div>
-                </button>
+                  <div className="text-xs text-quai-muted mb-1.5">{c.telephone || c.telephone2 || '—'}{c.ville ? ' · ' + c.ville : ''}</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {/* Enregistrer un appel : meme ecran et memes boutons que la file,
+                        donc compte dans les statistiques de la session. */}
+                    <button onClick={() => ouvrirHorsFile(c)}
+                      className="btn-primary btn-sm inline-flex items-center gap-1.5">
+                      <Icon name="phone-call" size="sm" /> Enregistrer un appel
+                    </button>
+                    {/* Note simple : information sans appel, non comptee. */}
+                    <button onClick={() => { setContactOuvert(c); setRecherche(''); setResultats([]) }}
+                      className="btn-secondary btn-sm inline-flex items-center gap-1.5">
+                      <Icon name="pencil" size="sm" /> Fiche / note
+                    </button>
+                  </div>
+                </div>
               ))}
             </div>
           )}
@@ -299,6 +346,20 @@ export default function SessionPage() {
       </div>
 
       <div className="max-w-3xl mx-auto grid grid-cols-1 gap-4">
+        {/* Appel hors file : on signale clairement qu'on a quitte l'ordre de la file
+            et on offre le retour, pour ne pas perdre sa place. */}
+        {horsFile && (
+          <div className="flex flex-wrap items-center justify-between gap-2 bg-quai-navy/5 border border-quai-navy/20 rounded-lg px-3 py-2">
+            <span className="text-sm text-quai-navy inline-flex items-center gap-1.5">
+              <Icon name="phone-call" size="sm" /> Appel hors file — cet appel comptera dans votre session
+            </span>
+            <button onClick={() => setHorsFile(null)}
+              className="text-sm text-quai-muted hover:text-quai-navy inline-flex items-center gap-1.5">
+              <Icon name="arrow-left" size="sm" /> Revenir a ma file
+            </button>
+          </div>
+        )}
+
         <div className="card">
           <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 mb-4">
             <div>
@@ -310,11 +371,26 @@ export default function SessionPage() {
               <h2 className="text-2xl font-display font-bold text-quai-navy">{contact.civilite ? contact.civilite + ' ' : ''}{contact.prenom} {contact.nom}</h2>
               {contact.ville && <p className="text-quai-muted text-sm">{contact.ville} {contact.code_postal}</p>}
             </div>
-            <div className="sm:text-right text-xs text-quai-muted">
+            <div className="sm:text-right text-xs text-quai-muted sm:max-w-xs">
               {contact.date_dernier_contact && (
                 <div>Dernier contact : {format(new Date(contact.date_dernier_contact), 'dd/MM/yyyy')}</div>
               )}
               <div>{contact.nombre_tentatives} tentative(s)</div>
+              {/* Derniere trace = derniere chose survenue sur ce contact, appel OU note
+                  libre saisie depuis la recherche. Sans cela, un message laisse puis
+                  note n'apparait nulle part au moment de rappeler. */}
+              {contact.derniere_trace_le && (
+                <div className="mt-1.5 pt-1.5 border-t border-quai-border text-left sm:text-right">
+                  <div className="font-medium text-quai-navy">
+                    {contact.derniere_trace_type === 'note' ? 'Derniere note' : 'Dernier appel'}
+                    {' · '}
+                    {format(new Date(contact.derniere_trace_le), 'dd/MM/yyyy')}
+                  </div>
+                  {contact.derniere_trace_notes && (
+                    <div className="mt-0.5 whitespace-pre-wrap text-quai-text">{contact.derniere_trace_notes}</div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
@@ -559,7 +635,10 @@ export default function SessionPage() {
                   disabled={!issueChoisie || submitting}
                   className="btn-primary flex-1 inline-flex items-center justify-center gap-2"
                 >
-                  {submitting ? 'Enregistrement…' : <>Enregistrer et suivant <Icon name="arrow-right" size="sm" /></>}
+                  {submitting ? 'Enregistrement…'
+                    : horsFile
+                      ? <>Enregistrer et revenir a ma file <Icon name="arrow-left" size="sm" /></>
+                      : <>Enregistrer et suivant <Icon name="arrow-right" size="sm" /></>}
                 </button>
                 <button onClick={skip} className="btn-secondary">Passer</button>
               </div>
@@ -581,7 +660,8 @@ export default function SessionPage() {
         <ContactModal
           contact={contactOuvert}
           onClose={() => setContactOuvert(null)}
-          onSaved={() => { setContactOuvert(null); chargerRappels() }}
+          onSaved={() => { setContactOuvert(null); chargerRappels(); rafraichirFile() }}
+          onNoteAjoutee={rafraichirFile}
         />
       )}
     </div>

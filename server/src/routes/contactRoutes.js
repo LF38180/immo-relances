@@ -62,9 +62,20 @@ router.get('/file-relances', (req, res) => {
   // rappels planifiés, à recontacter). Les sans-réponse du jour ont prochain_contact dans le
   // futur (délai paramétrable) donc ne remontent pas le jour même.
   // Ordre : jamais-appelés (groupe 0) d'abord, puis les échéances dues (groupe 1), par score.
+  // derniere_trace : la derniere chose survenue sur le contact, appel OU note libre
+  // (saisie depuis la recherche). Sans cela, un message laisse puis note n'apparait
+  // nulle part au moment de rappeler.
   const contacts = db.prepare(`
     SELECT contacts.*, u.nom AS assigned_nom, u.prenom AS assigned_prenom,
-      CASE WHEN contacts.statut = 'a_contacter' THEN 0 ELSE 1 END AS priorite_groupe
+      CASE WHEN contacts.statut = 'a_contacter' THEN 0 ELSE 1 END AS priorite_groupe,
+      (SELECT r.notes FROM relances r WHERE r.contact_id = contacts.id
+        ORDER BY r.created_at DESC, r.id DESC LIMIT 1) AS derniere_trace_notes,
+      (SELECT r.created_at FROM relances r WHERE r.contact_id = contacts.id
+        ORDER BY r.created_at DESC, r.id DESC LIMIT 1) AS derniere_trace_le,
+      (SELECT r.statut FROM relances r WHERE r.contact_id = contacts.id
+        ORDER BY r.created_at DESC, r.id DESC LIMIT 1) AS derniere_trace_statut,
+      (SELECT r.type FROM relances r WHERE r.contact_id = contacts.id
+        ORDER BY r.created_at DESC, r.id DESC LIMIT 1) AS derniere_trace_type
     FROM contacts LEFT JOIN users u ON u.id = contacts.assigned_to
     WHERE contacts.statut NOT IN ('pas_interesse', 'inactif')
     AND (
@@ -96,10 +107,20 @@ router.get('/:id', (req, res) => {
   const relances = db.prepare(`
     SELECT r.*, u.nom as agent_nom, u.prenom as agent_prenom
     FROM relances r JOIN users u ON r.agent_id = u.id
-    WHERE r.contact_id = ? ORDER BY r.created_at DESC
+    WHERE r.contact_id = ? ORDER BY r.created_at DESC, r.id DESC
   `).all(contact.id);
 
-  res.json({ ...contact, relances });
+  // Meme forme que dans /file-relances : le contact ouvert depuis la recherche
+  // doit afficher la meme "derniere trace" que s'il venait de la file.
+  const dt = relances[0];
+  res.json({
+    ...contact,
+    relances,
+    derniere_trace_notes: dt ? dt.notes : null,
+    derniere_trace_le: dt ? dt.created_at : null,
+    derniere_trace_statut: dt ? dt.statut : null,
+    derniere_trace_type: dt ? dt.type : null,
+  });
 });
 
 // Créer

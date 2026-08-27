@@ -10,7 +10,7 @@ import { format } from 'date-fns'
 import PhotoCarousel from './PhotoCarousel'
 import { labelDateContact } from '../utils/labelDateContact'
 
-export default function ContactModal({ contact, onClose, onSaved }) {
+export default function ContactModal({ contact, onClose, onSaved, onNoteAjoutee }) {
   const isNew = !contact
   const [form, setForm] = useState({
     nom: '', prenom: '', civilite: '', telephone: '', telephone2: '', email: '',
@@ -66,6 +66,9 @@ export default function ContactModal({ contact, onClose, onSaved }) {
       const r = await api.get(`/relances/contact/${contact.id}`)
       setRelances(r.data)
       toast.success('Note ajoutée')
+      // Prevenir la page appelante SANS fermer la modale : la "derniere trace"
+      // affichee sur la fiche de session doit refleter cette note tout de suite.
+      onNoteAjoutee?.()
     } catch { toast.error('Erreur') }
     finally { setAjoutNote(false) }
   }
