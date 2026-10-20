@@ -136,6 +136,25 @@ const t = (n, fn) => { try { fn(); console.log('  OK  ' + n) } catch (e) { conso
   r = await call('GET', '/operation/pilotage', tAdmin);
   t('l admin voit les 15 conseillers', () => assert.strictEqual(r.body.avancement.length, 15));
 
+  // --- Ce qu'un manager d'agence ne doit PAS voir -------------------------
+  r = await call('GET', '/operation/dispatch', tGillesMgr);
+  t('un manager d agence ne répartit que les fiches de son agence', () => {
+    assert.strictEqual(r.status, 200);
+    // Les 363 orphelines sont toutes rattachées à Meylan : Gilles n'en voit
+    // aucune. Il en verra dès qu'une basculera vers Saint-Égrève.
+    const hors = (r.body.lignes || []).filter(l => !/ÉGRÈVE/.test(l.agence || ''));
+    assert.strictEqual(hors.length, 0, hors.length + ' fiches hors de son agence');
+  });
+
+  t('un manager n administre pas les comptes', async () => {});
+  const admGilles = await call('GET', '/admin/users', tGillesMgr);
+  t('la liste des comptes est réservée à l admin', () => {
+    assert.strictEqual(admGilles.status, 403,
+      'un manager peut lire les comptes (statut ' + admGilles.status + ')');
+  });
+  const admAdmin = await call('GET', '/admin/users', tAdmin);
+  t('l admin garde accès aux comptes', () => assert.strictEqual(admAdmin.status, 200));
+
   r = await call('GET', '/operation/dispatch', tTara);
   t('un conseiller n accède pas au dispatch', () => assert.strictEqual(r.status, 403));
 

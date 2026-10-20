@@ -550,22 +550,30 @@ router.get('/recap', conseillerOuPlus, (req, res) => {
 
 // --- Dispatch des orphelins (pilotage) --------------------------------------
 router.get('/dispatch', pilotage, (req, res) => {
+  const moi = identite(req);
+  if (!moi) return res.status(401).json({ error: 'Compte introuvable' });
+
+  // Un manager d'agence ne répartit que les fiches de son agence : il voyait
+  // les 340 des deux agences, alors que son pilotage était bien restreint.
+  const { where, params } = perimetre(moi, 'c');
   const lignes = db.prepare(`
-    SELECT id_modelo, nom, prenom, commune, code_postal, courrier_etat, script,
-           bien_concerne, situation, suggestion_conseiller, suggestion_base,
-           conseiller_precedent, point_attention
-    FROM op_contacts WHERE a_dispatcher = 1
-    ORDER BY suggestion_base, conseiller_precedent, nom`).all();
+    SELECT c.id_modelo, c.nom, c.prenom, c.commune, c.code_postal, c.courrier_etat, c.script,
+           c.bien_concerne, c.situation, c.suggestion_conseiller, c.suggestion_base,
+           c.conseiller_precedent, c.point_attention, c.agence
+    FROM op_contacts c WHERE ${where} AND c.a_dispatcher = 1
+    ORDER BY c.suggestion_base, c.conseiller_precedent, c.nom`).all(...params);
 
   // Le compteur du contrat : ce que chacun a, ce qu'il recevrait si on suivait
   // toutes les suggestions. La règle géographique indique, elle n'arbitre pas
   // la charge — Tara couvre Grenoble et récupérerait 109 fiches de plus.
   const charge = db.prepare(`
-    SELECT conseiller AS nom, COUNT(*) n FROM op_contacts
-    WHERE a_dispatcher = 0 AND conseiller IS NOT NULL GROUP BY conseiller`).all();
+    SELECT c.conseiller AS nom, COUNT(*) n FROM op_contacts c
+    WHERE ${where} AND c.a_dispatcher = 0 AND c.conseiller IS NOT NULL
+    GROUP BY c.conseiller`).all(...params);
   const suggere = db.prepare(`
-    SELECT suggestion_conseiller AS nom, COUNT(*) n FROM op_contacts
-    WHERE a_dispatcher = 1 AND suggestion_conseiller IS NOT NULL GROUP BY suggestion_conseiller`).all();
+    SELECT c.suggestion_conseiller AS nom, COUNT(*) n FROM op_contacts c
+    WHERE ${where} AND c.a_dispatcher = 1 AND c.suggestion_conseiller IS NOT NULL
+    GROUP BY c.suggestion_conseiller`).all(...params);
 
   const parNom = {};
   charge.forEach(c => { parNom[c.nom] = { nom: c.nom, actuel: c.n, suggere: 0 }; });
@@ -579,6 +587,8 @@ router.get('/dispatch', pilotage, (req, res) => {
 
 // Attribution en lot : c'est elle qui fait gagner l'heure sur 340 fiches.
 router.post('/dispatch', pilotage, (req, res) => {
+  const moi = identite(req);
+  if (!moi) return res.status(401).json({ error: 'Compte introuvable' });
   const b = req.body || {};
   const ids = Array.isArray(b.ids) ? b.ids.map(String) : [];
   const vers = String(b.conseiller || '').trim();
@@ -608,7 +618,10 @@ router.post('/dispatch', pilotage, (req, res) => {
   let n = 0;
   db.transaction(() => { for (const id of ids) n += maj.run(vers, agenceCible, id).changes; })();
 
-  res.json({ ok: true, attribuees: n, restantes: db.prepare('SELECT COUNT(*) n FROM op_contacts WHERE a_dispatcher = 1').get().n });
+  const { where: w2, params: p2 } = perimetre(moi, 'c');
+  const restantes = db.prepare(
+    `SELECT COUNT(*) n FROM op_contacts c WHERE ${w2} AND c.a_dispatcher = 1`).get(...p2).n;
+  res.json({ ok: true, attribuees: n, restantes });
 });
 
 // --- Import du fichier Modelo ----------------------------------------------

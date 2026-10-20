@@ -10,8 +10,13 @@ const ROLES_VALIDES = ['agent', 'manager', 'admin', 'courtage', 'conseiller'];
 const router = express.Router();
 router.use(requireAuth, requireRole('manager', 'admin'));
 
-// Utilisateurs
-router.get('/users', (req, res) => {
+// Utilisateurs — la liste des comptes est réservée à l'admin.
+//
+// Un manager pilote une équipe, il n'administre pas les accès : la route
+// n'était gardée que par `requireRole('manager','admin')` au niveau du
+// routeur, si bien qu'un manager pouvait lire, modifier et désactiver
+// n'importe quel compte, y compris celui d'un admin.
+router.get('/users', requireRole('admin'), (req, res) => {
   // `agence` restreint un manager à son agence : sans elle à l'écran, on ne
   // voyait pas qui était rattaché à quoi.
   res.json(db.prepare(`SELECT id, nom, prenom, email, role, agence, actif,
