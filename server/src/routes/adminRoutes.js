@@ -3,23 +3,28 @@ const bcrypt = require('bcryptjs');
 const { db } = require('../database');
 const { requireAuth, requireRole } = require('../auth');
 
-const ROLES_VALIDES = ['agent', 'manager', 'admin', 'courtage'];
+// 'conseiller' manquait : on ne pouvait ni en créer un, ni modifier le rôle
+// de l'un des quinze créés par l'import de l'opération.
+const ROLES_VALIDES = ['agent', 'manager', 'admin', 'courtage', 'conseiller'];
 
 const router = express.Router();
 router.use(requireAuth, requireRole('manager', 'admin'));
 
 // Utilisateurs
 router.get('/users', (req, res) => {
-  res.json(db.prepare('SELECT id, nom, prenom, email, role, actif, created_at, last_login FROM users').all());
+  // `agence` restreint un manager à son agence : sans elle à l'écran, on ne
+  // voyait pas qui était rattaché à quoi.
+  res.json(db.prepare(`SELECT id, nom, prenom, email, role, agence, actif,
+    must_change_password, created_at, last_login FROM users`).all());
 });
 
 router.post('/users', requireRole('admin'), (req, res) => {
-  const { nom, prenom, email, password, role } = req.body;
+  const { nom, prenom, email, password, role, agence } = req.body;
   if (!ROLES_VALIDES.includes(role)) return res.status(400).json({ error: 'Rôle invalide' });
   if (!nom || !prenom || !email || !password) return res.status(400).json({ error: 'Champs requis manquants' });
   try {
-    const result = db.prepare('INSERT INTO users (nom, prenom, email, password, role) VALUES (?, ?, ?, ?, ?)')
-      .run(nom, prenom, email.toLowerCase(), bcrypt.hashSync(password, 10), role);
+    const result = db.prepare('INSERT INTO users (nom, prenom, email, password, role, agence) VALUES (?, ?, ?, ?, ?, ?)')
+      .run(nom, prenom, email.toLowerCase(), bcrypt.hashSync(password, 10), role, agence || null);
     res.status(201).json({ id: result.lastInsertRowid });
   } catch {
     res.status(400).json({ error: 'Email déjà utilisé' });
@@ -27,7 +32,7 @@ router.post('/users', requireRole('admin'), (req, res) => {
 });
 
 router.put('/users/:id', requireRole('admin'), (req, res) => {
-  const { nom, prenom, email, role, actif, password, must_change_password } = req.body;
+  const { nom, prenom, email, role, actif, password, must_change_password, agence } = req.body;
   if (role !== undefined && !ROLES_VALIDES.includes(role)) return res.status(400).json({ error: 'Rôle invalide' });
   if (password) {
     db.prepare('UPDATE users SET password = ? WHERE id = ?').run(bcrypt.hashSync(password, 10), req.params.id);
@@ -37,6 +42,11 @@ router.put('/users/:id', requireRole('admin'), (req, res) => {
   if (must_change_password !== undefined) {
     db.prepare('UPDATE users SET must_change_password = ? WHERE id = ?')
       .run(must_change_password ? 1 : 0, req.params.id);
+  }
+  // `agence` accepte la chaîne vide pour détacher quelqu'un de son agence :
+  // COALESCE ne suffirait pas, il faut distinguer « non fourni » de « vidé ».
+  if (agence !== undefined) {
+    db.prepare('UPDATE users SET agence = ? WHERE id = ?').run(agence || null, req.params.id);
   }
   db.prepare(`UPDATE users SET nom = COALESCE(?, nom), prenom = COALESCE(?, prenom),
     email = COALESCE(?, email), role = COALESCE(?, role), actif = COALESCE(?, actif) WHERE id = ?`)

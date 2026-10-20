@@ -68,10 +68,12 @@ function AppConnecte({ user, page, setPage }) {
     return espaceHabituel === 'courtage' ? <EspaceCourtage /> : <EspaceAgence page={page} setPage={setPage} />
   }
 
-  // Qui a un second espace ? Marine son courtage, Chrystelle ses relances,
-  // Loïck et les managers l'application entière. Un conseiller recruté pour
-  // l'opération n'a qu'elle : lui montrer un choix l'enverrait sur un écran
-  // vide.
+  // Qui a un second espace ?
+  //
+  // Un conseiller recruté pour l'opération n'a qu'elle : lui montrer un choix
+  // l'enverrait sur un écran vide. Tous les autres ont deux endroits où
+  // travailler — Marine son courtage, Chrystelle ses relances, un manager son
+  // pilotage, un admin l'application entière.
   const aUnAutreEspace = user.role !== 'conseiller'
   if (!aUnAutreEspace) {
     return (
@@ -81,6 +83,27 @@ function AppConnecte({ user, page, setPage }) {
     )
   }
 
+  // Le second espace, selon qui on est.
+  const second = espaceHabituel === 'courtage'
+    ? { id: 'courtage', titre: 'Mon espace courtage',
+        aide: 'Vos fiches de courtage, comme d’habitude', icon: 'table' }
+    : user.role === 'admin'
+      ? { id: 'agence', titre: 'Immo Relances',
+          aide: 'Tableau de bord, contacts, supervision, administration', icon: 'layout-dashboard' }
+      : user.role === 'manager'
+        ? { id: 'agence', titre: 'Immo Relances',
+            aide: 'Tableau de bord et supervision de l’agence', icon: 'layout-dashboard' }
+        : { id: 'agence', titre: 'Mes relances',
+            aide: 'Vos sessions d’appels habituelles', icon: 'phone-call' }
+
+  // Ce que l'opération propose dépend de ce qu'on y fait : un manager qui a
+  // aussi des fiches voit les deux, pas seulement le pilotage.
+  const aideOperation = acces.pilote && acces.fiches > 0
+    ? `${acces.fiches} personne${acces.fiches > 1 ? 's' : ''} à rappeler, et le suivi de l’équipe`
+    : acces.pilote
+      ? 'Suivi, répartition des fiches et vérifications'
+      : `${acces.fiches} personne${acces.fiches > 1 ? 's' : ''} à rappeler`
+
   // Deux espaces : on demande, une fois par session.
   if (!espace) {
     return (
@@ -89,19 +112,9 @@ function AppConnecte({ user, page, setPage }) {
           prenom={user.prenom}
           onChoisir={setEspace}
           espaces={[
-            {
-              id: 'operation',
-              titre: 'Opération anciens clients',
-              aide: acces.pilote
-                ? 'Suivi, répartition des fiches et appels'
-                : `${acces.fiches} personne${acces.fiches > 1 ? 's' : ''} à rappeler`,
-              image: '/operation/sceau-badge.png',
-            },
-            espaceHabituel === 'courtage'
-              ? { id: 'courtage', titre: 'Mon espace courtage', aide: 'Vos fiches de courtage, comme d’habitude', icon: 'table' }
-              : acces.pilote
-                ? { id: 'agence', titre: 'Immo Relances', aide: 'Tableau de bord, contacts, supervision, administration', icon: 'layout-dashboard' }
-                : { id: 'agence', titre: 'Mes relances', aide: 'Vos sessions d’appels habituelles', icon: 'phone-call' },
+            { id: 'operation', titre: 'Opération anciens clients',
+              aide: aideOperation, image: '/operation/sceau-badge.png' },
+            second,
           ]}
         />
       </Suspense>
