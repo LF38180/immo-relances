@@ -1,8 +1,10 @@
-import { useState, lazy, Suspense } from 'react'
+import { useState, useEffect, lazy, Suspense } from 'react'
+import api from '../../utils/api'
 import { useAuth } from '../../hooks/useAuth'
 import Icon from '../../components/ui/Icon'
 
 const SessionOperation = lazy(() => import('./SessionOperation'))
+const AccueilOperation = lazy(() => import('./AccueilOperation'))
 const DispatchPage = lazy(() => import('./DispatchPage'))
 const PilotagePage = lazy(() => import('./PilotagePage'))
 
@@ -16,9 +18,17 @@ const PilotagePage = lazy(() => import('./PilotagePage'))
 export default function OperationHub({ onRetour }) {
   const { user, logout } = useAuth()
   const estPilote = ['manager', 'admin'].includes(user?.role)
-  const [onglet, setOnglet] = useState(estPilote ? 'pilotage' : 'file')
+  // La page d'accueil s'affiche d'abord : elle se lit une fois, le premier
+  // matin, et donne le pourquoi avant le comment.
+  const [onglet, setOnglet] = useState('accueil')
+  const [acces, setAcces] = useState(null)
+
+  useEffect(() => {
+    api.get('/operation/mon-acces').then(r => setAcces(r.data)).catch(() => {})
+  }, [onglet === 'accueil'])
 
   const onglets = [
+    { id: 'accueil', label: 'Repères', icon: 'file-text' },
     { id: 'file', label: 'Mes appels', icon: 'phone' },
     ...(estPilote ? [
       { id: 'pilotage', label: 'Suivi', icon: 'layout-dashboard' },
@@ -61,6 +71,10 @@ export default function OperationHub({ onRetour }) {
       )}
 
       <Suspense fallback={<div className="p-6 text-quai-muted">Chargement…</div>}>
+        {onglet === 'accueil' && (
+          <AccueilOperation acces={acces} bilan={acces?.bilan} estPilote={estPilote}
+            onCommencer={() => setOnglet('file')} />
+        )}
         {onglet === 'file' && <SessionOperation />}
         {onglet === 'pilotage' && <PilotagePage />}
         {onglet === 'dispatch' && <DispatchPage />}

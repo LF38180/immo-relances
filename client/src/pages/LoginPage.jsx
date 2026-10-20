@@ -97,14 +97,12 @@ export default function LoginPage() {
             </button>
           </form>
 
-          <div className="mt-8 p-4 bg-white rounded-xl border border-quai-border text-xs text-quai-muted">
-            <p className="font-semibold text-quai-navy mb-2">Comptes de démonstration</p>
-            <div className="space-y-1">
-              <p>Agent : <span className="font-mono">agent@lequai-immobilier.com</span> / agent123</p>
-              <p>Manager : <span className="font-mono">manager@lequai-immobilier.com</span> / manager123</p>
-              <p>Admin : <span className="font-mono">admin@lequai-immobilier.com</span> / admin123</p>
-            </div>
-          </div>
+          {/* Les identifiants de démonstration ne sont plus affichés : ils
+              donnaient à quiconque ouvrait la page un accès administrateur à
+              l'application, donc aux coordonnées de tous les contacts. */}
+          <p className="mt-8 text-xs text-quai-muted text-center">
+            Mot de passe oublié ? Demandez-le à votre manager.
+          </p>
         </div>
       </div>
     </div>

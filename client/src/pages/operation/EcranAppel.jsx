@@ -56,7 +56,7 @@ export default function EcranAppel({ contact: c, onEnregistre, onPasser }) {
   return (
     <div className="flex-1 flex flex-col min-h-0 bg-quai-light">
       <div className="flex-1 overflow-y-auto">
-        <div className="max-w-2xl mx-auto p-3 space-y-3 pb-4">
+        <div className="max-w-3xl mx-auto p-3 md:p-4 space-y-3 pb-4">
 
           {/* Qui j'appelle, et avec quoi. */}
           <div className="bg-quai-navy text-white rounded-xl p-4">
@@ -88,11 +88,11 @@ export default function EcranAppel({ contact: c, onEnregistre, onPasser }) {
 
             <div className="text-[11px] text-white/70 mt-2 leading-snug">{e.contexte}</div>
 
-            <div className="flex gap-2 mt-3">
+            <div className="flex gap-2 mt-3 md:max-w-md">
               {tel ? (
                 <a href={`tel:${tel}`}
                   className="flex-1 bg-white text-quai-navy rounded-lg py-3 font-semibold text-center
-                             inline-flex items-center justify-center gap-2">
+                             inline-flex items-center justify-center gap-2 md:text-lg">
                   <Icon name="phone" size="sm" /> {tel}
                 </a>
               ) : (
@@ -143,10 +143,10 @@ export default function EcranAppel({ contact: c, onEnregistre, onPasser }) {
             <Boutons label="Toujours propriétaire du bien ?" valeur={res.toujours_proprietaire}
               options={[[1, 'Oui'], [0, 'Non']]} onChange={v => champ('toujours_proprietaire', v)} />
             {res.toujours_proprietaire === 0 && (
-              <>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <Saisie label="Revendu quand ?" value={res.revendu_quand || ''} onChange={v => champ('revendu_quand', v)} />
                 <Saisie label="Par quelle agence ?" value={res.revendu_par_qui || ''} onChange={v => champ('revendu_par_qui', v)} />
-              </>
+              </div>
             )}
             <Boutons label="Un projet ?" valeur={res.projet}
               options={[['VENTE', 'Vente'], ['ACHAT', 'Achat'], ['INVESTISSEMENT', 'Investissement'], ['AUCUN', 'Aucun']]}
@@ -198,7 +198,7 @@ export default function EcranAppel({ contact: c, onEnregistre, onPasser }) {
           )}
 
           <Carte titre="Comment s’est terminé l’appel ?" aide="Obligatoire pour passer au suivant.">
-            <div className="grid grid-cols-2 gap-1.5">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-1.5">
               {ISSUES.map(([v, l, teinte]) => (
                 <button key={v} onClick={() => setIssue(v)}
                   className={`px-2.5 py-2.5 rounded-lg border text-xs font-medium transition-colors min-h-[3rem] ${
@@ -241,7 +241,7 @@ export default function EcranAppel({ contact: c, onEnregistre, onPasser }) {
 
       {/* Barre d'action fixe : le geste qui enchaîne. */}
       <div className="border-t border-quai-border bg-white p-3 shrink-0">
-        <div className="max-w-2xl mx-auto flex gap-2">
+        <div className="max-w-3xl mx-auto flex gap-2">
           <button onClick={onPasser}
             className="px-4 rounded-lg border border-quai-border text-quai-muted text-sm min-h-[3rem]">
             Passer

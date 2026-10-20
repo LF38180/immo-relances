@@ -89,6 +89,9 @@ function Progression({ index, total, bilan, plage, onListe }) {
   const pct = Math.round((index / total) * 100)
   return (
     <div className="bg-white border-b border-quai-border px-3 py-2 shrink-0">
+      {/* Alignée sur la colonne de contenu : sur un écran large, un compteur
+          collé au bord gauche et des chiffres à l'autre bout se lisent mal. */}
+      <div className="max-w-3xl mx-auto">
       <div className="flex items-center justify-between gap-2 text-xs mb-1.5">
         <span className="text-quai-muted">
           Appel <b className="text-quai-navy">{index + 1}</b> / {total}
@@ -118,6 +121,7 @@ function Progression({ index, total, bilan, plage, onListe }) {
           <Icon name="alert-triangle" size="sm" className="inline mr-0.5" />{plage.raison}
         </div>
       )}
+      </div>
     </div>
   )
 }

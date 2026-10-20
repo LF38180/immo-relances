@@ -92,11 +92,36 @@ router.get('/mon-acces', (req, res) => {
   const moi = identite(req);
   if (!moi) return res.json({ participe: false });
   const n = db.prepare('SELECT COUNT(*) n FROM op_contacts WHERE LOWER(TRIM(conseiller)) = LOWER(?)').get(moi.nom_complet).n;
+  // Chiffres de la page d'accueil : ceux du conseiller connecté, recalculés à
+  // chaque affichage.
+  const { where, params } = perimetre(moi, 'c');
+  const bilan = db.prepare(`
+    SELECT
+      COUNT(*) AS total,
+      SUM(CASE WHEN c.objectif_principal = 'ADRESSE' THEN 1 ELSE 0 END) AS adresse_count,
+      SUM(CASE WHEN NOT EXISTS (SELECT 1 FROM op_appels a WHERE a.id_modelo = c.id_modelo)
+               THEN 1 ELSE 0 END) AS restants
+    FROM op_contacts c WHERE ${where} AND c.a_dispatcher = 0`).get(...params);
+
+  const acquis = db.prepare(`
+    SELECT
+      SUM(CASE WHEN r.actualisation = 'ACCEPTEE' THEN 1 ELSE 0 END) AS rdv,
+      SUM(CASE WHEN r.adresse_maj IS NOT NULL THEN 1 ELSE 0 END)    AS adresses
+    FROM op_resultats r JOIN op_contacts c ON c.id_modelo = r.id_modelo
+    WHERE ${where}`).get(...params);
+
   res.json({
     participe: n > 0 || moi.global,
-    fiches: n,
+    fiches: moi.global ? bilan.total : n,
     pilote: moi.global,
     agence: moi.agence,
+    bilan: {
+      total: bilan.total || 0,
+      restants: bilan.restants || 0,
+      adresse_count: bilan.adresse_count || 0,
+      rdv: acquis.rdv || 0,
+      adresses: acquis.adresses || 0,
+    },
   });
 });
 
