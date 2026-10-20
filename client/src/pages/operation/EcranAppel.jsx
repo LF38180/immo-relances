@@ -116,9 +116,12 @@ export default function EcranAppel({ contact: c, onEnregistre, onPasser, horsFil
               <span className="text-[10px] px-1.5 py-0.5 rounded bg-quai-gold text-quai-navy font-bold">
                 SCRIPT {c.script}
               </span>
-              {cibleAdresse && (
+              {/* Le vocabulaire de la feuille imprimée : ce dont l'agent a
+                  besoin avant de décrocher, c'est de savoir quel script il
+                  prend — pas un objectif inventé pour l'écran. */}
+              {c.courrier_etat !== 'ENVOYE' && (
                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/20 font-medium">
-                  récupérer l’adresse
+                  courrier non envoyé
                 </span>
               )}
               {c.stop_telephone === 1 && (
