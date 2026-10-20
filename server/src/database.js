@@ -128,6 +128,49 @@ if (!userCols.includes('last_login')) db.exec("ALTER TABLE users ADD COLUMN last
     db.pragma('foreign_keys = ON');
   }
 }
+// Migration rôle 'conseiller' + colonne agence (opération anciens clients).
+// Même procédure FK-safe que ci-dessus : CHECK non modifiable en place, et
+// op_appels.user_id référence users -> DROP TABLE échouerait FK actives.
+//
+// 'conseiller' plutôt que de réutiliser 'agent' : un conseiller de l'opération
+// ne doit pas hériter des écrans de relance classique, et inversement.
+// La colonne agence restreint un manager à son agence (Saint-Égrève) ; vide =
+// voit tout, ce qui laisse le comportement actuel inchangé pour l'existant.
+{
+  const sql = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='users'").get();
+  if (sql && /CHECK\(role IN/.test(sql.sql) && !/'conseiller'/.test(sql.sql)) {
+    db.pragma('foreign_keys = OFF');
+    const swap = db.transaction(() => {
+      db.exec('DROP TABLE IF EXISTS users_new');
+      db.exec(`
+        CREATE TABLE users_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          nom TEXT NOT NULL, prenom TEXT NOT NULL,
+          email TEXT UNIQUE NOT NULL, password TEXT NOT NULL,
+          role TEXT NOT NULL DEFAULT 'agent'
+            CHECK(role IN ('agent','manager','admin','courtage','conseiller')),
+          actif INTEGER NOT NULL DEFAULT 1,
+          must_change_password INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          last_login TEXT,
+          agence TEXT
+        );
+        INSERT INTO users_new (id,nom,prenom,email,password,role,actif,must_change_password,created_at,last_login)
+          SELECT id,nom,prenom,email,password,role,actif,must_change_password,created_at,last_login FROM users;
+        DROP TABLE users;
+        ALTER TABLE users_new RENAME TO users;
+      `);
+    });
+    swap();
+    db.pragma('foreign_keys = ON');
+  }
+}
+// Ceinture : la colonne agence si le table-swap ci-dessus a déjà eu lieu.
+{
+  const cols = db.prepare("PRAGMA table_info(users)").all().map(c => c.name);
+  if (!cols.includes('agence')) db.exec("ALTER TABLE users ADD COLUMN agence TEXT");
+}
+
 // Ceinture : colonne must_change_password si base créée avant cette version.
 const uCols = db.prepare("PRAGMA table_info(users)").all().map(c => c.name);
 if (!uCols.includes('must_change_password')) db.exec("ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0");
@@ -354,6 +397,162 @@ function recalculerScore(contactId) {
 
   score = Math.max(0, Math.min(100, score));
   db.prepare('UPDATE contacts SET score_priorite = ? WHERE id = ?').run(score, contactId);
+}
+
+
+// ---------------------------------------------------------------------------
+// Opération anciens clients — module cloisonné (tables op_*).
+//
+// Même principe que l'espace courtage : rien de ce qui suit ne touche aux
+// contacts, relances ou fiches courtage. Les contacts viennent d'un import
+// Modelo et vivent uniquement ici.
+//
+// L'identifiant Modelo est la clé partout : c'est lui qui permettra de
+// réinjecter les adresses recueillies et les oppositions dans Modelo. Le perdre
+// rendrait l'opération sans lendemain.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS op_contacts (
+    id_modelo TEXT PRIMARY KEY,
+
+    -- Attribution. a_dispatcher = 1 : la fiche n'est dans la file de personne.
+    a_dispatcher INTEGER NOT NULL DEFAULT 0,
+    conseiller TEXT,
+    suggestion_conseiller TEXT,
+    suggestion_base TEXT,
+    situation TEXT,
+
+    -- Script : calculé à l'import, jamais recalculé (il dépend du conseiller
+    -- précédent, donnée Modelo que l'application n'a pas).
+    conseiller_precedent TEXT,
+    prenom_a_dire TEXT,
+    dossier_repris INTEGER NOT NULL DEFAULT 0,
+    script INTEGER NOT NULL CHECK(script BETWEEN 1 AND 4),
+
+    courrier_etat TEXT NOT NULL DEFAULT 'A_APPELER'
+      CHECK(courrier_etat IN ('ENVOYE','NON_IMPRIME','A_APPELER','A_TRANCHER')),
+    courrier_motif TEXT,
+
+    role TEXT NOT NULL DEFAULT 'INCONNU'
+      CHECK(role IN ('ACQUEREUR','VENDEUR','INCONNU')),
+    civilite TEXT, nom TEXT NOT NULL, prenom TEXT,
+    adresse TEXT, complement TEXT, code_postal TEXT, commune TEXT,
+    adresse_fiable INTEGER NOT NULL DEFAULT 1,
+    tel_portable TEXT, tel_fixe TEXT,
+    email TEXT, email_valide INTEGER NOT NULL DEFAULT 1,
+
+    -- Bloquants : vérifiés côté serveur, pas seulement à l'écran.
+    stop_telephone INTEGER NOT NULL DEFAULT 0,
+    stop_mail INTEGER NOT NULL DEFAULT 0,
+
+    bien_concerne TEXT,
+    partie_au_registre TEXT,
+    agence TEXT, secteur TEXT,
+    objectif_principal TEXT NOT NULL DEFAULT 'ACTUALISATION'
+      CHECK(objectif_principal IN ('ADRESSE','ACTUALISATION')),
+    fiche_a_corriger INTEGER NOT NULL DEFAULT 0,
+
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_op_contacts_conseiller ON op_contacts(conseiller);
+  CREATE INDEX IF NOT EXISTS idx_op_contacts_dispatch   ON op_contacts(a_dispatcher);
+  CREATE INDEX IF NOT EXISTS idx_op_contacts_agence     ON op_contacts(agence);
+
+  -- Une ligne par tentative d'appel, y compris les sonneries dans le vide :
+  -- c'est cette table qui fait foi pour le plafond légal de 4 appels par mois.
+  CREATE TABLE IF NOT EXISTS op_appels (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id_modelo TEXT NOT NULL REFERENCES op_contacts(id_modelo) ON DELETE CASCADE,
+    conseiller TEXT NOT NULL,
+    user_id INTEGER REFERENCES users(id),
+    horodatage TEXT NOT NULL DEFAULT (datetime('now')),
+    issue TEXT NOT NULL CHECK(issue IN (
+      'JOINT','REPONDEUR','PAS_DE_REPONSE','FAUX_NUMERO','A_RAPPELER',
+      'REFUS_FERME','ERREUR_IDENTITE','SUIVI_ANCIEN_CONSEILLER','DECEDE')),
+    rappel_le TEXT,
+    duree_sec INTEGER,
+    notes TEXT
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_op_appels_contact ON op_appels(id_modelo, horodatage DESC);
+  CREATE INDEX IF NOT EXISTS idx_op_appels_date    ON op_appels(horodatage);
+
+  -- Ce qu'on a recueilli. Une ligne par contact, créée au premier appel abouti
+  -- puis complétée : un client peut en dire plus au deuxième appel.
+  CREATE TABLE IF NOT EXISTS op_resultats (
+    id_modelo TEXT PRIMARY KEY REFERENCES op_contacts(id_modelo) ON DELETE CASCADE,
+
+    adresse_maj TEXT, complement_maj TEXT, code_postal_maj TEXT, commune_maj TEXT,
+    courrier_renvoye INTEGER NOT NULL DEFAULT 0,
+    date_renvoi TEXT,
+
+    toujours_proprietaire INTEGER,
+    revendu_quand TEXT, revendu_par_qui TEXT,
+    statut_actuel TEXT CHECK(statut_actuel IN ('PROPRIETAIRE','LOCATAIRE','HEBERGE')),
+
+    projet TEXT CHECK(projet IN ('VENTE','ACHAT','INVESTISSEMENT','AUCUN')),
+    projet_echeance INTEGER,
+
+    actualisation TEXT CHECK(actualisation IN ('ACCEPTEE','REFUSEE','A_REPROPOSER')),
+    date_rdv TEXT,
+    soiree INTEGER NOT NULL DEFAULT 0,
+    panneau INTEGER NOT NULL DEFAULT 0,
+
+    recommandation_nom TEXT,
+    recommandation_mode TEXT CHECK(recommandation_mode IN ('JE_LAPPELLE','IL_FAIT_LE_LIEN')),
+
+    -- Consentement recueilli pendant l'appel : c'est lui qui rend l'opération
+    -- défendable (loi du 30 juin 2025).
+    consentement_tel INTEGER,
+    date_consentement TEXT,
+
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  -- Journal des oppositions : append-only, conservation trois ans, consultable
+  -- par la personne qui le demande (décret du 23 juillet 2026). Aucune route
+  -- de suppression ni de modification n'existe sur cette table.
+  CREATE TABLE IF NOT EXISTS op_journal_opposition (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id_modelo TEXT NOT NULL,
+    horodatage TEXT NOT NULL DEFAULT (datetime('now')),
+    canal TEXT NOT NULL DEFAULT 'TELEPHONE' CHECK(canal IN ('TELEPHONE','MAIL')),
+    origine TEXT NOT NULL DEFAULT 'APPEL',
+    agent TEXT,
+    nom TEXT, prenom TEXT, telephone TEXT
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_op_opposition_contact ON op_journal_opposition(id_modelo);
+
+  -- Exclus de l'opération : chargés en liste noire, jamais en file d'appel.
+  CREATE TABLE IF NOT EXISTS op_exclus (
+    id_modelo TEXT PRIMARY KEY,
+    nom TEXT, prenom TEXT, motif TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS op_imports (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER REFERENCES users(id),
+    fichier TEXT,
+    simulation INTEGER NOT NULL DEFAULT 0,
+    lignes_lues INTEGER NOT NULL DEFAULT 0,
+    creees INTEGER NOT NULL DEFAULT 0,
+    majs INTEGER NOT NULL DEFAULT 0,
+    ignorees INTEGER NOT NULL DEFAULT 0,
+    detail TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+`);
+
+// Point d'attention sur une fiche : une phrase affichée en évidence dans la
+// liste de dispatch et sur l'écran d'appel. Sert aux cas qui demandent un
+// arbitrage humain plutôt qu'une règle — les 23 fiches rattachées à Cindy
+// Bertrand, qui ne fait pas de transaction, et que Loïck reprend à son nom.
+{
+  const cols = db.prepare("PRAGMA table_info(op_contacts)").all().map(c => c.name);
+  if (!cols.includes('point_attention')) db.exec("ALTER TABLE op_contacts ADD COLUMN point_attention TEXT");
 }
 
 module.exports = { db, recalculerScore, DB_PATH };
