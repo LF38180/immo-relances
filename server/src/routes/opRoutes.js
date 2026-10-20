@@ -30,6 +30,10 @@ function identite(req) {
   if (!u) return null;
   return {
     id: u.id,
+    // Le compte dit « Marine Rosain », le fichier Modelo « Marine ROSAIN ».
+    // Toute comparaison de nom se fait donc sans tenir compte de la casse ni
+    // des espaces : sinon Marine ne voyait aucune de ses 31 fiches, et le
+    // cloisonnement rendait le défaut invisible jusqu'au premier matin.
     nom_complet: `${u.prenom} ${u.nom}`.trim(),
     role: u.role,
     agence: u.agence || null,
@@ -42,7 +46,7 @@ function identite(req) {
 // Clause SQL restreignant ce qu'une personne a le droit de voir.
 function perimetre(moi, prefixe = '') {
   const p = prefixe ? prefixe + '.' : '';
-  if (!moi.global) return { where: `${p}conseiller = ?`, params: [moi.nom_complet] };
+  if (!moi.global) return { where: `LOWER(TRIM(${p}conseiller)) = LOWER(?)`, params: [moi.nom_complet] };
   if (moi.agence) return { where: `${p}agence = ?`, params: [moi.agence] };
   return { where: '1=1', params: [] };
 }
@@ -55,6 +59,11 @@ const compteurMois = (id, maintenant = new Date()) =>
   appelsCeMois.get(id, R.moisCourant(maintenant)).n;
 
 const getContact = (id) => db.prepare('SELECT * FROM op_contacts WHERE id_modelo = ?').get(id);
+
+// Cette fiche appartient-elle à cette personne ? Comparaison insensible à la
+// casse : les noms viennent de deux sources qui ne les écrivent pas pareil.
+const normNom = (x) => (x || '').trim().toLowerCase();
+const estSien = (contact, moi) => normNom(contact.conseiller) === normNom(moi.nom_complet);
 
 // Enrichit une fiche de ce qui se calcule : état d'appelabilité, compteur,
 // en-tête de script. Évite au client de refaire la règle — et de se tromper.
@@ -73,6 +82,23 @@ function enrichir(c, maintenant = new Date()) {
     resultat: db.prepare('SELECT * FROM op_resultats WHERE id_modelo = ?').get(c.id_modelo) || null,
   };
 }
+
+// --- Ai-je quelque chose à faire dans cette opération ? ---------------------
+//
+// Appelée au démarrage par toute personne connectée. Sert à décider si on lui
+// montre l'écran de choix : quelqu'un qui n'a aucune fiche ne doit voir aucun
+// changement.
+router.get('/mon-acces', (req, res) => {
+  const moi = identite(req);
+  if (!moi) return res.json({ participe: false });
+  const n = db.prepare('SELECT COUNT(*) n FROM op_contacts WHERE LOWER(TRIM(conseiller)) = LOWER(?)').get(moi.nom_complet).n;
+  res.json({
+    participe: n > 0 || moi.global,
+    fiches: n,
+    pilote: moi.global,
+    agence: moi.agence,
+  });
+});
 
 // --- Ce que je dois faire aujourd'hui --------------------------------------
 //
@@ -171,7 +197,7 @@ router.get('/contacts/:id', conseillerOuPlus, (req, res) => {
   const moi = identite(req);
   const c = getContact(req.params.id);
   if (!c) return res.status(404).json({ error: 'Contact introuvable' });
-  if (!moi.global && c.conseiller !== moi.nom_complet)
+  if (!moi.global && !estSien(c, moi))
     return res.status(403).json({ error: 'Ce contact ne vous est pas attribué' });
   if (moi.global && moi.agence && c.agence !== moi.agence)
     return res.status(403).json({ error: 'Ce contact est hors de votre agence' });
@@ -191,7 +217,7 @@ router.post('/contacts/:id/appel', conseillerOuPlus, (req, res) => {
   const moi = identite(req);
   const c = getContact(req.params.id);
   if (!c) return res.status(404).json({ error: 'Contact introuvable' });
-  if (!moi.global && c.conseiller !== moi.nom_complet)
+  if (!moi.global && !estSien(c, moi))
     return res.status(403).json({ error: 'Ce contact ne vous est pas attribué' });
 
   const b = req.body || {};
@@ -248,7 +274,7 @@ router.put('/contacts/:id/resultat', conseillerOuPlus, (req, res) => {
   const moi = identite(req);
   const c = getContact(req.params.id);
   if (!c) return res.status(404).json({ error: 'Contact introuvable' });
-  if (!moi.global && c.conseiller !== moi.nom_complet)
+  if (!moi.global && !estSien(c, moi))
     return res.status(403).json({ error: 'Ce contact ne vous est pas attribué' });
 
   const b = req.body || {};

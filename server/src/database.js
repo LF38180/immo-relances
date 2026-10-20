@@ -273,17 +273,29 @@ if (!fCols.includes('source_onglet')) db.exec('ALTER TABLE courtage_fiches ADD C
 if (!fCols.includes('source_ligne')) db.exec('ALTER TABLE courtage_fiches ADD COLUMN source_ligne INTEGER');
 if (!fCols.includes('suivi_lead')) db.exec('ALTER TABLE courtage_fiches ADD COLUMN suivi_lead TEXT');
 
-// Seed default admin
-const existingAdmin = db.prepare('SELECT id FROM users WHERE email = ?').get('admin@lequai-immobilier.com');
-if (!existingAdmin) {
-  const hash = bcrypt.hashSync('admin123', 10);
-  db.prepare(`INSERT INTO users (nom, prenom, email, password, role) VALUES (?,?,?,?,?)`).run('Admin', 'Le Quai', 'admin@lequai-immobilier.com', hash, 'admin');
-
-  const agentHash = bcrypt.hashSync('agent123', 10);
-  db.prepare(`INSERT INTO users (nom, prenom, email, password, role) VALUES (?,?,?,?,?)`).run('Dupont', 'Marie', 'agent@lequai-immobilier.com', agentHash, 'agent');
-
-  const managerHash = bcrypt.hashSync('manager123', 10);
-  db.prepare(`INSERT INTO users (nom, prenom, email, password, role) VALUES (?,?,?,?,?)`).run('Martin', 'Pierre', 'manager@lequai-immobilier.com', managerHash, 'manager');
+// Comptes de démarrage, créés seulement s'ils manquent.
+//
+// Chaque compte est vérifié séparément : le bloc précédent n'en testait qu'un
+// et en insérait trois, si bien qu'un admin renommé faisait échouer le
+// démarrage sur une contrainte d'unicité — serveur mort, base intacte mais
+// application inaccessible.
+const COMPTES_DEPART = [
+  { nom: 'Admin', prenom: 'Le Quai', email: 'admin@lequai-immobilier.com', mdp: 'admin123', role: 'admin' },
+  { nom: 'Dupont', prenom: 'Marie', email: 'agent@lequai-immobilier.com', mdp: 'agent123', role: 'agent' },
+  { nom: 'Martin', prenom: 'Pierre', email: 'manager@lequai-immobilier.com', mdp: 'manager123', role: 'manager' },
+];
+{
+  const existe = db.prepare('SELECT id FROM users WHERE email = ?');
+  const creer = db.prepare('INSERT INTO users (nom, prenom, email, password, role) VALUES (?,?,?,?,?)');
+  // Un seul compte suffit à considérer la base initialisée : sans cela, un
+  // compte de démonstration supprimé volontairement reviendrait à chaque
+  // redémarrage.
+  const dejaInitialisee = db.prepare('SELECT COUNT(*) n FROM users').get().n > 0;
+  if (!dejaInitialisee) {
+    for (const c of COMPTES_DEPART) {
+      if (!existe.get(c.email)) creer.run(c.nom, c.prenom, c.email, bcrypt.hashSync(c.mdp, 10), c.role);
+    }
+  }
 }
 
 // Default parametres

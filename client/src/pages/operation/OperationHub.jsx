@@ -1,0 +1,70 @@
+import { useState, lazy, Suspense } from 'react'
+import { useAuth } from '../../hooks/useAuth'
+import Icon from '../../components/ui/Icon'
+
+const FileAppelPage = lazy(() => import('./FileAppelPage'))
+const DispatchPage = lazy(() => import('./DispatchPage'))
+const PilotagePage = lazy(() => import('./PilotagePage'))
+
+// L'espace de l'opération anciens clients. Cloisonné : il ne donne accès à
+// rien d'autre, et rien d'autre n'y accède.
+//
+// `onRetour` n'est fourni qu'aux personnes qui ont aussi un autre espace
+// (Marine son courtage, Chrystelle ses relances). Les treize autres
+// conseillers n'ont que ça : leur montrer un bouton « retour » les enverrait
+// sur un écran vide.
+export default function OperationHub({ onRetour }) {
+  const { user, logout } = useAuth()
+  const estPilote = ['manager', 'admin'].includes(user?.role)
+  const [onglet, setOnglet] = useState(estPilote ? 'pilotage' : 'file')
+
+  const onglets = [
+    { id: 'file', label: 'Mes appels', icon: 'phone' },
+    ...(estPilote ? [
+      { id: 'pilotage', label: 'Suivi', icon: 'layout-dashboard' },
+      { id: 'dispatch', label: 'Répartir', icon: 'users' },
+    ] : []),
+  ]
+
+  return (
+    <div className="h-screen flex flex-col bg-quai-light">
+      <header className="bg-quai-navy text-white px-3 py-2 flex items-center gap-2 shrink-0">
+        <img src="/operation/sceau-badge.png" alt="" className="w-8 h-8 rounded shrink-0" />
+        <div className="min-w-0 flex-1">
+          <div className="font-display font-semibold text-sm leading-tight">Anciens clients</div>
+          <div className="text-[11px] text-white/60 truncate">{user?.prenom} {user?.nom}</div>
+        </div>
+        {onRetour && (
+          <button onClick={onRetour}
+            className="text-white/80 hover:text-white text-xs inline-flex items-center gap-1 px-2 py-2">
+            <Icon name="arrow-left" size="sm" /> Mon espace
+          </button>
+        )}
+        <button onClick={logout} className="text-white/60 hover:text-white p-2" aria-label="Déconnexion">
+          <Icon name="log-out" size="sm" />
+        </button>
+      </header>
+
+      {onglets.length > 1 && (
+        <nav className="bg-white border-b border-quai-border flex gap-0.5 px-2 pt-1 shrink-0
+                        overflow-x-auto scrollbar-none">
+          {onglets.map(o => (
+            <button key={o.id} onClick={() => setOnglet(o.id)}
+              className={`px-3 py-2 text-[13px] font-medium whitespace-nowrap inline-flex items-center
+                          gap-1.5 border-b-2 transition-colors ${
+                onglet === o.id ? 'border-quai-gold text-quai-navy'
+                                : 'border-transparent text-quai-muted'}`}>
+              <Icon name={o.icon} size="sm" /> {o.label}
+            </button>
+          ))}
+        </nav>
+      )}
+
+      <Suspense fallback={<div className="p-6 text-quai-muted">Chargement…</div>}>
+        {onglet === 'file' && <FileAppelPage />}
+        {onglet === 'pilotage' && <PilotagePage />}
+        {onglet === 'dispatch' && <DispatchPage />}
+      </Suspense>
+    </div>
+  )
+}
