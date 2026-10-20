@@ -14,7 +14,9 @@ const tmp = path.join(os.tmpdir(), 'op-routes-test-' + Date.now() + '.db');
 const PORT = 4877;
 const SECRET = 'dev';
 
-const CSV = '/Users/loickferrucci/Downloads/anciens_clients_import.csv';
+// Le fichier de référence vit dans le dépôt : un test qui lit le dossier
+// Téléchargements casse dès que le fichier y est remplacé — ce qui est arrivé.
+const CSV = require('path').join(__dirname, 'donnees', 'anciens-clients.csv');
 if (!fs.existsSync(CSV)) { console.log('op-routes.test.js\n  -- fichier source absent'); process.exit(0); }
 
 // Prépare la base avant de lancer le serveur.
@@ -66,9 +68,21 @@ const t = (n, fn) => { try { fn(); console.log('  OK  ' + n) } catch (e) { conso
 
   // --- Cloisonnement ------------------------------------------------------
   let r = await call('GET', '/operation/file', tTara);
-  t('un conseiller voit sa file', () => {
+  t('un conseiller voit sa file, sans les fiches à identité incertaine', () => {
     assert.strictEqual(r.status, 200);
-    assert.strictEqual(r.body.compteurs.portefeuille, 149 - 0, 'portefeuille : ' + r.body.compteurs.portefeuille);
+    // Tara a 149 fiches, dont 8 « à trancher » : on n'appelle pas quelqu'un
+    // dont on n'est pas sûr qu'il ait vendu chez nous. Elles reviennent dans
+    // la file une fois vérifiées par un manager.
+    assert.strictEqual(r.body.compteurs.portefeuille, 141, 'portefeuille : ' + r.body.compteurs.portefeuille);
+  });
+
+  t('les fiches à vérifier sont bien hors de la file', () => {
+    const aTrancher = db.prepare(
+      "SELECT id_modelo FROM op_contacts WHERE conseiller='Tara ZOPPAS' AND courrier_etat='A_TRANCHER'").all();
+    assert.strictEqual(aTrancher.length, 8);
+    const dansLaFile = new Set(r.body.file.map(c => c.id_modelo));
+    aTrancher.forEach(x => assert.ok(!dansLaFile.has(x.id_modelo),
+      'une fiche à vérifier est proposée : ' + x.id_modelo));
   });
 
   const fileTara = r.body.file;
@@ -93,11 +107,13 @@ const t = (n, fn) => { try { fn(); console.log('  OK  ' + n) } catch (e) { conso
     assert.ok(fileTara.every(c => !c.a_dispatcher));
   });
 
-  t('les objectifs adresse passent avant les autres', () => {
+  t('les fiches jamais appelées sont en ordre alphabétique', () => {
+    // Plus de priorité aux fiches sans adresse : commencer par les appels les
+    // plus difficiles faisait démarrer la journée par des échecs.
     const g = r.body.groupes;
-    const prem = fileTara.slice(g.rappels_dus, g.rappels_dus + g.adresse_jamais_appeles);
-    assert.ok(prem.every(c => c.objectif_principal === 'ADRESSE'),
-      'les premières fiches après les rappels doivent être les objectifs adresse');
+    const neufs = fileTara.slice(g.rappels_dus, g.rappels_dus + g.jamais_appeles);
+    const noms = neufs.map(c => (c.nom || '').toLowerCase());
+    assert.deepStrictEqual(noms, [...noms].sort(), 'les fiches neuves ne sont pas triées par nom');
   });
 
   const dAutrui = db.prepare("SELECT id_modelo FROM op_contacts WHERE conseiller='Lynda GUDINCI' LIMIT 1").get().id_modelo;

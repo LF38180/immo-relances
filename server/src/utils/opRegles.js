@@ -110,6 +110,46 @@ function avertissementsMail(contact) {
   return av;
 }
 
+// --- Dates : deux formats qui ne se comparent pas tels quels ---------------
+//
+// SQLite écrit `datetime('now')` en UTC sans marqueur de fuseau :
+// "2026-10-20 09:30:00". Node interprète cette chaîne comme de l'heure locale,
+// donc deux heures d'écart en été.
+//
+// Et `rappel_le` vient d'un <input type="datetime-local"> : "2026-10-20T13:00",
+// de l'heure locale sans marqueur non plus. Comparer les deux à un
+// `toISOString()` (UTC) décalait tous les rappels — un rappel calé à 13h était
+// présenté comme dû dès 11h.
+
+// Horodatage SQLite (UTC naïf) -> Date réelle.
+function depuisSqlite(s) {
+  if (!s) return null;
+  // Déjà un marqueur de fuseau : on fait confiance.
+  if (/[zZ]|[+-]\d{2}:\d{2}$/.test(s)) return new Date(s);
+  const d = new Date(s.replace(' ', 'T') + 'Z');
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+// Saisie "datetime-local" (heure locale) -> Date réelle.
+function depuisSaisieLocale(s) {
+  if (!s) return null;
+  const d = new Date(s);   // sans suffixe, Node lit bien de l'heure locale
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+// Un rappel est-il arrivé à échéance ?
+function rappelDu(rappelLe, maintenant = new Date()) {
+  const d = depuisSaisieLocale(rappelLe);
+  return !!d && d.getTime() <= maintenant.getTime();
+}
+
+// Deux moments sont-ils dans la même demi-journée ? Sert à la règle « relancer
+// à une autre tranche horaire ».
+function memeTranche(a, b) {
+  if (!a || !b) return false;
+  return (a.getHours() < 14) === (b.getHours() < 14);
+}
+
 // Les issues qui mettent fin définitivement aux appels.
 const ISSUES_TERMINALES = new Set(['REFUS_FERME', 'DECEDE']);
 const ISSUE_OPPOSITION = 'REFUS_FERME';
@@ -118,4 +158,5 @@ module.exports = {
   PLAGES, PLAFOND_MENSUEL, ISSUES_TERMINALES, ISSUE_OPPOSITION,
   feries, plageAppelOk, avertissementsAppel, avertissementsMail, horsCadre,
   moisCourant, jourLocal,
+  depuisSqlite, depuisSaisieLocale, rappelDu, memeTranche,
 };

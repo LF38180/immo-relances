@@ -572,6 +572,49 @@ db.exec(`
   if (!cols.includes('hors_cadre')) db.exec("ALTER TABLE op_appels ADD COLUMN hors_cadre TEXT");
 }
 
+// Les 46 fiches dont l'identité n'est pas établie : appariées sur un seul mot
+// du nom, ou sans correspondance au registre des ventes. Les appeler sans
+// vérifier, c'est risquer de raconter à un inconnu qu'un tiers a vendu un bien.
+// Elles sortent de la file tant que `verifie` est nul.
+{
+  const cols = db.prepare("PRAGMA table_info(op_contacts)").all().map(c => c.name);
+  if (!cols.includes('verifie')) db.exec("ALTER TABLE op_contacts ADD COLUMN verifie TEXT");
+  if (!cols.includes('verifie_par')) db.exec("ALTER TABLE op_contacts ADD COLUMN verifie_par TEXT");
+}
+
+// op_resultats porte une ligne par CONTACT. C'est juste pour l'état courant
+// d'une fiche — l'adresse d'une personne n'a qu'une valeur — mais ça perd le
+// détail de qui a recueilli quoi, et à quel appel.
+//
+// Conséquence constatée : corriger le résultat d'un appel dans le
+// récapitulatif écrasait ce qui avait été saisi lors d'un autre appel du même
+// contact. Sur 149 fiches à deux ou trois tentatives, c'est systématique.
+//
+// On garde op_resultats comme état courant (c'est ce que lisent le pilotage et
+// l'écran d'appel) et on ajoute l'attribution : quel appel a produit cette
+// ligne. Le récapitulatif ne propose alors de corriger que le dernier appel
+// ayant recueilli quelque chose.
+{
+  const cols = db.prepare("PRAGMA table_info(op_resultats)").all().map(c => c.name);
+  if (!cols.includes('appel_id')) db.exec("ALTER TABLE op_resultats ADD COLUMN appel_id INTEGER");
+  if (!cols.includes('saisi_par')) db.exec("ALTER TABLE op_resultats ADD COLUMN saisi_par TEXT");
+}
+
+// Journal des modifications d'un résultat : qui a changé quoi, et quand.
+// Sans lui, une correction écrase sans laisser de trace — et le client peut
+// demander à lire sa fiche.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS op_resultats_journal (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id_modelo TEXT NOT NULL,
+    appel_id INTEGER,
+    auteur TEXT,
+    horodatage TEXT NOT NULL DEFAULT (datetime('now')),
+    champs TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_op_res_journal ON op_resultats_journal(id_modelo, horodatage DESC);
+`);
+
 // Le bien, découpé pour être prononçable. « JP-4793 T5 et plus, 18 Avenue de
 // l'Europe 38120 Saint egreve » ne se dit pas au téléphone ; « l'appartement
 // du 18 Avenue de l'Europe, à Saint-Égrève » si. Renseigné sur 1 084 fiches.

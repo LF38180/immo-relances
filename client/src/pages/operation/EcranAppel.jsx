@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import api from '../../utils/api'
 import toast from 'react-hot-toast'
 import Icon from '../../components/ui/Icon'
+import SaisieAdresse from '../../components/SaisieAdresse'
 
 // Un contact, plein écran. L'agent appelle, note, enregistre : le suivant
 // s'affiche tout seul. Pas de retour à une liste entre deux appels.
@@ -21,12 +22,33 @@ const ISSUES = [
 ]
 
 export default function EcranAppel({ contact: c, onEnregistre, onPasser, horsFile }) {
+  // Durée de l'appel, mesurée depuis l'ouverture de la fiche. Le manager s'en
+  // sert comme signal : un appel qui passe de six minutes à quatre-vingt-dix
+  // secondes, c'est quelqu'un qui expédie.
+  const [ouvertA] = useState(() => Date.now())
   const [issue, setIssue] = useState('')
   const [rappelLe, setRappelLe] = useState('')
   const [notes, setNotes] = useState('')
   const [res, setRes] = useState({})
   const [envoi, setEnvoi] = useState(false)
   const [scriptOuvert, setScriptOuvert] = useState(false)
+
+  // Raccourcis : l'agent est au casque, une main sur le clavier. Chaque aller
+  // à la souris lui fait quitter la conversation, et ça s'entend.
+  useEffect(() => {
+    const touche = (ev) => {
+      const dansUnChamp = /^(INPUT|TEXTAREA|SELECT)$/.test(ev.target.tagName)
+      if (ev.key === 'Escape' && scriptOuvert) { setScriptOuvert(false); return }
+      if (dansUnChamp) return
+      // 1 à 8 : les huit issues, dans l'ordre affiché.
+      if (/^[1-8]$/.test(ev.key)) {
+        const choix = ISSUES[Number(ev.key) - 1]
+        if (choix) { setIssue(choix[0]); ev.preventDefault() }
+      }
+    }
+    window.addEventListener('keydown', touche)
+    return () => window.removeEventListener('keydown', touche)
+  }, [scriptOuvert])
 
   const e = c.entete || {}
   const tel = c.tel_portable || c.tel_fixe
@@ -39,13 +61,39 @@ export default function EcranAppel({ contact: c, onEnregistre, onPasser, horsFil
     setEnvoi(true)
     try {
       const { data } = await api.post(`/operation/contacts/${c.id_modelo}/appel`,
-        { issue, rappel_le: rappelLe || null, notes: notes.trim() || null })
+        { issue, rappel_le: rappelLe || null, notes: notes.trim() || null,
+          duree_sec: Math.round((Date.now() - ouvertA) / 1000) })
 
-      if (issue === 'JOINT' && Object.keys(res).length)
-        await api.put(`/operation/contacts/${c.id_modelo}/resultat`, res)
+      // Ce que l'agent a saisi est enregistré quelle que soit l'issue.
+      //
+      // La condition précédente ne gardait que les appels « Joint » : un client
+      // qui dit « rappelez-moi jeudi, mais notez ma nouvelle adresse » voyait
+      // son adresse jetée, et le message affiché disait « Enregistré ».
+      // Le consentement téléphonique se perdait de la même façon.
+      const aSaisi = Object.keys(res).length > 0
+      if (aSaisi) await api.put(`/operation/contacts/${c.id_modelo}/resultat`, res)
 
-      toast.success(data.hors_cadre ? 'Enregistré (hors cadre, tracé)' : 'Enregistré')
-      onEnregistre({ issue, rdv: res.actualisation === 'ACCEPTEE', adresse: !!res.adresse_maj })
+      // Le message dit ce qui est parti, pour que l'agent n'ait pas à le croire.
+      const parti = []
+      if (res.adresse_maj) parti.push('adresse')
+      if (res.actualisation === 'ACCEPTEE') parti.push('estimation calée')
+      if (res.soiree === 1) parti.push('soirée')
+      if (res.panneau === 1) parti.push('panneau')
+      if (res.recommandation_nom) parti.push('recommandation')
+      if (res.consentement_tel != null) parti.push('consentement')
+      toast.success(
+        (parti.length ? 'Enregistré — ' + parti.join(', ') : 'Enregistré')
+        + (data.hors_cadre ? ' (hors cadre, tracé)' : ''))
+
+      onEnregistre({
+        issue,
+        rdv: res.actualisation === 'ACCEPTEE',
+        // La fiche compte comme mise à jour dès qu'on a recueilli quelque chose
+        // de durable — c'est le quatrième objectif, au même rang que les trois
+        // propositions.
+        fiche: aSaisi && !!(res.adresse_maj || res.statut_actuel || res.projet
+          || res.toujours_proprietaire != null),
+      })
     } catch (err) {
       toast.error(err.response?.data?.error || 'Enregistrement impossible')
       setEnvoi(false)
@@ -110,11 +158,36 @@ export default function EcranAppel({ contact: c, onEnregistre, onPasser, horsFil
               </button>
             </div>
 
-            {(c.avertissements || []).filter(a => a.niveau === 'grave').map(a => (
-              <div key={a.code} className="text-[11px] bg-red-500/20 text-red-100 rounded px-2 py-1.5 mt-2 leading-snug">
+            {/* Tous les avertissements, pas seulement les graves : « hors
+                plage » était filtré et n'atteignait jamais l'agent, alors que
+                la page d'accueil lui promet d'être prévenu. */}
+            {(c.avertissements || []).map(a => (
+              <div key={a.code} className={`text-[11px] rounded px-2 py-1.5 mt-2 leading-snug ${
+                a.niveau === 'grave' ? 'bg-red-500/20 text-red-100' : 'bg-amber-400/20 text-amber-100'}`}>
                 <Icon name="alert-triangle" size="sm" className="inline mr-1" />{a.texte}
               </div>
             ))}
+
+            {/* Ce qui demande un arbitrage avant de parler. Stocké depuis le
+                début, affiché jusqu'ici seulement sur l'écran de répartition. */}
+            {c.point_attention && (
+              <div className="text-[11px] bg-amber-400/25 text-amber-50 rounded px-2 py-1.5 mt-2 leading-snug">
+                <Icon name="alert-triangle" size="sm" className="inline mr-1" />{c.point_attention}
+              </div>
+            )}
+
+            {/* L'historique : « on m'a déjà appelé la semaine dernière » ne doit
+                pas prendre l'agent au dépourvu. */}
+            {c.appels_total > 0 && (
+              <div className="text-[11px] text-white/70 bg-white/10 rounded px-2 py-1.5 mt-2 leading-snug">
+                {c.appels_total} appel{c.appels_total > 1 ? 's' : ''} déjà passé{c.appels_total > 1 ? 's' : ''}
+                {c.dernier_appel_le && <> · dernier le {new Date(c.dernier_appel_le.replace(' ', 'T') + 'Z')
+                  .toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}</>}
+                {c.dernier_par && <> par {c.dernier_par}</>}
+                {c.derniere_issue && <> ({c.derniere_issue.replace(/_/g, ' ').toLowerCase()})</>}
+                {c.derniere_note && <div className="italic mt-0.5">« {c.derniere_note} »</div>}
+              </div>
+            )}
           </div>
 
           {/* Ce qu'il faut savoir avant de décrocher. */}
@@ -125,25 +198,34 @@ export default function EcranAppel({ contact: c, onEnregistre, onPasser, horsFil
             {c.commune && <Ligne label="Commune" valeur={c.commune} />}
           </Carte>
 
-          <Carte
-            titre={cibleAdresse ? 'Son adresse — l’objectif de cet appel' : 'Son adresse a-t-elle changé ?'}
-            aide={cibleAdresse
-              ? 'Nous n’avons pas pu lui écrire. Une adresse valide suffit à faire de cet appel une réussite.'
-              : 'À remplir seulement si elle a changé.'}
-            ouverte={cibleAdresse}>
+          {/* Quatrième objectif : la fiche à jour. Il ne se propose pas au
+              client, il se recueille — et il concerne les 1 088, pas seulement
+              les fiches sans adresse valide. */}
+          <Carte titre="Mise à jour de la fiche" ouverte>
             <div className="text-[11px] text-quai-muted bg-quai-light rounded p-2 leading-snug">
               Au dossier : {[c.adresse, c.code_postal, c.commune].filter(Boolean).join(', ') || 'rien'}
             </div>
-            <Saisie label="Adresse" value={res.adresse_maj || ''} onChange={v => champ('adresse_maj', v)} />
+            {/* Information, pas consigne. */}
+            {c.adresse_fiable === 0 && (
+              <p className="text-[11px] text-quai-muted leading-snug">
+                Sa fiche porte l'adresse du bien qu'il a vendu — il n'y habite plus.
+              </p>
+            )}
+            {/* Les propositions remplissent code postal et commune d'un coup :
+                deux champs de moins à saisir, et plus de commune mal
+                orthographiée recueillie à l'oral. */}
+            <SaisieAdresse
+              valeur={res.adresse_maj}
+              onSaisir={v => champ('adresse_maj', v)}
+              onChoisir={a => setRes(r => ({ ...r,
+                adresse_maj: a.adresse, code_postal_maj: a.code_postal, commune_maj: a.commune }))}
+            />
             <div className="grid grid-cols-3 gap-2">
               <Saisie label="Code postal" value={res.code_postal_maj || ''} onChange={v => champ('code_postal_maj', v)} />
               <div className="col-span-2">
                 <Saisie label="Commune" value={res.commune_maj || ''} onChange={v => champ('commune_maj', v)} />
               </div>
             </div>
-          </Carte>
-
-          <Carte titre="Où en est-il ?">
             <Boutons label="Toujours propriétaire du bien ?" valeur={res.toujours_proprietaire}
               options={[[1, 'Oui'], [0, 'Non']]} onChange={v => champ('toujours_proprietaire', v)} />
             {res.toujours_proprietaire === 0 && (
@@ -152,17 +234,20 @@ export default function EcranAppel({ contact: c, onEnregistre, onPasser, horsFil
                 <Saisie label="Par quelle agence ?" value={res.revendu_par_qui || ''} onChange={v => champ('revendu_par_qui', v)} />
               </div>
             )}
+            <Boutons label="Aujourd'hui" valeur={res.statut_actuel}
+              options={[['PROPRIETAIRE', 'Propriétaire'], ['LOCATAIRE', 'Locataire'], ['HEBERGE', 'Hébergé']]}
+              onChange={v => champ('statut_actuel', v)} />
             <Boutons label="Un projet ?" valeur={res.projet}
               options={[['VENTE', 'Vente'], ['ACHAT', 'Achat'], ['INVESTISSEMENT', 'Investissement'], ['AUCUN', 'Aucun']]}
               onChange={v => champ('projet', v)} />
             {res.projet && res.projet !== 'AUCUN' && (
-              <Saisie label="D’ici combien de mois ?" type="number" value={res.projet_echeance || ''}
+              <Saisie label="D'ici combien de mois ?" type="number" value={res.projet_echeance || ''}
                 onChange={v => champ('projet_echeance', v)} />
             )}
           </Carte>
 
           {/* Les trois propositions, dans l'ordre. Le panneau en dernier. */}
-          <Carte titre="Les trois propositions">
+          <Carte titre="Les trois propositions" ouverte>
             <Boutons label="1 · Actualisation de la valeur — offerte, sans engagement"
               valeur={res.actualisation}
               options={[['ACCEPTEE', 'Acceptée'], ['A_REPROPOSER', 'À reproposer'], ['REFUSEE', 'Refusée']]}
@@ -176,25 +261,24 @@ export default function EcranAppel({ contact: c, onEnregistre, onPasser, horsFil
               options={[[1, 'Oui'], [0, 'Non']]} onChange={v => champ('panneau', v)} />
           </Carte>
 
-          <Carte titre="Une personne à contacter ?">
-            <Saisie label="Nom" value={res.recommandation_nom || ''} onChange={v => champ('recommandation_nom', v)} />
-            {/* Un nom seul ne se rappelle pas : sans numéro ni motif, la
-                recommandation meurt dans la fiche. */}
-            {res.recommandation_nom && (
-              <>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  <Saisie label="Téléphone" type="tel" value={res.recommandation_tel || ''}
-                    onChange={v => champ('recommandation_tel', v)} />
-                  <Saisie label="E-mail" type="email" value={res.recommandation_email || ''}
-                    onChange={v => champ('recommandation_email', v)} />
-                </div>
-                <Saisie label="Pourquoi — ce qu’elle cherche, son projet"
-                  value={res.recommandation_motif || ''} onChange={v => champ('recommandation_motif', v)} />
-                <Boutons label="Qui fait le lien ?" valeur={res.recommandation_mode}
-                  options={[['JE_LAPPELLE', 'Je l’appelle'], ['IL_FAIT_LE_LIEN', 'Il fait le lien']]}
-                  onChange={v => champ('recommandation_mode', v)} />
-              </>
-            )}
+          {/* Tous scripts confondus. Les champs sont visibles d'emblée : repliés
+              derrière la saisie d'un nom, l'agent ne savait pas qu'on attendait
+              aussi un numéro et un motif — et un nom seul ne se rappelle pas. */}
+          <Carte titre="Une personne à contacter ?"
+            aide="Un ancien client satisfait en connaît souvent. Sans numéro ni motif, la recommandation reste lettre morte.">
+            <Saisie label="Nom" value={res.recommandation_nom || ''}
+              onChange={v => champ('recommandation_nom', v)} />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <Saisie label="Téléphone" type="tel" value={res.recommandation_tel || ''}
+                onChange={v => champ('recommandation_tel', v)} />
+              <Saisie label="E-mail" type="email" value={res.recommandation_email || ''}
+                onChange={v => champ('recommandation_email', v)} />
+            </div>
+            <Saisie label="Pourquoi — ce qu'elle cherche, son projet"
+              value={res.recommandation_motif || ''} onChange={v => champ('recommandation_motif', v)} />
+            <Boutons label="Qui fait le lien ?" valeur={res.recommandation_mode}
+              options={[['JE_LAPPELLE', 'Je l\u2019appelle'], ['IL_FAIT_LE_LIEN', 'Il fait le lien']]}
+              onChange={v => champ('recommandation_mode', v)} />
           </Carte>
 
           {c.email && (
@@ -228,15 +312,15 @@ export default function EcranAppel({ contact: c, onEnregistre, onPasser, horsFil
 
           <Carte titre="Comment s’est terminé l’appel ?" aide="Obligatoire pour passer au suivant.">
             <div className="grid grid-cols-2 md:grid-cols-3 gap-1.5">
-              {ISSUES.map(([v, l, teinte]) => (
-                <button key={v} onClick={() => setIssue(v)}
+              {ISSUES.map(([v, l, teinte], i) => (
+                <button key={v} onClick={() => setIssue(v)} title={`Touche ${i + 1}`}
                   className={`px-2.5 py-2.5 rounded-lg border text-xs font-medium transition-colors min-h-[3rem] ${
                     issue === v
                       ? teinte === 'red' ? 'bg-red-600 text-white border-red-600'
                         : teinte === 'emerald' ? 'bg-emerald-600 text-white border-emerald-600'
                         : 'bg-quai-navy text-white border-quai-navy'
                       : 'border-quai-border text-quai-navy hover:border-quai-gold bg-white'}`}>
-                  {l}
+                  <span className="opacity-40 mr-1">{i + 1}</span>{l}
                 </button>
               ))}
             </div>

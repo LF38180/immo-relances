@@ -18,7 +18,9 @@ const bcrypt = require('bcryptjs');
 console.log('op-import.test.js');
 const t = (n, fn) => { try { fn(); console.log('  OK  ' + n) } catch (e) { console.error('  FAIL ' + n + ' : ' + e.message); process.exitCode = 1 } };
 
-const CSV = '/Users/loickferrucci/Downloads/anciens_clients_import.csv';
+// Le fichier de référence vit dans le dépôt : un test qui lit le dossier
+// Téléchargements casse dès que le fichier y est remplacé — ce qui est arrivé.
+const CSV = require('path').join(__dirname, 'donnees', 'anciens-clients.csv');
 const dispo = fs.existsSync(CSV);
 const texte = dispo ? fs.readFileSync(CSV, 'utf8') : null;
 

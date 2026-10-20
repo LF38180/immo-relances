@@ -104,12 +104,24 @@ router.get('/mon-acces', (req, res) => {
                THEN 1 ELSE 0 END) AS restants
     FROM op_contacts c WHERE ${where} AND c.a_dispatcher = 0`).get(...params);
 
+  // Les quatre objectifs, au même rang. Calculés côté serveur pour qu'ils
+  // survivent à un rechargement de page : un compteur qui repart à zéro à midi
+  // ne mesure rien et décourage.
   const acquis = db.prepare(`
     SELECT
-      SUM(CASE WHEN r.actualisation = 'ACCEPTEE' THEN 1 ELSE 0 END) AS rdv,
-      SUM(CASE WHEN r.adresse_maj IS NOT NULL THEN 1 ELSE 0 END)    AS adresses
+      SUM(CASE WHEN r.actualisation = 'ACCEPTEE' THEN 1 ELSE 0 END) AS estimations,
+      SUM(CASE WHEN r.soiree = 1 THEN 1 ELSE 0 END)                 AS soiree,
+      SUM(CASE WHEN r.panneau = 1 THEN 1 ELSE 0 END)                AS panneaux,
+      SUM(CASE WHEN r.adresse_maj IS NOT NULL OR r.statut_actuel IS NOT NULL
+                 OR r.projet IS NOT NULL OR r.toujours_proprietaire IS NOT NULL
+               THEN 1 ELSE 0 END)                                   AS fiches_a_jour
     FROM op_resultats r JOIN op_contacts c ON c.id_modelo = r.id_modelo
     WHERE ${where}`).get(...params);
+
+  const joints = db.prepare(`
+    SELECT COUNT(DISTINCT a.id_modelo) n FROM op_appels a
+    JOIN op_contacts c ON c.id_modelo = a.id_modelo
+    WHERE ${where} AND a.issue = 'JOINT'`).get(...params).n;
 
   res.json({
     participe: n > 0 || moi.global,
@@ -119,9 +131,11 @@ router.get('/mon-acces', (req, res) => {
     bilan: {
       total: bilan.total || 0,
       restants: bilan.restants || 0,
-      adresse_count: bilan.adresse_count || 0,
-      rdv: acquis.rdv || 0,
-      adresses: acquis.adresses || 0,
+      joints,
+      estimations: acquis.estimations || 0,
+      soiree: acquis.soiree || 0,
+      panneaux: acquis.panneaux || 0,
+      fiches_a_jour: acquis.fiches_a_jour || 0,
     },
   });
 });
@@ -147,15 +161,21 @@ router.get('/file', conseillerOuPlus, (req, res) => {
       (SELECT a.issue FROM op_appels a WHERE a.id_modelo = c.id_modelo
         ORDER BY a.horodatage DESC LIMIT 1)                                AS derniere_issue,
       (SELECT a.rappel_le FROM op_appels a WHERE a.id_modelo = c.id_modelo
-        AND a.issue = 'A_RAPPELER' ORDER BY a.horodatage DESC LIMIT 1)     AS rappel_le
+        AND a.issue = 'A_RAPPELER' ORDER BY a.horodatage DESC LIMIT 1)     AS rappel_le,
+      (SELECT a.conseiller FROM op_appels a WHERE a.id_modelo = c.id_modelo
+        ORDER BY a.horodatage DESC LIMIT 1)                                AS dernier_par,
+      (SELECT a.notes FROM op_appels a WHERE a.id_modelo = c.id_modelo
+        AND a.notes IS NOT NULL ORDER BY a.horodatage DESC LIMIT 1)        AS derniere_note
     FROM op_contacts c
     WHERE ${where}
       AND c.a_dispatcher = 0
+      -- Les fiches à identité incertaine sortent de la file tant qu'un manager
+      -- ne les a pas vérifiées : les appeler est le pire démarrage possible.
+      AND NOT (c.courrier_etat = 'A_TRANCHER' AND c.verifie IS NULL)
     ORDER BY c.nom, c.prenom
   `).all(R.moisCourant(), ...params);
 
   const maintenant = new Date();
-  const nowIso = maintenant.toISOString();
 
   // Les fiches signalées restent dans la file, en fin de liste : l'agent les
   // voit, avec leur avertissement, et décide. Un refus ferme ou un décès, en
@@ -165,24 +185,27 @@ router.get('/file', conseillerOuPlus, (req, res) => {
   const plafonnes = ouverts.filter(l => l.appels_ce_mois >= R.PLAFOND_MENSUEL).length;
   const opposes = ouverts.filter(l => l.stop_telephone).length;
 
-  const rappelsDus = ouverts.filter(l => l.rappel_le && l.rappel_le <= nowIso
-    && l.derniere_issue === 'A_RAPPELER');
+  const rappelsDus = ouverts.filter(l => l.derniere_issue === 'A_RAPPELER'
+    && R.rappelDu(l.rappel_le, maintenant));
   const reste = ouverts.filter(l => !rappelsDus.includes(l));
 
+  // Ordre alphabétique simple pour les fiches jamais appelées (arbitrage du
+  // 20 octobre). Les fiches sans adresse valide n'ont aucune contrainte de
+  // temps : les servir en premier faisait démarrer la journée par les appels
+  // les plus difficiles, et donnait à croire que l'adresse était l'objectif.
   const jamaisAppeles = reste.filter(l => !l.appels_total);
-  const adresseDAbord = jamaisAppeles.filter(l => l.objectif_principal === 'ADRESSE');
-  const autresNeufs = jamaisAppeles.filter(l => l.objectif_principal !== 'ADRESSE');
 
   // Relance : 48 h, et à une autre tranche horaire que la dernière tentative.
-  const il48h = Date.now() - 48 * 3600 * 1000;
-  const aRelancer = reste.filter(l => l.appels_total
-    && ['PAS_DE_REPONSE', 'REPONDEUR'].includes(l.derniere_issue)
-    && l.dernier_appel_le && new Date(l.dernier_appel_le).getTime() < il48h
-    && new Date(l.dernier_appel_le).getHours() < 14 !== maintenant.getHours() < 14);
+  const il48h = maintenant.getTime() - 48 * 3600 * 1000;
+  const aRelancer = reste.filter(l => {
+    if (!l.appels_total || !['PAS_DE_REPONSE', 'REPONDEUR'].includes(l.derniere_issue)) return false;
+    const dernier = R.depuisSqlite(l.dernier_appel_le);
+    return dernier && dernier.getTime() < il48h && !R.memeTranche(dernier, maintenant);
+  });
 
   // Les fiches à signalement grave passent en queue : on ne les cache pas,
   // mais on ne les met pas non plus sous la main en premier.
-  const ordonnee = [...rappelsDus, ...adresseDAbord, ...autresNeufs, ...aRelancer];
+  const ordonnee = [...rappelsDus, ...jamaisAppeles, ...aRelancer];
   const signalee = (l) => l.stop_telephone || l.appels_ce_mois >= R.PLAFOND_MENSUEL;
   // Filet : toute fiche encore ouverte qu'aucun groupe n'a reprise. Un contact
   // joint mais sans suite, un faux numéro à revoir — sans ce filet, ils
@@ -203,8 +226,7 @@ router.get('/file', conseillerOuPlus, (req, res) => {
     file,
     groupes: {
       rappels_dus: rappelsDus.length,
-      adresse_jamais_appeles: adresseDAbord.length,
-      jamais_appeles: autresNeufs.length,
+      jamais_appeles: jamaisAppeles.length,
       a_relancer: aRelancer.length,
       a_revoir: autres.length,
     },
@@ -359,14 +381,38 @@ router.put('/contacts/:id/resultat', conseillerOuPlus, (req, res) => {
   if (valeurs.courrier_renvoye && !valeurs.date_renvoi)
     valeurs.date_renvoi = new Date().toISOString().slice(0, 10);
 
+  // L'appel qui produit cette saisie : le dernier de cet agent sur cette fiche.
+  // Sert au récapitulatif, qui ne doit proposer de corriger que le bon.
+  const appel = db.prepare(`SELECT id FROM op_appels WHERE id_modelo = ?
+    ORDER BY horodatage DESC, id DESC LIMIT 1`).get(c.id_modelo);
+
+  const avant = db.prepare('SELECT * FROM op_resultats WHERE id_modelo = ?').get(c.id_modelo);
+
   const cles = Object.keys(valeurs);
-  db.prepare(`
-    INSERT INTO op_resultats (id_modelo, ${cles.join(', ')})
-    VALUES (@id_modelo, ${cles.map(k => '@' + k).join(', ')})
-    ON CONFLICT(id_modelo) DO UPDATE SET
-      ${cles.map(k => `${k} = excluded.${k}`).join(', ')},
-      updated_at = datetime('now')
-  `).run({ id_modelo: c.id_modelo, ...valeurs });
+  const ecrire = db.transaction(() => {
+    db.prepare(`
+      INSERT INTO op_resultats (id_modelo, appel_id, saisi_par, ${cles.join(', ')})
+      VALUES (@id_modelo, @appel_id, @saisi_par, ${cles.map(k => '@' + k).join(', ')})
+      ON CONFLICT(id_modelo) DO UPDATE SET
+        ${cles.map(k => `${k} = excluded.${k}`).join(', ')},
+        appel_id = excluded.appel_id,
+        saisi_par = excluded.saisi_par,
+        updated_at = datetime('now')
+    `).run({ id_modelo: c.id_modelo, appel_id: appel?.id || null, saisi_par: moi.nom_complet, ...valeurs });
+
+    // Journal : ce qui change, et par rapport à quoi. Une correction ne doit
+    // pas effacer sans laisser de trace.
+    const modifs = {};
+    for (const k of cles) {
+      const ancien = avant ? avant[k] : null;
+      if (String(ancien ?? '') !== String(valeurs[k] ?? '')) modifs[k] = { avant: ancien, apres: valeurs[k] };
+    }
+    if (Object.keys(modifs).length) {
+      db.prepare(`INSERT INTO op_resultats_journal (id_modelo, appel_id, auteur, champs)
+        VALUES (?,?,?,?)`).run(c.id_modelo, appel?.id || null, moi.nom_complet, JSON.stringify(modifs));
+    }
+  });
+  ecrire();
 
   res.json({ ok: true, resultat: db.prepare('SELECT * FROM op_resultats WHERE id_modelo = ?').get(c.id_modelo) });
 });
@@ -392,6 +438,56 @@ router.post('/contacts/:id/agence', pilotage, (req, res) => {
   db.prepare("UPDATE op_contacts SET agence = ?, updated_at = datetime('now') WHERE id_modelo = ?")
     .run(agence, c.id_modelo);
   res.json({ ok: true, avant: c.agence, apres: agence });
+});
+
+// --- Les fiches à vérifier avant d'appeler ---------------------------------
+//
+// 46 contacts dont on n'est pas certain qu'ils aient vendu chez nous : appariés
+// sur un seul mot du nom, ou sans correspondance au registre des 663 ventes.
+// Le champ `partie_au_registre` porte le nom exact tel qu'il y figure — c'est
+// lui qui permet de trancher, à l'œil, sans appeler.
+router.get('/a-verifier', pilotage, (req, res) => {
+  const moi = identite(req);
+  if (!moi) return res.status(401).json({ error: 'Compte introuvable' });
+  const { where, params } = perimetre(moi, 'c');
+  const lignes = db.prepare(`
+    SELECT c.id_modelo, c.civilite, c.nom, c.prenom, c.commune, c.conseiller,
+           c.partie_au_registre, c.bien_concerne, c.courrier_motif, c.script,
+           c.tel_portable, c.tel_fixe, c.verifie, c.verifie_par
+    FROM op_contacts c
+    WHERE ${where} AND c.courrier_etat = 'A_TRANCHER'
+    ORDER BY c.verifie IS NOT NULL, c.nom`).all(...params);
+  res.json({
+    lignes,
+    restantes: lignes.filter(l => !l.verifie).length,
+  });
+});
+
+// Trancher : « c'est bien la bonne personne » ou « ce n'est pas elle ».
+router.post('/contacts/:id/verifier', pilotage, (req, res) => {
+  const moi = identite(req);
+  const c = getContact(req.params.id);
+  if (!c) return res.status(404).json({ error: 'Contact introuvable' });
+
+  const verdict = req.body?.verdict;
+  if (!['CONFIRME', 'ECARTE'].includes(verdict))
+    return res.status(400).json({ error: 'Verdict attendu : CONFIRME ou ECARTE' });
+
+  db.transaction(() => {
+    db.prepare(`UPDATE op_contacts SET verifie = ?, verifie_par = ?, updated_at = datetime('now')
+      WHERE id_modelo = ?`).run(verdict, moi.nom_complet, c.id_modelo);
+
+    // Écartée : on ne l'appellera pas. On la sort de toute file en posant
+    // l'opposition, et on trace pourquoi.
+    if (verdict === 'ECARTE') {
+      db.prepare(`INSERT INTO op_journal_opposition (id_modelo, canal, origine, agent, nom, prenom, telephone)
+        VALUES (?, 'TELEPHONE', 'IDENTITE_NON_ETABLIE', ?, ?, ?, ?)`)
+        .run(c.id_modelo, moi.nom_complet, c.nom, c.prenom, c.tel_portable || c.tel_fixe);
+      db.prepare("UPDATE op_contacts SET stop_telephone = 1 WHERE id_modelo = ?").run(c.id_modelo);
+    }
+  })();
+
+  res.json({ ok: true, verdict });
 });
 
 // --- NPAI : le courrier est revenu ----------------------------------------
@@ -553,20 +649,53 @@ router.get('/pilotage', pilotage, (req, res) => {
       WHERE ${where} AND date(a.horodatage) >= date('now','-7 day')
       GROUP BY jour, a.conseiller ORDER BY jour DESC, n DESC`, ...params),
 
+    // « Appelés » comptait les tentatives, répondeurs compris : trois rendez-vous
+    // sur dix personnes jointes et trois sur quatre-vingts ne disent pas la même
+    // chose. On distingue donc tentés et joints.
+    //
+    // La durée moyenne et la part d'appels annotés sont les deux signaux qui
+    // montrent un conseiller en train de décrocher : un appel qui passe de six
+    // minutes à quatre-vingt-dix secondes, c'est quelqu'un qui expédie.
     avancement: joint(`
       SELECT c.conseiller,
         COUNT(*) AS portefeuille,
-        SUM(CASE WHEN EXISTS (SELECT 1 FROM op_appels a WHERE a.id_modelo = c.id_modelo) THEN 1 ELSE 0 END) AS appeles,
-        SUM(CASE WHEN c.objectif_principal = 'ADRESSE' THEN 1 ELSE 0 END) AS objectif_adresse
+        SUM(CASE WHEN EXISTS (SELECT 1 FROM op_appels a WHERE a.id_modelo = c.id_modelo)
+                 THEN 1 ELSE 0 END) AS appeles,
+        SUM(CASE WHEN EXISTS (SELECT 1 FROM op_appels a WHERE a.id_modelo = c.id_modelo
+                              AND a.issue = 'JOINT') THEN 1 ELSE 0 END) AS joints
       FROM op_contacts c WHERE ${where} AND c.a_dispatcher = 0
       GROUP BY c.conseiller ORDER BY portefeuille DESC`, ...params),
 
+    // Signaux de décrochage, par conseiller, sur les sept derniers jours.
+    signaux: joint(`
+      SELECT a.conseiller,
+        COUNT(*) AS appels,
+        ROUND(AVG(NULLIF(a.duree_sec, 0))) AS duree_moyenne_sec,
+        SUM(CASE WHEN a.notes IS NOT NULL AND TRIM(a.notes) <> '' THEN 1 ELSE 0 END) AS avec_note,
+        SUM(CASE WHEN a.hors_cadre IS NOT NULL THEN 1 ELSE 0 END) AS hors_cadre,
+        SUM(CASE WHEN a.issue = 'REFUS_FERME' THEN 1 ELSE 0 END) AS refus
+      FROM op_appels a JOIN op_contacts c ON c.id_modelo = a.id_modelo
+      WHERE ${where} AND date(a.horodatage) >= date('now','-7 day')
+      GROUP BY a.conseiller ORDER BY appels DESC`, ...params),
+
+    // Les fiches dont l'identité n'est pas établie : elles ne devraient pas
+    // être appelées avant vérification.
+    a_verifier: db.prepare(`SELECT COUNT(*) n FROM op_contacts c
+      WHERE ${where} AND c.courrier_etat = 'A_TRANCHER' AND c.verifie IS NULL`).get(...params).n,
+
+    // Les quatre objectifs, au même rang (arbitrage du 20 octobre).
+    // « Fiches à jour » est le quatrième : il ne se propose pas au client, il
+    // se recueille — mais il se compte comme les autres, et il concerne les
+    // 1 088, pas seulement les fiches sans adresse.
     resultats: db.prepare(`
       SELECT
-        SUM(CASE WHEN r.actualisation = 'ACCEPTEE' THEN 1 ELSE 0 END) AS actualisations,
-        SUM(CASE WHEN r.adresse_maj IS NOT NULL THEN 1 ELSE 0 END)    AS adresses_maj,
+        SUM(CASE WHEN r.actualisation = 'ACCEPTEE' THEN 1 ELSE 0 END) AS estimations,
         SUM(CASE WHEN r.soiree = 1 THEN 1 ELSE 0 END)                 AS soiree,
         SUM(CASE WHEN r.panneau = 1 THEN 1 ELSE 0 END)                AS panneau,
+        SUM(CASE WHEN r.adresse_maj IS NOT NULL OR r.statut_actuel IS NOT NULL
+                   OR r.projet IS NOT NULL OR r.toujours_proprietaire IS NOT NULL
+                 THEN 1 ELSE 0 END)                                   AS fiches_a_jour,
+        SUM(CASE WHEN r.adresse_maj IS NOT NULL THEN 1 ELSE 0 END)    AS adresses_maj,
         SUM(CASE WHEN r.courrier_renvoye = 1 THEN 1 ELSE 0 END)       AS courriers_renvoyes
       FROM op_resultats r JOIN op_contacts c ON c.id_modelo = r.id_modelo
       WHERE ${where}`).get(...params),

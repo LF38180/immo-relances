@@ -19,7 +19,16 @@ export default function SessionOperation() {
   const [fini, setFini] = useState(false)
   const [chargement, setChargement] = useState(true)
   const [erreur, setErreur] = useState(false)
-  const [bilan, setBilan] = useState({ faits: 0, joints: 0, rdv: 0, adresses: 0, sansReponse: 0 })
+  // Le bilan vient du serveur : un compteur local repartait à zéro dès qu'on
+  // rechargeait la page, et un agent qui reprend à 14h ne voyait plus sa
+  // matinée. Sur trois semaines, c'est ce qui fait tenir.
+  const [bilan, setBilan] = useState({ faits: 0, joints: 0, rdv: 0, fiches: 0, sansReponse: 0 })
+  const [cumul, setCumul] = useState(null)
+
+  const chargerCumul = useCallback(() => {
+    api.get('/operation/mon-acces').then(r => setCumul(r.data.bilan)).catch(() => {})
+  }, [])
+  useEffect(() => { chargerCumul() }, [chargerCumul])
   const [listeOuverte, setListeOuverte] = useState(false)
   const [recapOuvert, setRecapOuvert] = useState(false)
 
@@ -62,11 +71,12 @@ export default function SessionOperation() {
       faits: b.faits + 1,
       joints: b.joints + (resume.issue === 'JOINT' ? 1 : 0),
       rdv: b.rdv + (resume.rdv ? 1 : 0),
-      adresses: b.adresses + (resume.adresse ? 1 : 0),
+      fiches: (b.fiches || 0) + (resume.fiche ? 1 : 0),
       sansReponse: b.sansReponse + (['PAS_DE_REPONSE', 'REPONDEUR'].includes(resume.issue) ? 1 : 0),
     }))
     // Un rappel entrant ne fait pas avancer la file : on y revient où on en
     // était.
+    chargerCumul()
     if (horsFile) { setHorsFile(null); setRecherche(''); setResultats([]); return }
     if (index + 1 >= file.length) setFini(true)
     else setIndex(i => i + 1)
@@ -88,7 +98,7 @@ export default function SessionOperation() {
   return (
     <div className="flex-1 flex flex-col min-h-0">
       <Progression
-        index={index} total={file.length} bilan={bilan}
+        index={index} total={file.length} bilan={bilan} cumul={cumul}
         plage={infos?.plage}
         horsFile={!!horsFile}
         recherche={recherche} setRecherche={setRecherche} resultats={resultats}
@@ -124,9 +134,9 @@ export default function SessionOperation() {
   )
 }
 
-function Progression({ index, total, bilan, plage, horsFile, recherche, setRecherche,
+function Progression({ index, total, bilan, cumul, plage, horsFile, recherche, setRecherche,
                       resultats, onOuvrirHorsFile, onListe, onRecap }) {
-  const pct = Math.round((index / total) * 100)
+  const pct = total ? Math.round((index / total) * 100) : 0
   return (
     <div className="bg-white border-b border-quai-border px-3 py-2 shrink-0">
       <div className="max-w-3xl mx-auto">
@@ -137,19 +147,19 @@ function Progression({ index, total, bilan, plage, horsFile, recherche, setReche
               : <>Appel <b className="text-quai-navy">{index + 1}</b> / {total}</>}
           </span>
           <div className="flex items-center gap-2.5 text-[11px]">
-            {bilan.rdv > 0 && (
-              <span className="text-emerald-600 font-medium inline-flex items-center gap-1">
-                <Icon name="calendar-check" size="sm" />{bilan.rdv}
-              </span>
-            )}
-            {bilan.adresses > 0 && (
-              <span className="text-quai-navy font-medium inline-flex items-center gap-1">
-                <Icon name="map-pin" size="sm" />{bilan.adresses}
+            {/* Les quatre objectifs depuis le début de l'opération, pas depuis
+                l'ouverture de l'onglet. */}
+            {cumul && (
+              <span className="text-quai-muted hidden sm:inline">
+                <b className="text-quai-navy">{cumul.estimations}</b> est. ·
+                {' '}<b className="text-quai-navy">{cumul.soiree}</b> soirée ·
+                {' '}<b className="text-quai-navy">{cumul.panneaux}</b> pann. ·
+                {' '}<b className="text-quai-navy">{cumul.fiches_a_jour}</b> fiches
               </span>
             )}
             {bilan.faits > 0 && (
               <button onClick={onRecap} className="text-quai-muted hover:text-quai-navy underline">
-                {bilan.faits} fait{bilan.faits > 1 ? 's' : ''}
+                {bilan.faits} aujourd’hui
               </button>
             )}
             <button onClick={onRecap} className="text-quai-muted hover:text-quai-navy p-1"
@@ -224,8 +234,8 @@ function Termine({ bilan, vide, onRecharger, onRecap }) {
           <div className="grid grid-cols-2 gap-2 my-5">
             <Chiffre valeur={bilan.faits} libelle="appels passés" />
             <Chiffre valeur={bilan.joints} libelle="personnes jointes" couleur="text-emerald-600" />
-            <Chiffre valeur={bilan.rdv} libelle="actualisations calées" couleur="text-quai-gold" />
-            <Chiffre valeur={bilan.adresses} libelle="adresses récupérées" />
+            <Chiffre valeur={bilan.rdv} libelle="estimations calées" couleur="text-quai-gold" />
+            <Chiffre valeur={bilan.fiches} libelle="fiches mises à jour" />
           </div>
         )}
         {vide && <p className="text-sm text-quai-muted mt-1 mb-5">Votre liste est à jour.</p>}

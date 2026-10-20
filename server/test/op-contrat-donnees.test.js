@@ -17,7 +17,9 @@ const I = require('../src/utils/opImport');
 console.log('op-contrat-donnees.test.js');
 const t = (n, fn) => { try { fn(); console.log('  OK  ' + n) } catch (e) { console.error('  FAIL ' + n + ' : ' + e.message); process.exitCode = 1 } };
 
-const CSV = '/Users/loickferrucci/Downloads/anciens_clients_import.csv';
+// Le fichier de référence vit dans le dépôt : un test qui lit le dossier
+// Téléchargements casse dès que le fichier y est remplacé — ce qui est arrivé.
+const CSV = require('path').join(__dirname, 'donnees', 'anciens-clients.csv');
 if (!fs.existsSync(CSV)) {
   console.log('  -- fichier source absent, contrat non vérifié');
   process.exit(0);

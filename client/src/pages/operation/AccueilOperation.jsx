@@ -14,28 +14,48 @@ export default function AccueilOperation({ acces, bilan, onCommencer, estPilote 
 
   const total = acces?.fiches || 0
   const restants = bilan?.restants ?? total
-  const rdv = bilan?.rdv || 0
-  const adresses = bilan?.adresses || 0
-  const cibleAdresse = bilan?.adresse_count || 0
+  const joints = bilan?.joints || 0
+  const estimations = bilan?.estimations || 0
+  const soiree = bilan?.soiree || 0
+  const panneaux = bilan?.panneaux || 0
+  const fichesAJour = bilan?.fiches_a_jour || 0
 
   return (
     <div className="flex-1 overflow-y-auto">
       <div className="max-w-3xl mx-auto p-4 space-y-4">
 
         <div className="text-center pt-2">
-          <img src="/operation/sceau-badge.png" alt="" className="w-16 h-16 rounded-lg mx-auto mb-3" />
-          <h1 className="font-display text-2xl font-bold text-quai-navy">On reprend contact.</h1>
+          <img src="/operation/sceau-badge.png" alt="Opération anciens clients"
+            className="w-40 h-40 md:w-52 md:h-52 rounded-xl mx-auto mb-4" />
+          <h1 className="font-display text-2xl md:text-3xl font-bold text-quai-navy">On reprend contact.</h1>
           <p className="text-sm text-quai-muted mt-2 leading-snug">
             Jérémy Bertrand a écrit à toutes les familles qu’on a accompagnées depuis 2021.
             Plus de mille. Maintenant on les appelle, une par une.
           </p>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+        {/* Ligne 1 — où j'en suis. « Personnes jointes » plutôt qu'un compteur
+            d'adresses : trois rendez-vous sur dix personnes jointes et trois sur
+            quatre-vingts ne disent pas la même chose, et un agent qui tombe sur
+            des répondeurs toute la matinée se croirait mauvais. */}
+        <div className="grid grid-cols-3 gap-2">
           <Chiffre valeur={total} libelle={estPilote ? 'contacts suivis' : 'contacts à toi'} />
           <Chiffre valeur={restants} libelle="restent à appeler" accent />
-          <Chiffre valeur={rdv} libelle="actualisations calées" couleur="text-emerald-600" />
-          <Chiffre valeur={adresses} libelle="adresses récupérées" />
+          <Chiffre valeur={joints} libelle="personnes jointes" />
+        </div>
+
+        {/* Ligne 2 — les quatre objectifs, même taille, même poids, dans
+            l'ordre du script. Aucun ne domine : ils comptent pareil. */}
+        <div>
+          <div className="text-[11px] font-semibold text-quai-muted uppercase tracking-wide mb-1.5">
+            Les quatre objectifs
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            <Chiffre valeur={estimations} libelle="estimations calées" />
+            <Chiffre valeur={soiree} libelle="soirée" />
+            <Chiffre valeur={panneaux} libelle="panneaux" />
+            <Chiffre valeur={fichesAJour} libelle="fiches à jour" />
+          </div>
         </div>
 
         <p className="text-[11px] text-quai-muted text-center">
@@ -58,27 +78,25 @@ export default function AccueilOperation({ acces, bilan, onCommencer, estPilote 
           </p>
           <ol className="text-sm space-y-1.5 mt-2">
             <Proposition n="1" titre="L’actualisation de la valeur"
-              texte="offerte, sans engagement. C’est elle qui compte." />
+              texte="offerte, sans engagement. On dit « actualisation » au client, jamais « estimation »." />
             <Proposition n="2" titre="La soirée du 3 décembre"
-              texte="on réunit les familles qu’on a accompagnées." />
+              texte="au Casarosa à Crolles, on réunit les familles qu’on a accompagnées." />
             <Proposition n="3" titre="Le panneau « Vendu par Le Quai »"
               texte="en dernier, toujours. « Et vous me dites non sans problème. »" />
           </ol>
 
-          {/* Masqué si le conseiller n'a aucune fiche de ce type. */}
-          {cibleAdresse > 0 && (
-            <div className="mt-3 bg-quai-gold/10 border border-quai-gold/40 rounded-lg p-3">
-              <p className="text-sm font-semibold text-quai-navy leading-snug">
-                Sur {cibleAdresse} de tes contacts, l’objectif n’est pas le rendez-vous :
-                c’est l’adresse.
-              </p>
-              <p className="text-[13px] text-quai-text mt-1 leading-snug">
-                On ne leur a rien envoyé parce qu’on n’avait pas où écrire. Tu raccroches
-                avec une adresse complète et l’accord d’envoyer le courrier : l’appel est
-                réussi, même sans rien d’autre.
-              </p>
-            </div>
-          )}
+          {/* Le quatrième ne se propose pas : il se recueille. Mais il compte
+              autant, et il concerne tout le monde. */}
+          <div className="mt-3 pt-3 border-t border-quai-border">
+            <p className="text-sm text-quai-navy font-medium">
+              Et une quatrième chose, qui ne se demande pas.
+            </p>
+            <p className="text-[13px] text-quai-text mt-1 leading-snug">
+              <b>La fiche à jour</b> — son adresse, s’il est toujours propriétaire,
+              s’il a un projet et pour quand. Ça se recueille dans la conversation,
+              sans jamais l’annoncer. Ça compte autant que les trois autres.
+            </p>
+          </div>
         </Carte>
 
         {/* Replié : se relit au besoin, et reste accessible depuis l'écran
