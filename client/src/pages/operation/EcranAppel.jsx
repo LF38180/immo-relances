@@ -174,26 +174,51 @@ export default function EcranAppel({ contact: c, onEnregistre, onPasser }) {
 
           <Carte titre="Une personne à contacter ?">
             <Saisie label="Nom" value={res.recommandation_nom || ''} onChange={v => champ('recommandation_nom', v)} />
+            {/* Un nom seul ne se rappelle pas : sans numéro ni motif, la
+                recommandation meurt dans la fiche. */}
             {res.recommandation_nom && (
-              <Boutons label="Qui fait le lien ?" valeur={res.recommandation_mode}
-                options={[['JE_LAPPELLE', 'Je l’appelle'], ['IL_FAIT_LE_LIEN', 'Il fait le lien']]}
-                onChange={v => champ('recommandation_mode', v)} />
+              <>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <Saisie label="Téléphone" type="tel" value={res.recommandation_tel || ''}
+                    onChange={v => champ('recommandation_tel', v)} />
+                  <Saisie label="E-mail" type="email" value={res.recommandation_email || ''}
+                    onChange={v => champ('recommandation_email', v)} />
+                </div>
+                <Saisie label="Pourquoi — ce qu’elle cherche, son projet"
+                  value={res.recommandation_motif || ''} onChange={v => champ('recommandation_motif', v)} />
+                <Boutons label="Qui fait le lien ?" valeur={res.recommandation_mode}
+                  options={[['JE_LAPPELLE', 'Je l’appelle'], ['IL_FAIT_LE_LIEN', 'Il fait le lien']]}
+                  onChange={v => champ('recommandation_mode', v)} />
+              </>
             )}
           </Carte>
 
           {c.email && (
             <Carte titre="Le courrier du président"
-              aide={c.stop_mail ? 'Cette personne s’est opposée aux envois par mail.' : 'À renvoyer depuis votre boîte.'}>
-              <Boutons label="" valeur={res.courrier_renvoye} options={[[1, 'Envoyé'], [0, 'Non']]}
-                onChange={v => champ('courrier_renvoye', v)} />
-              <a href={`mailto:${c.email}`}
-                className="btn-secondary w-full min-h-[2.75rem] inline-flex items-center justify-center gap-1.5 text-sm">
-                <Icon name="mail" size="sm" /> Écrire à {c.email}
-              </a>
+              aide={c.stop_mail
+                ? 'Cette personne s’est opposée aux envois par mail.'
+                : 'À envoyer depuis votre boîte @lequai-immobilier.com, avec le courrier en pièce jointe.'}>
+              {/* Pas d'envoi depuis la fiche : un lien mailto ne peut pas
+                  porter de pièce jointe, et le mail doit partir de la boîte du
+                  conseiller. On donne donc l'adresse et le fichier. */}
+              <div>
+                <span className="text-[11px] text-quai-muted">Son adresse mail</span>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <code className="flex-1 text-[13px] text-quai-navy bg-quai-light rounded px-2.5 py-2
+                                   select-all break-all leading-snug">{c.email}</code>
+                  <button onClick={() => { navigator.clipboard?.writeText(c.email); toast.success('Adresse copiée') }}
+                    className="px-3 py-2 rounded-lg border border-quai-border text-quai-muted
+                               hover:border-quai-gold hover:text-quai-navy text-xs min-h-[2.75rem] shrink-0">
+                    Copier
+                  </button>
+                </div>
+              </div>
               <a href="/operation/courrier-president.pdf" download
-                className="text-[11px] text-quai-navy underline block text-center">
-                Télécharger le courrier à joindre
+                className="btn-secondary w-full min-h-[2.75rem] inline-flex items-center justify-center gap-1.5 text-sm">
+                <Icon name="download" size="sm" /> Télécharger le courrier
               </a>
+              <Boutons label="Courrier envoyé ?" valeur={res.courrier_renvoye}
+                options={[[1, 'Oui'], [0, 'Non']]} onChange={v => champ('courrier_renvoye', v)} />
             </Carte>
           )}
 
@@ -228,9 +253,7 @@ export default function EcranAppel({ contact: c, onEnregistre, onPasser }) {
             )}
 
             <div>
-              <span className="text-[11px] text-quai-muted">
-                Notes — des faits uniquement, le client peut demander à lire sa fiche
-              </span>
+              <span className="text-[11px] text-quai-muted">Notes</span>
               <textarea value={notes} onChange={ev => setNotes(ev.target.value)} rows={2}
                 className="w-full mt-0.5 px-2.5 py-2 text-sm rounded-lg border border-quai-border
                            focus:outline-none focus:ring-2 focus:ring-quai-navy/30" />

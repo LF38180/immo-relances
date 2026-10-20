@@ -568,6 +568,15 @@ db.exec(`
   if (!cols.includes('hors_cadre')) db.exec("ALTER TABLE op_appels ADD COLUMN hors_cadre TEXT");
 }
 
+// Recommandation : un nom seul ne se rappelle pas. Sans numéro ni motif, la
+// personne signalée reste dans la fiche et personne ne la contacte.
+{
+  const cols = db.prepare("PRAGMA table_info(op_resultats)").all().map(c => c.name);
+  if (!cols.includes('recommandation_tel')) db.exec("ALTER TABLE op_resultats ADD COLUMN recommandation_tel TEXT");
+  if (!cols.includes('recommandation_email')) db.exec("ALTER TABLE op_resultats ADD COLUMN recommandation_email TEXT");
+  if (!cols.includes('recommandation_motif')) db.exec("ALTER TABLE op_resultats ADD COLUMN recommandation_motif TEXT");
+}
+
 // Point d'attention sur une fiche : une phrase affichée en évidence dans la
 // liste de dispatch et sur l'écran d'appel. Sert aux cas qui demandent un
 // arbitrage humain plutôt qu'une règle — les 23 fiches rattachées à Cindy

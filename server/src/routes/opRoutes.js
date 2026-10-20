@@ -293,7 +293,8 @@ const CHAMPS_RESULTAT = [
   'courrier_renvoye', 'date_renvoi', 'toujours_proprietaire', 'revendu_quand',
   'revendu_par_qui', 'statut_actuel', 'projet', 'projet_echeance',
   'actualisation', 'date_rdv', 'soiree', 'panneau',
-  'recommandation_nom', 'recommandation_mode', 'consentement_tel', 'date_consentement',
+  'recommandation_nom', 'recommandation_tel', 'recommandation_email',
+  'recommandation_motif', 'recommandation_mode', 'consentement_tel', 'date_consentement',
 ];
 
 router.put('/contacts/:id/resultat', conseillerOuPlus, (req, res) => {
