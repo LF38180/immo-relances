@@ -1,5 +1,9 @@
-// Les règles légales de l'opération anciens clients. Elles sont testées en
-// premier parce qu'une erreur ici est une infraction, pas un bug d'affichage.
+// Les règles d'appel de l'opération anciens clients.
+//
+// Elles avertissent sans bloquer (décision du 20 octobre) : ce qui est testé
+// ici, c'est que l'agent est correctement RENSEIGNÉ — le bon avertissement, au
+// bon moment, et aucun quand tout va bien. Un faux avertissement use autant
+// qu'un avertissement manquant.
 const assert = require('assert');
 const R = require('../src/utils/opRegles');
 
@@ -39,33 +43,47 @@ t('Pâques 2027 calculé juste', () => {
   assert.ok(R.feries(2027).has('2027-03-29'), 'lundi de Pâques 2027 absent');
 });
 
-// --- Les trois blocages ----------------------------------------------------
+// --- Les avertissements ----------------------------------------------------
 const ouvert = d('2026-10-20', 11);
 const libre = { stop_telephone: 0, stop_mail: 0, email: 'x@y.fr' };
+const codes = (c, n, qd) => R.avertissementsAppel(c, n, qd).map(a => a.code);
 
-t('contact ordinaire en pleine plage : autorisé', () => {
-  assert.ok(R.appelAutorise(libre, 0, ouvert).ok);
+t('contact ordinaire en pleine plage : aucun avertissement', () => {
+  assert.deepStrictEqual(codes(libre, 0, ouvert), []);
 });
-t('stop téléphone : refusé même en pleine plage', () => {
-  const r = R.appelAutorise({ ...libre, stop_telephone: 1 }, 0, ouvert);
-  assert.ok(!r.ok); assert.ok(r.definitif, 'le refus doit être marqué définitif');
+t('personne opposée : avertissement grave', () => {
+  const av = R.avertissementsAppel({ ...libre, stop_telephone: 1 }, 0, ouvert);
+  assert.deepStrictEqual(av.map(a => a.code), ['OPPOSITION']);
+  assert.strictEqual(av[0].niveau, 'grave');
 });
-t('3 appels ce mois : encore autorisé', () => assert.ok(R.appelAutorise(libre, 3, ouvert).ok));
-t('4 appels ce mois : refusé (plafond légal)', () => {
-  const r = R.appelAutorise(libre, 4, ouvert);
-  assert.ok(!r.ok); assert.ok(/[Pp]lafond/.test(r.raison));
+t('3 appels ce mois : rien à signaler', () => assert.deepStrictEqual(codes(libre, 3, ouvert), []));
+t('4 appels ce mois : plafond signalé', () => {
+  const av = R.avertissementsAppel(libre, 4, ouvert);
+  assert.deepStrictEqual(av.map(a => a.code), ['PLAFOND']);
+  assert.strictEqual(av[0].niveau, 'grave');
+  assert.ok(/4 appels/.test(av[0].texte), av[0].texte);
 });
-t('5 appels : refusé aussi', () => assert.ok(!R.appelAutorise(libre, 5, ouvert).ok));
-t('stop téléphone prime sur la plage horaire', () => {
-  // Hors plage ET stop : le message doit parler de l'opposition, pas de l'heure.
-  const r = R.appelAutorise({ ...libre, stop_telephone: 1 }, 0, d('2026-10-20', 22));
-  assert.ok(!r.ok); assert.ok(/oppos/.test(r.raison), 'message attendu : opposition, reçu : ' + r.raison);
+t('hors plage : signalé en attention, pas en grave', () => {
+  const av = R.avertissementsAppel(libre, 0, d('2026-10-20', 22));
+  assert.deepStrictEqual(av.map(a => a.code), ['HORS_PLAGE']);
+  assert.strictEqual(av[0].niveau, 'attention');
+});
+t('plusieurs problèmes : tous signalés, le plus grave en premier', () => {
+  const av = R.avertissementsAppel({ ...libre, stop_telephone: 1 }, 5, d('2026-10-20', 22));
+  assert.deepStrictEqual(av.map(a => a.code), ['OPPOSITION', 'PLAFOND', 'HORS_PLAGE']);
+  assert.strictEqual(av[0].niveau, 'grave');
+});
+t('un appel hors cadre est reconnu comme tel', () => {
+  assert.strictEqual(R.horsCadre(R.avertissementsAppel(libre, 0, ouvert)), false);
+  assert.strictEqual(R.horsCadre(R.avertissementsAppel(libre, 0, d('2026-10-20', 22))), true);
+  assert.strictEqual(R.horsCadre(R.avertissementsAppel({ ...libre, stop_telephone: 1 }, 0, ouvert)), true);
 });
 
 // --- Mail ------------------------------------------------------------------
-t('mail ordinaire : autorisé', () => assert.ok(R.mailAutorise(libre).ok));
-t('stop mail : refusé', () => assert.ok(!R.mailAutorise({ ...libre, stop_mail: 1 }).ok));
-t('sans adresse mail : refusé', () => assert.ok(!R.mailAutorise({ ...libre, email: '' }).ok));
+const codesMail = (c) => R.avertissementsMail(c).map(a => a.code);
+t('mail ordinaire : rien à signaler', () => assert.deepStrictEqual(codesMail(libre), []));
+t('opposition mail : signalée', () => assert.deepStrictEqual(codesMail({ ...libre, stop_mail: 1 }), ['OPPOSITION_MAIL']));
+t('sans adresse mail : signalé', () => assert.deepStrictEqual(codesMail({ ...libre, email: '' }), ['SANS_MAIL']));
 
 // --- Mois civil ------------------------------------------------------------
 t('mois courant au bon format', () => assert.strictEqual(R.moisCourant(d('2026-10-20', 11)), '2026-10'));

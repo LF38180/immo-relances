@@ -546,6 +546,16 @@ db.exec(`
   );
 `);
 
+// Trace des appels passés hors du cadre légal (hors plage, au-delà du plafond,
+// ou vers une personne opposée au démarchage). Les règles avertissent sans
+// bloquer — décision du 20 octobre, les conseillers en répondent. Mais un
+// avertissement ignoré sans trace ne protège personne : horodaté, il montre
+// que l'agence informait.
+{
+  const cols = db.prepare("PRAGMA table_info(op_appels)").all().map(c => c.name);
+  if (!cols.includes('hors_cadre')) db.exec("ALTER TABLE op_appels ADD COLUMN hors_cadre TEXT");
+}
+
 // Point d'attention sur une fiche : une phrase affichée en évidence dans la
 // liste de dispatch et sur l'écran d'appel. Sert aux cas qui demandent un
 // arbitrage humain plutôt qu'une règle — les 23 fiches rattachées à Cindy

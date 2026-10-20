@@ -1,8 +1,16 @@
 // Règles de l'opération anciens clients.
 //
-// Isolées ici parce qu'elles sont la partie coûteuse à se tromper : trois
-// d'entre elles sont légales, et une interface qui se contente d'avertir ne
-// protège de rien. Les routes les appellent avant toute écriture.
+// Le cadre légal (loi du 30 juin 2025, en vigueur depuis le 11 août 2026) fixe
+// des plages d'appel, un plafond de quatre appels par mois et par personne, et
+// l'interdiction d'appeler qui s'y est opposé.
+//
+// Décision de Loïck, 20 octobre : ces règles AVERTISSENT, elles ne bloquent
+// pas. Les conseillers sont des professionnels, ils connaissent la loi et en
+// répondent. L'application les renseigne — elle ne décide pas à leur place.
+//
+// Ce que le code garde malgré tout : la trace. Chaque appel passé en dehors du
+// cadre est enregistré comme tel, avec son motif. Un avertissement ignoré sans
+// trace ne protège personne ; horodaté, il montre que l'agence informait.
 
 // Loi du 30 juin 2025, en vigueur depuis le 11 août 2026.
 const PLAGES = [[10, 13], [14, 20]];   // 10h-13h et 14h-20h
@@ -58,22 +66,48 @@ function plageAppelOk(maintenant = new Date()) {
 // Mois civil en cours, pour le plafond.
 const moisCourant = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 
-// Un contact est-il appelable ? Regroupe les trois blocages.
+// Ce qu'il faut savoir avant d'appeler ce contact.
+//
+// Renvoie la liste des avertissements, du plus grave au plus bénin. Liste vide
+// = rien à signaler. Aucun de ces points n'empêche l'appel : c'est le
+// conseiller qui tranche, en connaissance de cause.
+//
 // `nbAppelsCeMois` vient de la base ; la fonction reste pure, donc testable.
-function appelAutorise(contact, nbAppelsCeMois, maintenant = new Date()) {
-  if (!contact) return { ok: false, raison: 'Contact introuvable.' };
-  if (contact.stop_telephone) return { ok: false, raison: 'Cette personne s\'est opposée au démarchage téléphonique.', definitif: true };
-  if (nbAppelsCeMois >= PLAFOND_MENSUEL)
-    return { ok: false, raison: `Plafond légal atteint : ${PLAFOND_MENSUEL} appels ce mois-ci. Rappel possible le mois prochain.` };
-  return plageAppelOk(maintenant);
+function avertissementsAppel(contact, nbAppelsCeMois, maintenant = new Date()) {
+  const av = [];
+  if (!contact) return [{ niveau: 'grave', code: 'INTROUVABLE', texte: 'Contact introuvable.' }];
+
+  if (contact.stop_telephone) av.push({
+    niveau: 'grave', code: 'OPPOSITION',
+    texte: 'Cette personne a demandé à ne plus être démarchée par téléphone.',
+  });
+
+  if (nbAppelsCeMois >= PLAFOND_MENSUEL) av.push({
+    niveau: 'grave', code: 'PLAFOND',
+    texte: `${nbAppelsCeMois} appels déjà passés ce mois-ci (plafond légal : ${PLAFOND_MENSUEL}).`,
+  });
+
+  const plage = plageAppelOk(maintenant);
+  if (!plage.ok) av.push({ niveau: 'attention', code: 'HORS_PLAGE', texte: plage.raison });
+
+  return av;
 }
 
-// Envoi de mail autorisé ?
-function mailAutorise(contact) {
-  if (!contact) return { ok: false, raison: 'Contact introuvable.' };
-  if (contact.stop_mail) return { ok: false, raison: 'Cette personne s\'est opposée aux envois par mail.' };
-  if (!contact.email) return { ok: false, raison: 'Aucune adresse mail connue.' };
-  return { ok: true };
+// Un appel sort-il du cadre ? Sert à l'horodater comme tel.
+const horsCadre = (avertissements) => avertissements.some(a => a.niveau === 'grave' || a.code === 'HORS_PLAGE');
+
+// Ce qu'il faut savoir avant d'écrire à ce contact.
+function avertissementsMail(contact) {
+  const av = [];
+  if (!contact) return [{ niveau: 'grave', code: 'INTROUVABLE', texte: 'Contact introuvable.' }];
+  if (contact.stop_mail) av.push({
+    niveau: 'grave', code: 'OPPOSITION_MAIL',
+    texte: 'Cette personne a demandé à ne plus recevoir de mails.',
+  });
+  if (!contact.email) av.push({
+    niveau: 'attention', code: 'SANS_MAIL', texte: 'Aucune adresse mail connue.',
+  });
+  return av;
 }
 
 // Les issues qui mettent fin définitivement aux appels.
@@ -82,5 +116,6 @@ const ISSUE_OPPOSITION = 'REFUS_FERME';
 
 module.exports = {
   PLAGES, PLAFOND_MENSUEL, ISSUES_TERMINALES, ISSUE_OPPOSITION,
-  feries, plageAppelOk, appelAutorise, mailAutorise, moisCourant, jourLocal,
+  feries, plageAppelOk, avertissementsAppel, avertissementsMail, horsCadre,
+  moisCourant, jourLocal,
 };

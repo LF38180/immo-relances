@@ -19,6 +19,7 @@ app.use('/api/relances', require('./routes/relanceRoutes'));
 app.use('/api/scripts', require('./routes/scriptRoutes'));
 app.use('/api/admin', require('./routes/adminRoutes'));
 app.use('/api/courtage', require('./routes/courtageRoutes'));
+app.use('/api/operation', require('./routes/opRoutes'));
 
 app.get('/api/health', (_, res) => res.json({ status: 'ok', time: new Date().toISOString() }));
 
