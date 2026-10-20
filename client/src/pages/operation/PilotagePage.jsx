@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import api from '../../utils/api'
 import toast from 'react-hot-toast'
 import Icon from '../../components/ui/Icon'
+import MarquerNpai from './MarquerNpai'
 
 // Ce qu'on regarde le matin.
 //
@@ -12,6 +13,7 @@ import Icon from '../../components/ui/Icon'
 export default function PilotagePage() {
   const [d, setD] = useState(null)
   const [erreur, setErreur] = useState(false)
+  const [npaiOuvert, setNpaiOuvert] = useState(false)
 
   useEffect(() => {
     api.get('/operation/pilotage')
@@ -120,6 +122,21 @@ export default function PilotagePage() {
           </Section>
         )}
 
+        {/* Les plis sont partis le 16 octobre : les NPAI arriveront pendant
+            l'opération. Les saisir bascule la fiche en objectif adresse. */}
+        <button onClick={() => setNpaiOuvert(true)}
+          className="w-full bg-white border border-quai-border rounded-xl p-3 text-left
+                     hover:border-quai-gold transition-colors flex items-center gap-3">
+          <Icon name="mail" size="md" className="text-quai-gold shrink-0" />
+          <div className="min-w-0">
+            <div className="text-sm font-semibold text-quai-navy">Un courrier est revenu</div>
+            <div className="text-[11px] text-quai-muted leading-snug">
+              Signaler un NPAI : la fiche passe en objectif adresse et remonte dans la file du conseiller.
+            </div>
+          </div>
+          <Icon name="chevron-right" size="sm" className="text-quai-muted ml-auto shrink-0" />
+        </button>
+
         {d.a_dispatcher > 0 && (
           <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5 leading-snug">
             <Icon name="alert-triangle" size="sm" className="inline mr-1" />
@@ -128,6 +145,8 @@ export default function PilotagePage() {
           </div>
         )}
       </div>
+
+      {npaiOuvert && <MarquerNpai onFermer={() => setNpaiOuvert(false)} />}
     </div>
   )
 }

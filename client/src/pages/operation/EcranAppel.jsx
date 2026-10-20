@@ -16,12 +16,11 @@ const ISSUES = [
   ['A_RAPPELER', 'À rappeler', null],
   ['FAUX_NUMERO', 'Faux numéro', null],
   ['ERREUR_IDENTITE', 'Pas la bonne personne', null],
-  ['SUIVI_ANCIEN_CONSEILLER', 'Parti avec son conseiller', null],
   ['DECEDE', 'Décédé', null],
   ['REFUS_FERME', 'Refus — ne plus appeler', 'red'],
 ]
 
-export default function EcranAppel({ contact: c, onEnregistre, onPasser }) {
+export default function EcranAppel({ contact: c, onEnregistre, onPasser, horsFile }) {
   const [issue, setIssue] = useState('')
   const [rappelLe, setRappelLe] = useState('')
   const [notes, setNotes] = useState('')
@@ -60,6 +59,11 @@ export default function EcranAppel({ contact: c, onEnregistre, onPasser }) {
 
           {/* Qui j'appelle, et avec quoi. */}
           <div className="bg-quai-navy text-white rounded-xl p-4">
+            {horsFile && (
+              <div className="text-[11px] text-quai-goldlt mb-1.5 inline-flex items-center gap-1">
+                <Icon name="phone-call" size="sm" /> Hors de votre liste — rappel entrant
+              </div>
+            )}
             <div className="flex items-center gap-2 flex-wrap mb-1.5">
               <span className="text-[10px] px-1.5 py-0.5 rounded bg-quai-gold text-quai-navy font-bold">
                 SCRIPT {c.script}
@@ -266,8 +270,8 @@ export default function EcranAppel({ contact: c, onEnregistre, onPasser }) {
       <div className="border-t border-quai-border bg-white p-3 shrink-0">
         <div className="max-w-3xl mx-auto flex gap-2">
           <button onClick={onPasser}
-            className="px-4 rounded-lg border border-quai-border text-quai-muted text-sm min-h-[3rem]">
-            Passer
+            className="px-4 rounded-lg border border-quai-border text-quai-muted text-sm min-h-[3rem] whitespace-nowrap">
+            {horsFile ? 'Revenir à ma liste' : 'Passer'}
           </button>
           <button onClick={enregistrer} disabled={envoi || !issue}
             className="btn-primary flex-1 min-h-[3rem] inline-flex items-center justify-center gap-2 disabled:opacity-40">

@@ -481,6 +481,10 @@ db.exec(`
     horodatage TEXT NOT NULL DEFAULT (datetime('now')),
     issue TEXT NOT NULL CHECK(issue IN (
       'JOINT','REPONDEUR','PAS_DE_REPONSE','FAUX_NUMERO','A_RAPPELER',
+      -- SUIVI_ANCIEN_CONSEILLER n'est plus proposée à l'écran (retirée le
+      -- 20 octobre) mais reste acceptée : la retirer du CHECK imposerait de
+      -- reconstruire la table en production pour interdire une valeur que
+      -- plus rien n'envoie.
       'REFUS_FERME','ERREUR_IDENTITE','SUIVI_ANCIEN_CONSEILLER','DECEDE')),
     rappel_le TEXT,
     duree_sec INTEGER,
@@ -566,6 +570,26 @@ db.exec(`
 {
   const cols = db.prepare("PRAGMA table_info(op_appels)").all().map(c => c.name);
   if (!cols.includes('hors_cadre')) db.exec("ALTER TABLE op_appels ADD COLUMN hors_cadre TEXT");
+}
+
+// Le bien, découpé pour être prononçable. « JP-4793 T5 et plus, 18 Avenue de
+// l'Europe 38120 Saint egreve » ne se dit pas au téléphone ; « l'appartement
+// du 18 Avenue de l'Europe, à Saint-Égrève » si. Renseigné sur 1 084 fiches.
+{
+  const cols = db.prepare("PRAGMA table_info(op_contacts)").all().map(c => c.name);
+  if (!cols.includes('bien_type')) db.exec("ALTER TABLE op_contacts ADD COLUMN bien_type TEXT");
+  if (!cols.includes('bien_voie')) db.exec("ALTER TABLE op_contacts ADD COLUMN bien_voie TEXT");
+  if (!cols.includes('bien_commune')) db.exec("ALTER TABLE op_contacts ADD COLUMN bien_commune TEXT");
+}
+
+// NPAI : le courrier est revenu « n'habite pas à l'adresse indiquée ». Les plis
+// sont partis la semaine du 16 octobre ; les retours arriveront pendant
+// l'opération. Loïck les saisit au fil de l'eau, ce qui bascule la fiche en
+// objectif adresse.
+{
+  const cols = db.prepare("PRAGMA table_info(op_resultats)").all().map(c => c.name);
+  if (!cols.includes('npai')) db.exec("ALTER TABLE op_resultats ADD COLUMN npai INTEGER NOT NULL DEFAULT 0");
+  if (!cols.includes('npai_le')) db.exec("ALTER TABLE op_resultats ADD COLUMN npai_le TEXT");
 }
 
 // Recommandation : un nom seul ne se rappelle pas. Sans numéro ni motif, la

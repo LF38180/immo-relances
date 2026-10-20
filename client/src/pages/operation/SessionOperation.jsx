@@ -1,8 +1,10 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, lazy, Suspense } from 'react'
 import api from '../../utils/api'
 import toast from 'react-hot-toast'
 import Icon from '../../components/ui/Icon'
 import EcranAppel from './EcranAppel'
+
+const RecapSession = lazy(() => import('./RecapSession'))
 
 // Session d'appel enchaînée, sur le modèle de celle de Chrystelle : un contact
 // plein écran, on appelle, on note, on passe au suivant. Pas de liste, pas de
@@ -19,6 +21,22 @@ export default function SessionOperation() {
   const [erreur, setErreur] = useState(false)
   const [bilan, setBilan] = useState({ faits: 0, joints: 0, rdv: 0, adresses: 0, sansReponse: 0 })
   const [listeOuverte, setListeOuverte] = useState(false)
+  const [recapOuvert, setRecapOuvert] = useState(false)
+
+  // Contact trouvé par la recherche : un client rappelle, on le traite sans
+  // perdre sa place dans la file.
+  const [horsFile, setHorsFile] = useState(null)
+  const [recherche, setRecherche] = useState('')
+  const [resultats, setResultats] = useState([])
+
+  useEffect(() => {
+    if (recherche.trim().length < 2) { setResultats([]); return }
+    const t = setTimeout(() => {
+      api.get('/operation/recherche', { params: { q: recherche.trim() } })
+        .then(r => setResultats(r.data)).catch(() => setResultats([]))
+    }, 250)
+    return () => clearTimeout(t)
+  }, [recherche])
 
   const charger = useCallback(() => {
     setChargement(true)
@@ -35,7 +53,7 @@ export default function SessionOperation() {
 
   useEffect(() => { charger() }, [charger])
 
-  const contact = file[index]
+  const contact = horsFile || file[index]
 
   // Après un appel enregistré : on avance. La fiche traitée reste dans la file
   // locale — la recharger ferait perdre la place de l'agent.
@@ -47,6 +65,9 @@ export default function SessionOperation() {
       adresses: b.adresses + (resume.adresse ? 1 : 0),
       sansReponse: b.sansReponse + (['PAS_DE_REPONSE', 'REPONDEUR'].includes(resume.issue) ? 1 : 0),
     }))
+    // Un rappel entrant ne fait pas avancer la file : on y revient où on en
+    // était.
+    if (horsFile) { setHorsFile(null); setRecherche(''); setResultats([]); return }
     if (index + 1 >= file.length) setFini(true)
     else setIndex(i => i + 1)
   }
@@ -54,8 +75,14 @@ export default function SessionOperation() {
   if (erreur) return <p className="p-6 text-quai-muted">Impossible de charger votre liste d’appels.</p>
   if (chargement) return <p className="p-6 text-quai-muted">Chargement…</p>
 
-  if (fini || !file.length) return (
-    <Termine bilan={bilan} vide={!file.length} onRecharger={charger} />
+  if (!horsFile && (fini || !file.length)) return (
+    <>
+      <Termine bilan={bilan} vide={!file.length} onRecharger={charger}
+        onRecap={() => setRecapOuvert(true)} />
+      {recapOuvert && (
+        <Suspense fallback={null}><RecapSession onFermer={() => setRecapOuvert(false)} /></Suspense>
+      )}
+    </>
   )
 
   return (
@@ -63,14 +90,22 @@ export default function SessionOperation() {
       <Progression
         index={index} total={file.length} bilan={bilan}
         plage={infos?.plage}
+        horsFile={!!horsFile}
+        recherche={recherche} setRecherche={setRecherche} resultats={resultats}
+        onOuvrirHorsFile={c => { setHorsFile(c); setRecherche(''); setResultats([]) }}
         onListe={() => setListeOuverte(true)}
+        onRecap={() => setRecapOuvert(true)}
       />
 
       <EcranAppel
         key={contact.id_modelo}
         contact={contact}
+        horsFile={!!horsFile}
         onEnregistre={suivant}
-        onPasser={() => (index + 1 >= file.length ? setFini(true) : setIndex(i => i + 1))}
+        onPasser={() => {
+          if (horsFile) { setHorsFile(null); return }
+          if (index + 1 >= file.length) setFini(true); else setIndex(i => i + 1)
+        }}
       />
 
       {/* La liste reste accessible : un agent veut parfois choisir qui il
@@ -78,55 +113,106 @@ export default function SessionOperation() {
           par défaut. */}
       {listeOuverte && (
         <Liste file={file} index={index}
-          onChoisir={i => { setIndex(i); setListeOuverte(false) }}
+          onChoisir={i => { setIndex(i); setHorsFile(null); setListeOuverte(false) }}
           onFermer={() => setListeOuverte(false)} />
+      )}
+
+      {recapOuvert && (
+        <Suspense fallback={null}><RecapSession onFermer={() => setRecapOuvert(false)} /></Suspense>
       )}
     </div>
   )
 }
 
-function Progression({ index, total, bilan, plage, onListe }) {
+function Progression({ index, total, bilan, plage, horsFile, recherche, setRecherche,
+                      resultats, onOuvrirHorsFile, onListe, onRecap }) {
   const pct = Math.round((index / total) * 100)
   return (
     <div className="bg-white border-b border-quai-border px-3 py-2 shrink-0">
-      {/* Alignée sur la colonne de contenu : sur un écran large, un compteur
-          collé au bord gauche et des chiffres à l'autre bout se lisent mal. */}
       <div className="max-w-3xl mx-auto">
-      <div className="flex items-center justify-between gap-2 text-xs mb-1.5">
-        <span className="text-quai-muted">
-          Appel <b className="text-quai-navy">{index + 1}</b> / {total}
-        </span>
-        <div className="flex items-center gap-2.5 text-[11px]">
-          {bilan.rdv > 0 && (
-            <span className="text-emerald-600 font-medium inline-flex items-center gap-1">
-              <Icon name="calendar-check" size="sm" />{bilan.rdv}
-            </span>
-          )}
-          {bilan.adresses > 0 && (
-            <span className="text-quai-navy font-medium inline-flex items-center gap-1">
-              <Icon name="map-pin" size="sm" />{bilan.adresses}
-            </span>
-          )}
-          {bilan.faits > 0 && <span className="text-quai-muted">{bilan.faits} fait{bilan.faits > 1 ? 's' : ''}</span>}
-          <button onClick={onListe} className="text-quai-muted hover:text-quai-navy p-1" aria-label="Voir la liste">
-            <Icon name="table" size="sm" />
-          </button>
+        <div className="flex items-center justify-between gap-2 text-xs mb-1.5">
+          <span className="text-quai-muted">
+            {horsFile
+              ? <span className="text-quai-gold font-medium">Rappel entrant</span>
+              : <>Appel <b className="text-quai-navy">{index + 1}</b> / {total}</>}
+          </span>
+          <div className="flex items-center gap-2.5 text-[11px]">
+            {bilan.rdv > 0 && (
+              <span className="text-emerald-600 font-medium inline-flex items-center gap-1">
+                <Icon name="calendar-check" size="sm" />{bilan.rdv}
+              </span>
+            )}
+            {bilan.adresses > 0 && (
+              <span className="text-quai-navy font-medium inline-flex items-center gap-1">
+                <Icon name="map-pin" size="sm" />{bilan.adresses}
+              </span>
+            )}
+            {bilan.faits > 0 && (
+              <button onClick={onRecap} className="text-quai-muted hover:text-quai-navy underline">
+                {bilan.faits} fait{bilan.faits > 1 ? 's' : ''}
+              </button>
+            )}
+            <button onClick={onRecap} className="text-quai-muted hover:text-quai-navy p-1"
+              aria-label="Récapitulatif des appels">
+              <Icon name="history" size="sm" />
+            </button>
+            <button onClick={onListe} className="text-quai-muted hover:text-quai-navy p-1"
+              aria-label="Voir la liste">
+              <Icon name="table" size="sm" />
+            </button>
+          </div>
         </div>
-      </div>
-      <div className="h-1.5 bg-quai-border rounded-full overflow-hidden">
-        <div className="h-full bg-quai-gold rounded-full transition-all" style={{ width: `${pct}%` }} />
-      </div>
-      {plage && !plage.ok && (
-        <div className="text-[11px] text-amber-800 mt-1.5 leading-snug">
-          <Icon name="alert-triangle" size="sm" className="inline mr-0.5" />{plage.raison}
+
+        <div className="h-1.5 bg-quai-border rounded-full overflow-hidden">
+          <div className="h-full bg-quai-gold rounded-full transition-all" style={{ width: `${pct}%` }} />
         </div>
-      )}
+
+        {/* Un client rappelle : on le retrouve sans quitter la session, et on
+            revient ensuite exactement où on en était. */}
+        <div className="relative mt-2">
+          <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-quai-muted pointer-events-none">
+            <Icon name="search" size="sm" />
+          </span>
+          <input value={recherche} onChange={e => setRecherche(e.target.value)}
+            placeholder="Il vous rappelle ? Nom ou numéro…"
+            className="w-full pl-8 pr-3 py-2 text-sm rounded-lg border border-quai-border bg-white
+                       min-h-[2.75rem] md:min-h-0 focus:outline-none focus:ring-2 focus:ring-quai-navy/30" />
+          {resultats.length > 0 && (
+            <ul className="absolute z-[1100] left-0 right-0 mt-1 bg-white border border-quai-border
+                           rounded-lg shadow-lg overflow-hidden max-h-72 overflow-y-auto">
+              {resultats.map(c => (
+                <li key={c.id_modelo}>
+                  <button onClick={() => onOuvrirHorsFile(c)}
+                    className="w-full text-left px-3 py-2.5 hover:bg-quai-light transition-colors">
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-sm text-quai-navy flex-1 truncate">
+                        {c.civilite} {c.prenom} {c.nom}
+                      </span>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-quai-light text-quai-muted shrink-0">
+                        script {c.script}
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-quai-muted">
+                      {[c.tel_portable || c.tel_fixe, c.commune].filter(Boolean).join(' · ')}
+                    </div>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        {plage && !plage.ok && (
+          <div className="text-[11px] text-amber-800 mt-1.5 leading-snug">
+            <Icon name="alert-triangle" size="sm" className="inline mr-0.5" />{plage.raison}
+          </div>
+        )}
       </div>
     </div>
   )
 }
 
-function Termine({ bilan, vide, onRecharger }) {
+function Termine({ bilan, vide, onRecharger, onRecap }) {
   return (
     <div className="flex-1 flex items-center justify-center p-6 bg-quai-light">
       <div className="text-center max-w-sm">
@@ -143,9 +229,16 @@ function Termine({ bilan, vide, onRecharger }) {
           </div>
         )}
         {vide && <p className="text-sm text-quai-muted mt-1 mb-5">Votre liste est à jour.</p>}
-        <button onClick={onRecharger} className="btn-primary inline-flex items-center gap-2">
-          <Icon name="refresh-cw" size="sm" /> Recharger la liste
-        </button>
+        <div className="flex flex-wrap gap-2 justify-center">
+          <button onClick={onRecharger} className="btn-primary inline-flex items-center gap-2">
+            <Icon name="refresh-cw" size="sm" /> Recharger la liste
+          </button>
+          {bilan.faits > 0 && (
+            <button onClick={onRecap} className="btn-secondary inline-flex items-center gap-2">
+              <Icon name="history" size="sm" /> Revoir mes appels
+            </button>
+          )}
+        </div>
       </div>
     </div>
   )

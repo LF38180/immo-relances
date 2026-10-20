@@ -218,6 +218,48 @@ router.get('/file', conseillerOuPlus, (req, res) => {
   });
 });
 
+// --- Rechercher quelqu'un pendant la session -------------------------------
+//
+// Un client rappelle : l'agent doit le retrouver sans quitter sa session. La
+// recherche porte sur son propre portefeuille — et sur tout le fichier pour un
+// manager, puisqu'un client peut tomber sur n'importe qui.
+router.get('/recherche', conseillerOuPlus, (req, res) => {
+  const moi = identite(req);
+  if (!moi) return res.status(401).json({ error: 'Compte introuvable' });
+  const q = String(req.query.q || '').trim();
+  if (q.length < 2) return res.json([]);
+
+  const { where, params } = perimetre(moi, 'c');
+  // Les numéros sont saisis avec des espaces, des points ou un indicatif : on
+  // compare chiffre à chiffre plutôt que caractère à caractère.
+  const chiffres = q.replace(/\D/g, '');
+  const motif = `%${q.toLowerCase()}%`;
+
+  const lignes = db.prepare(`
+    SELECT c.*,
+      (SELECT COUNT(*) FROM op_appels a WHERE a.id_modelo = c.id_modelo
+        AND strftime('%Y-%m', a.horodatage) = ?) AS appels_ce_mois
+    FROM op_contacts c
+    WHERE ${where} AND (
+      LOWER(c.nom) LIKE ? OR LOWER(c.prenom) LIKE ?
+      OR LOWER(COALESCE(c.nom,'') || ' ' || COALESCE(c.prenom,'')) LIKE ?
+      OR LOWER(COALESCE(c.email,'')) LIKE ?
+      ${chiffres.length >= 4
+        ? `OR REPLACE(REPLACE(REPLACE(COALESCE(c.tel_portable,''),' ',''),'.',''),'-','') LIKE '%${chiffres}%'
+           OR REPLACE(REPLACE(REPLACE(COALESCE(c.tel_fixe,''),' ',''),'.',''),'-','') LIKE '%${chiffres}%'`
+        : ''}
+    )
+    ORDER BY c.nom, c.prenom LIMIT 8
+  `).all(R.moisCourant(), ...params, motif, motif, motif, motif);
+
+  const maintenant = new Date();
+  res.json(lignes.map(l => ({
+    ...l,
+    entete: S.enTete(l),
+    avertissements: R.avertissementsAppel(l, l.appels_ce_mois, maintenant),
+  })));
+});
+
 // --- Une fiche --------------------------------------------------------------
 router.get('/contacts/:id', conseillerOuPlus, (req, res) => {
   const moi = identite(req);
@@ -249,7 +291,7 @@ router.post('/contacts/:id/appel', conseillerOuPlus, (req, res) => {
   const b = req.body || {};
   const issue = String(b.issue || '').toUpperCase();
   const ISSUES = ['JOINT', 'REPONDEUR', 'PAS_DE_REPONSE', 'FAUX_NUMERO', 'A_RAPPELER',
-    'REFUS_FERME', 'ERREUR_IDENTITE', 'SUIVI_ANCIEN_CONSEILLER', 'DECEDE'];
+    'REFUS_FERME', 'ERREUR_IDENTITE', 'DECEDE'];
   if (!ISSUES.includes(issue)) return res.status(400).json({ error: 'Issue d\'appel inconnue' });
 
   // Un rappel sans créneau est un rappel qui n'aura pas lieu.
@@ -290,7 +332,7 @@ router.post('/contacts/:id/appel', conseillerOuPlus, (req, res) => {
 // --- Ce qu'on a recueilli ---------------------------------------------------
 const CHAMPS_RESULTAT = [
   'adresse_maj', 'complement_maj', 'code_postal_maj', 'commune_maj',
-  'courrier_renvoye', 'date_renvoi', 'toujours_proprietaire', 'revendu_quand',
+  'courrier_renvoye', 'date_renvoi', 'npai', 'toujours_proprietaire', 'revendu_quand',
   'revendu_par_qui', 'statut_actuel', 'projet', 'projet_echeance',
   'actualisation', 'date_rdv', 'soiree', 'panneau',
   'recommandation_nom', 'recommandation_tel', 'recommandation_email',
@@ -327,6 +369,84 @@ router.put('/contacts/:id/resultat', conseillerOuPlus, (req, res) => {
   `).run({ id_modelo: c.id_modelo, ...valeurs });
 
   res.json({ ok: true, resultat: db.prepare('SELECT * FROM op_resultats WHERE id_modelo = ?').get(c.id_modelo) });
+});
+
+// Rattacher une fiche à l'agence de son conseiller.
+//
+// Sert aux cas où l'agence venue de Modelo ne correspond plus à qui travaille
+// la fiche — le manager d'agence ne verrait alors jamais ce que son conseiller
+// y fait.
+router.post('/contacts/:id/agence', pilotage, (req, res) => {
+  const c = getContact(req.params.id);
+  if (!c) return res.status(404).json({ error: 'Contact introuvable' });
+
+  // Sans agence fournie, on prend celle du conseiller qui suit la fiche.
+  let agence = typeof req.body?.agence === 'string' ? req.body.agence.trim() : null;
+  if (!agence && c.conseiller) {
+    const u = db.prepare(
+      "SELECT agence FROM users WHERE LOWER(TRIM(prenom || ' ' || nom)) = LOWER(?)").get(c.conseiller);
+    agence = u?.agence || null;
+  }
+  if (!agence) return res.status(400).json({ error: 'Aucune agence à appliquer' });
+
+  db.prepare("UPDATE op_contacts SET agence = ?, updated_at = datetime('now') WHERE id_modelo = ?")
+    .run(agence, c.id_modelo);
+  res.json({ ok: true, avant: c.agence, apres: agence });
+});
+
+// --- NPAI : le courrier est revenu ----------------------------------------
+//
+// Saisi par le manager au fil des retours. Bascule la fiche en objectif
+// adresse : on sait désormais que l'adresse est fausse, et c'est elle qu'il
+// faut récupérer au téléphone.
+router.post('/contacts/:id/npai', pilotage, (req, res) => {
+  const c = getContact(req.params.id);
+  if (!c) return res.status(404).json({ error: 'Contact introuvable' });
+  const npai = req.body?.npai !== false;
+
+  db.transaction(() => {
+    db.prepare(`
+      INSERT INTO op_resultats (id_modelo, npai, npai_le)
+      VALUES (?, ?, ?)
+      ON CONFLICT(id_modelo) DO UPDATE SET npai = excluded.npai, npai_le = excluded.npai_le,
+        updated_at = datetime('now')`)
+      .run(c.id_modelo, npai ? 1 : 0, npai ? new Date().toISOString().slice(0, 10) : null);
+
+    // L'objectif de l'appel change : ce n'est plus l'actualisation, c'est
+    // l'adresse. La fiche remonte dans la file du conseiller.
+    if (npai) {
+      db.prepare(`UPDATE op_contacts
+        SET objectif_principal = 'ADRESSE', adresse_fiable = 0, updated_at = datetime('now')
+        WHERE id_modelo = ?`).run(c.id_modelo);
+    }
+  })();
+
+  res.json({ ok: true, contact: enrichir(getContact(c.id_modelo)) });
+});
+
+// Récapitulatif des appels passés, pour la réunion ou le suivi personnel.
+// Un conseiller voit les siens, un manager ceux de son périmètre.
+router.get('/recap', conseillerOuPlus, (req, res) => {
+  const moi = identite(req);
+  const { where, params } = perimetre(moi, 'c');
+  const depuis = String(req.query.depuis || '').trim() || null;
+
+  const lignes = db.prepare(`
+    SELECT a.id, a.horodatage, a.issue, a.notes, a.rappel_le, a.hors_cadre, a.conseiller,
+      c.id_modelo, c.civilite, c.nom, c.prenom, c.commune, c.script,
+      c.tel_portable, c.tel_fixe, c.email, c.objectif_principal,
+      r.adresse_maj, r.code_postal_maj, r.commune_maj, r.actualisation, r.date_rdv,
+      r.soiree, r.panneau, r.projet, r.projet_echeance,
+      r.recommandation_nom, r.recommandation_tel, r.recommandation_motif,
+      r.courrier_renvoye, r.toujours_proprietaire
+    FROM op_appels a
+    JOIN op_contacts c ON c.id_modelo = a.id_modelo
+    LEFT JOIN op_resultats r ON r.id_modelo = a.id_modelo
+    WHERE ${where} ${depuis ? "AND date(a.horodatage) >= date(?)" : ''}
+    ORDER BY a.horodatage DESC
+  `).all(...params, ...(depuis ? [depuis] : []));
+
+  res.json({ appels: lignes, total: lignes.length });
 });
 
 // --- Dispatch des orphelins (pilotage) --------------------------------------
@@ -372,11 +492,22 @@ router.post('/dispatch', pilotage, (req, res) => {
     "SELECT 1 FROM users WHERE LOWER(TRIM(prenom || ' ' || nom)) = LOWER(?) AND actif = 1").get(vers);
   if (!existe) return res.status(400).json({ error: `${vers} n'a pas de compte actif` });
 
+  // L'agence de la fiche suit son conseiller : une orpheline attribuée à
+  // Saint-Égrève bascule en Saint-Égrève. Sans cela, les 363 orphelines
+  // resteraient comptées à Meylan quel qu'en soit l'attributaire, et le
+  // manager de Saint-Égrève ne verrait jamais le travail de ses conseillers
+  // sur ces fiches.
+  const compte = db.prepare(
+    "SELECT agence FROM users WHERE LOWER(TRIM(prenom || ' ' || nom)) = LOWER(?) AND actif = 1").get(vers);
+  const agenceCible = compte?.agence || null;
+
   const maj = db.prepare(`UPDATE op_contacts
-     SET conseiller = ?, a_dispatcher = 0, updated_at = datetime('now')
+     SET conseiller = ?, a_dispatcher = 0,
+         agence = COALESCE(?, agence),
+         updated_at = datetime('now')
      WHERE id_modelo = ? AND a_dispatcher = 1`);
   let n = 0;
-  db.transaction(() => { for (const id of ids) n += maj.run(vers, id).changes; })();
+  db.transaction(() => { for (const id of ids) n += maj.run(vers, agenceCible, id).changes; })();
 
   res.json({ ok: true, attribuees: n, restantes: db.prepare('SELECT COUNT(*) n FROM op_contacts WHERE a_dispatcher = 1').get().n });
 });

@@ -19,6 +19,8 @@ const COLONNES_ATTENDUES = [
   'tel_portable', 'tel_fixe', 'email', 'email_valide', 'stop_telephone',
   'stop_mail', 'bien_concerne', 'partie_au_registre', 'agence', 'secteur',
   'objectif_principal', 'fiche_a_corriger',
+  // Le bien découpé, pour être prononçable au téléphone.
+  'bien_type', 'bien_voie', 'bien_commune',
 ];
 
 // Découpage CSV tolérant aux guillemets et aux points-virgules dans un champ.
@@ -104,7 +106,7 @@ const INSERT = `
     adresse, complement, code_postal, commune, adresse_fiable,
     tel_portable, tel_fixe, email, email_valide, stop_telephone, stop_mail,
     bien_concerne, partie_au_registre, agence, secteur, objectif_principal,
-    fiche_a_corriger
+    fiche_a_corriger, bien_type, bien_voie, bien_commune
   ) VALUES (
     @id_modelo, @a_dispatcher, @conseiller, @suggestion_conseiller, @suggestion_base,
     @situation, @conseiller_precedent, @prenom_a_dire, @dossier_repris, @script,
@@ -112,7 +114,7 @@ const INSERT = `
     @adresse, @complement, @code_postal, @commune, @adresse_fiable,
     @tel_portable, @tel_fixe, @email, @email_valide, @stop_telephone, @stop_mail,
     @bien_concerne, @partie_au_registre, @agence, @secteur, @objectif_principal,
-    @fiche_a_corriger
+    @fiche_a_corriger, @bien_type, @bien_voie, @bien_commune
   )
   ON CONFLICT(id_modelo) DO UPDATE SET
     -- Réimport : on rafraîchit les données venues de Modelo, mais on ne touche
@@ -142,6 +144,9 @@ const INSERT = `
     agence = excluded.agence, secteur = excluded.secteur,
     objectif_principal = excluded.objectif_principal,
     fiche_a_corriger = excluded.fiche_a_corriger,
+    bien_type = excluded.bien_type,
+    bien_voie = excluded.bien_voie,
+    bien_commune = excluded.bien_commune,
     updated_at = datetime('now')
 `;
 
@@ -262,6 +267,8 @@ function importer(texte, { simulation = false, motDePasseProvisoire = null, user
         agence: vide(e.agence), secteur: vide(e.secteur),
         objectif_principal: normObjectif(e.objectif_principal),
         fiche_a_corriger: bool(e.fiche_a_corriger),
+        bien_type: vide(e.bien_type), bien_voie: vide(e.bien_voie),
+        bien_commune: vide(e.bien_commune),
       });
     }
   });
