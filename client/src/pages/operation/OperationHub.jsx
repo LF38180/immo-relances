@@ -2,7 +2,7 @@ import { useState, lazy, Suspense } from 'react'
 import { useAuth } from '../../hooks/useAuth'
 import Icon from '../../components/ui/Icon'
 
-const FileAppelPage = lazy(() => import('./FileAppelPage'))
+const SessionOperation = lazy(() => import('./SessionOperation'))
 const DispatchPage = lazy(() => import('./DispatchPage'))
 const PilotagePage = lazy(() => import('./PilotagePage'))
 
@@ -61,7 +61,7 @@ export default function OperationHub({ onRetour }) {
       )}
 
       <Suspense fallback={<div className="p-6 text-quai-muted">Chargement…</div>}>
-        {onglet === 'file' && <FileAppelPage />}
+        {onglet === 'file' && <SessionOperation />}
         {onglet === 'pilotage' && <PilotagePage />}
         {onglet === 'dispatch' && <DispatchPage />}
       </Suspense>
