@@ -123,9 +123,13 @@ router.get('/mon-acces', (req, res) => {
     JOIN op_contacts c ON c.id_modelo = a.id_modelo
     WHERE ${where} AND a.issue = 'JOINT'`).get(...params).n;
 
+  // Deux chiffres distincts, qu'on confondait : `fiches` est ce que la
+  // personne a elle-même à appeler, `perimetre` est ce qu'elle supervise.
+  // Un manager voyait « 748 fiches à appeler » au lieu de ses 51.
   res.json({
     participe: n > 0 || moi.global,
-    fiches: moi.global ? bilan.total : n,
+    fiches: n,
+    perimetre: bilan.total || 0,
     pilote: moi.global,
     agence: moi.agence,
     bilan: {

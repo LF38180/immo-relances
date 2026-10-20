@@ -5,6 +5,7 @@ import Icon from '../../components/ui/Icon'
 
 const SessionOperation = lazy(() => import('./SessionOperation'))
 const AccueilOperation = lazy(() => import('./AccueilOperation'))
+const AideOperation = lazy(() => import('../../components/AideOperation'))
 const DispatchPage = lazy(() => import('./DispatchPage'))
 const PilotagePage = lazy(() => import('./PilotagePage'))
 
@@ -22,6 +23,7 @@ export default function OperationHub({ onRetour }) {
   // matin, et donne le pourquoi avant le comment.
   const [onglet, setOnglet] = useState('accueil')
   const [acces, setAcces] = useState(null)
+  const [aide, setAide] = useState(null)   // rubrique ouverte, ou null
 
   useEffect(() => {
     api.get('/operation/mon-acces').then(r => setAcces(r.data)).catch(() => {})
@@ -44,6 +46,12 @@ export default function OperationHub({ onRetour }) {
           <div className="font-display font-semibold text-sm leading-tight">Anciens clients</div>
           <div className="text-[11px] text-white/60 truncate">{user?.prenom} {user?.nom}</div>
         </div>
+        {/* L'aide suit l'écran : pendant un appel ce sont les objections,
+            ailleurs la façon de lire sa liste. */}
+        <button onClick={() => setAide(onglet === 'file' ? 'appel' : 'liste')}
+          className="text-white/80 hover:text-white p-2" aria-label="Aide">
+          <Icon name="aide" size="sm" />
+        </button>
         {onRetour && (
           <button onClick={onRetour}
             className="text-white/80 hover:text-white text-xs inline-flex items-center gap-1 px-2 py-2">
@@ -79,6 +87,12 @@ export default function OperationHub({ onRetour }) {
         {onglet === 'pilotage' && <PilotagePage />}
         {onglet === 'dispatch' && <DispatchPage />}
       </Suspense>
+
+      {aide && (
+        <Suspense fallback={null}>
+          <AideOperation rubrique={aide} onFermer={() => setAide(null)} />
+        </Suspense>
+      )}
     </div>
   )
 }

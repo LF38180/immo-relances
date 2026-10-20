@@ -12,7 +12,10 @@ import Icon from '../../components/ui/Icon'
 export default function AccueilOperation({ acces, bilan, onCommencer, estPilote }) {
   const [aideOuverte, setAideOuverte] = useState(false)
 
-  const total = acces?.fiches || 0
+  // Ce que je dois appeler moi-même, pas ce que je supervise.
+  const mesFiches = acces?.fiches || 0
+  const perimetre = acces?.perimetre || mesFiches
+  const total = estPilote ? perimetre : mesFiches
   const restants = bilan?.restants ?? total
   const joints = bilan?.joints || 0
   const estimations = bilan?.estimations || 0
@@ -61,6 +64,14 @@ export default function AccueilOperation({ acces, bilan, onCommencer, estPilote 
         <p className="text-[11px] text-quai-muted text-center">
           Du 26 octobre au 14 novembre. La soirée est le 3 décembre.
         </p>
+
+        {/* Un manager a deux casquettes : ses propres appels, et le suivi de
+            son équipe. Le bouton dit lequel des deux il déclenche. */}
+        {estPilote && mesFiches > 0 && (
+          <p className="text-[11px] text-quai-muted text-center -mt-1">
+            Dont <b className="text-quai-navy">{mesFiches}</b> à appeler vous-même.
+          </p>
+        )}
 
         <button onClick={onCommencer}
           className="btn-primary w-full min-h-[3.25rem] text-base inline-flex items-center justify-center gap-2">

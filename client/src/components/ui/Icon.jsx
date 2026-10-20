@@ -5,7 +5,7 @@ import {
   ChevronRight, ChevronUp, Circle, CircleCheckBig, CircleX, Database, Download, Eye, FileCheck, FileDown,
   FileText, FileUp, History, LayoutDashboard, LogOut, Mail, MapPin, Pencil, Phone, PhoneCall, PhoneOff,
   Pin, Plus, RefreshCw, Search, Settings, Star, Table, Tag, Trash2, TriangleAlert, Trophy,
-  Bold, Italic, Underline,
+  Bold, Italic, Underline, CircleQuestionMark,
   Upload, User, Users, Voicemail, X,
 } from 'lucide-react'
 
@@ -16,7 +16,7 @@ const MAP = {
   'arrow-left': ArrowLeft, 'arrow-right': ArrowRight, 'bell': Bell, 'calendar': Calendar,
   'calendar-check': CalendarCheck, 'calendar-clock': CalendarClock, 'chevron-down': ChevronDown,
   'chevron-left': ChevronLeft, 'chevron-right': ChevronRight, 'chevron-up': ChevronUp,
-  'circle': Circle, 'check-circle-2': CircleCheckBig, 'x-circle': CircleX, 'database': Database, 'download': Download,
+  'circle': Circle, 'aide': CircleQuestionMark, 'check-circle-2': CircleCheckBig, 'x-circle': CircleX, 'database': Database, 'download': Download,
   'eye': Eye, 'file-check': FileCheck, 'file-down': FileDown, 'file-text': FileText,
   'file-up': FileUp, 'history': History, 'layout-dashboard': LayoutDashboard, 'log-out': LogOut,
   'mail': Mail, 'map-pin': MapPin, 'pencil': Pencil, 'phone': Phone, 'phone-call': PhoneCall, 'phone-off': PhoneOff,
