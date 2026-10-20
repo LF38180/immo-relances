@@ -13,6 +13,7 @@ const { db } = require('../database');
 const { requireAuth, requireRole } = require('../auth');
 const R = require('../utils/opRegles');
 const S = require('../utils/opScripts');
+const I = require('../utils/opImport');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -377,6 +378,26 @@ router.post('/dispatch', pilotage, (req, res) => {
   db.transaction(() => { for (const id of ids) n += maj.run(vers, id).changes; })();
 
   res.json({ ok: true, attribuees: n, restantes: db.prepare('SELECT COUNT(*) n FROM op_contacts WHERE a_dispatcher = 1').get().n });
+});
+
+// --- Import du fichier Modelo ----------------------------------------------
+//
+// Réservé à l'admin. La simulation est le comportement par défaut : on ne
+// touche pas à 1 088 fiches sans avoir vu le compte rendu d'abord.
+router.post('/import', requireRole('admin'), (req, res) => {
+  const b = req.body || {};
+  if (typeof b.csv !== 'string' || !b.csv.trim())
+    return res.status(400).json({ error: 'Aucun contenu à importer' });
+
+  const simulation = b.ecrire !== true;
+  const r = I.importer(b.csv, {
+    simulation,
+    motDePasseProvisoire: simulation ? null : (b.mot_de_passe || null),
+    userId: req.user.id,
+    fichier: b.fichier || null,
+  });
+  if (!r.ok) return res.status(400).json(r);
+  res.json(r);
 });
 
 // --- Pilotage ---------------------------------------------------------------
