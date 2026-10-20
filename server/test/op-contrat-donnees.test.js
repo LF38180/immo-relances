@@ -116,21 +116,21 @@ t('prenom_a_dire renseigné sur les 341 fiches des scripts 3 et 4', () => {
     'un script 3 ou 4 est sans prénom à dire : l ouverture sonnerait faux');
 });
 
-// --- §4 : l'objectif -------------------------------------------------------
-t('307 objectif ADRESSE, 781 ACTUALISATION', () => {
-  assert.strictEqual(n("SELECT COUNT(*) n FROM op_contacts WHERE objectif_principal='ADRESSE'"), 307);
-  assert.strictEqual(n("SELECT COUNT(*) n FROM op_contacts WHERE objectif_principal='ACTUALISATION'"), 781);
+// --- §4 : les quatre objectifs ---------------------------------------------
+t('46 fiches à vérifier avant d appel', () => {
+  // Identité non établie : appariées sur un seul mot du nom, ou sans
+  // correspondance au registre des 663 ventes.
+  assert.strictEqual(n('SELECT COUNT(*) n FROM op_contacts WHERE a_verifier=1'), 46);
+  assert.strictEqual(n("SELECT COUNT(*) n FROM op_contacts WHERE a_verifier=1 AND courrier_etat<>'A_TRANCHER'"), 0,
+    'une fiche à vérifier qui ne soit pas « à trancher »');
 });
 
-t('les 307 ADRESSE sont exactement les A_APPELER + A_TRANCHER', () => {
-  // 261 adresses fausses + 46 identités incertaines. Aucun courrier revenu.
-  assert.strictEqual(n("SELECT COUNT(*) n FROM op_contacts WHERE objectif_principal='ADRESSE' AND courrier_etat='A_APPELER'"), 261);
-  assert.strictEqual(n("SELECT COUNT(*) n FROM op_contacts WHERE objectif_principal='ADRESSE' AND courrier_etat='A_TRANCHER'"), 46);
-  assert.strictEqual(n("SELECT COUNT(*) n FROM op_contacts WHERE objectif_principal='ADRESSE' AND courrier_etat IN ('ENVOYE','NON_IMPRIME')"), 0);
-});
-
-t('objectif ADRESSE équivaut à adresse_fiable = 0', () => {
-  assert.strictEqual(n("SELECT COUNT(*) n FROM op_contacts WHERE (objectif_principal='ADRESSE') <> (adresse_fiable=0)"), 0);
+t('307 fiches sans adresse fiable', () => {
+  // L'information demeure — c'est elle qui affiche « sa fiche porte l'adresse
+  // du bien qu'il a vendu » — mais ce n'est plus un objectif à part.
+  assert.strictEqual(n('SELECT COUNT(*) n FROM op_contacts WHERE adresse_fiable=0'), 307);
+  assert.strictEqual(n("SELECT COUNT(*) n FROM op_contacts WHERE adresse_fiable=0 AND courrier_etat='A_APPELER'"), 261);
+  assert.strictEqual(n("SELECT COUNT(*) n FROM op_contacts WHERE adresse_fiable=0 AND courrier_etat='A_TRANCHER'"), 46);
 });
 
 // --- §6 : les blocages -----------------------------------------------------

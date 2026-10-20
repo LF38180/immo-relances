@@ -48,21 +48,21 @@ function enTete(contact) {
   };
 }
 
-// Les 307 fiches « objectif adresse » ne sont PAS des courriers revenus : les
-// plis sont partis la semaine dernière et les NPAI mettront des semaines à
-// nous parvenir. Ce sont des personnes à qui on a renoncé à écrire — 261 dont
-// l'adresse était fausse (souvent un vendeur encore fiché à l'adresse du bien
-// qu'il a vendu), 46 dont l'identité n'a pas pu être établie. La nuance change
-// la phrase de l'agent : il n'appelle pas après un échec d'envoi, il appelle
-// quelqu'un à qui on n'a jamais écrit.
+// Une ligne de contexte, pour que l'agent sache où il met les pieds avant la
+// première seconde. Aucun courrier n'est revenu : les plis sont partis et les
+// NPAI mettront des semaines. Quand quelqu'un n'a rien reçu, c'est qu'on a
+// renoncé à lui écrire — il n'appelle donc pas après un échec d'envoi, il
+// appelle quelqu'un à qui on n'a jamais écrit.
 function contexteAppel(c) {
-  if (c.objectif_principal === 'ADRESSE') {
-    return c.courrier_etat === 'A_TRANCHER'
-      ? "Identité incertaine : vérifier d'abord que c'est la bonne personne. Le courrier n'a pas été envoyé."
-      : "Adresse inconnue ou erronée : le courrier n'a pas été envoyé. Objectif premier de l'appel : récupérer l'adresse.";
+  if (c.a_verifier) {
+    return "Identité non confirmée : vérifiez que c'est la bonne personne avant de parler du bien.";
   }
-  if (c.courrier_etat === 'NON_IMPRIME')
-    return "Le courrier n'a pas été envoyé, mais l'adresse est bonne : proposer de le renvoyer par mail.";
+  if (c.courrier_etat === 'A_APPELER') {
+    return "Le courrier n'a pas été envoyé : son adresse était fausse ou absente.";
+  }
+  if (c.courrier_etat === 'NON_IMPRIME') {
+    return "Le courrier n'a pas été envoyé, mais l'adresse est bonne.";
+  }
   return 'Le courrier du président lui a été envoyé la semaine dernière.';
 }
 

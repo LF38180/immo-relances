@@ -99,7 +99,6 @@ router.get('/mon-acces', (req, res) => {
   const bilan = db.prepare(`
     SELECT
       COUNT(*) AS total,
-      SUM(CASE WHEN c.objectif_principal = 'ADRESSE' THEN 1 ELSE 0 END) AS adresse_count,
       SUM(CASE WHEN NOT EXISTS (SELECT 1 FROM op_appels a WHERE a.id_modelo = c.id_modelo)
                THEN 1 ELSE 0 END) AS restants
     FROM op_contacts c WHERE ${where} AND c.a_dispatcher = 0`).get(...params);
@@ -114,6 +113,7 @@ router.get('/mon-acces', (req, res) => {
       SUM(CASE WHEN r.panneau = 1 THEN 1 ELSE 0 END)                AS panneaux,
       SUM(CASE WHEN r.adresse_maj IS NOT NULL OR r.statut_actuel IS NOT NULL
                  OR r.projet IS NOT NULL OR r.toujours_proprietaire IS NOT NULL
+                 OR r.fiche_confirmee = 1
                THEN 1 ELSE 0 END)                                   AS fiches_a_jour
     FROM op_resultats r JOIN op_contacts c ON c.id_modelo = r.id_modelo
     WHERE ${where}`).get(...params);
@@ -171,7 +171,7 @@ router.get('/file', conseillerOuPlus, (req, res) => {
       AND c.a_dispatcher = 0
       -- Les fiches à identité incertaine sortent de la file tant qu'un manager
       -- ne les a pas vérifiées : les appeler est le pire démarrage possible.
-      AND NOT (c.courrier_etat = 'A_TRANCHER' AND c.verifie IS NULL)
+      AND NOT (c.a_verifier = 1 AND c.verifie IS NULL)
     ORDER BY c.nom, c.prenom
   `).all(R.moisCourant(), ...params);
 
@@ -354,7 +354,7 @@ router.post('/contacts/:id/appel', conseillerOuPlus, (req, res) => {
 // --- Ce qu'on a recueilli ---------------------------------------------------
 const CHAMPS_RESULTAT = [
   'adresse_maj', 'complement_maj', 'code_postal_maj', 'commune_maj',
-  'courrier_renvoye', 'date_renvoi', 'npai', 'toujours_proprietaire', 'revendu_quand',
+  'courrier_renvoye', 'date_renvoi', 'npai', 'fiche_confirmee', 'toujours_proprietaire', 'revendu_quand',
   'revendu_par_qui', 'statut_actuel', 'projet', 'projet_echeance',
   'actualisation', 'date_rdv', 'soiree', 'panneau',
   'recommandation_nom', 'recommandation_tel', 'recommandation_email',
@@ -380,6 +380,9 @@ router.put('/contacts/:id/resultat', conseillerOuPlus, (req, res) => {
     valeurs.date_consentement = new Date().toISOString();
   if (valeurs.courrier_renvoye && !valeurs.date_renvoi)
     valeurs.date_renvoi = new Date().toISOString().slice(0, 10);
+  // « Rien n'a changé » se date aussi : c'est ce qui permet de dire qu'une
+  // fiche a été vérifiée, et quand.
+  if (valeurs.fiche_confirmee) valeurs.confirmee_le = new Date().toISOString().slice(0, 10);
 
   // L'appel qui produit cette saisie : le dernier de cet agent sur cette fiche.
   // Sert au récapitulatif, qui ne doit proposer de corriger que le bon.
@@ -452,10 +455,10 @@ router.get('/a-verifier', pilotage, (req, res) => {
   const { where, params } = perimetre(moi, 'c');
   const lignes = db.prepare(`
     SELECT c.id_modelo, c.civilite, c.nom, c.prenom, c.commune, c.conseiller,
-           c.partie_au_registre, c.bien_concerne, c.courrier_motif, c.script,
+           c.partie_au_registre, c.bien_concerne, c.courrier_motif, c.script, c.a_verifier,
            c.tel_portable, c.tel_fixe, c.verifie, c.verifie_par
     FROM op_contacts c
-    WHERE ${where} AND c.courrier_etat = 'A_TRANCHER'
+    WHERE ${where} AND c.a_verifier = 1
     ORDER BY c.verifie IS NOT NULL, c.nom`).all(...params);
   res.json({
     lignes,
@@ -512,7 +515,7 @@ router.post('/contacts/:id/npai', pilotage, (req, res) => {
     // l'adresse. La fiche remonte dans la file du conseiller.
     if (npai) {
       db.prepare(`UPDATE op_contacts
-        SET objectif_principal = 'ADRESSE', adresse_fiable = 0, updated_at = datetime('now')
+        SET adresse_fiable = 0, updated_at = datetime('now')
         WHERE id_modelo = ?`).run(c.id_modelo);
     }
   })();
@@ -530,7 +533,7 @@ router.get('/recap', conseillerOuPlus, (req, res) => {
   const lignes = db.prepare(`
     SELECT a.id, a.horodatage, a.issue, a.notes, a.rappel_le, a.hors_cadre, a.conseiller,
       c.id_modelo, c.civilite, c.nom, c.prenom, c.commune, c.script,
-      c.tel_portable, c.tel_fixe, c.email, c.objectif_principal,
+      c.tel_portable, c.tel_fixe, c.email,
       r.adresse_maj, r.code_postal_maj, r.commune_maj, r.actualisation, r.date_rdv,
       r.soiree, r.panneau, r.projet, r.projet_echeance,
       r.recommandation_nom, r.recommandation_tel, r.recommandation_motif,
@@ -612,6 +615,16 @@ router.post('/dispatch', pilotage, (req, res) => {
 //
 // Réservé à l'admin. La simulation est le comportement par défaut : on ne
 // touche pas à 1 088 fiches sans avoir vu le compte rendu d'abord.
+// Liste noire : à charger avant ou après les contacts, l'ordre est indifférent.
+router.post('/import-exclus', requireRole('admin'), (req, res) => {
+  const csv = req.body?.csv;
+  if (typeof csv !== 'string' || !csv.trim())
+    return res.status(400).json({ error: 'Aucun contenu à importer' });
+  const r = I.importerExclus(csv);
+  if (!r.ok) return res.status(400).json(r);
+  res.json(r);
+});
+
 router.post('/import', requireRole('admin'), (req, res) => {
   const b = req.body || {};
   if (typeof b.csv !== 'string' || !b.csv.trim())
@@ -681,7 +694,7 @@ router.get('/pilotage', pilotage, (req, res) => {
     // Les fiches dont l'identité n'est pas établie : elles ne devraient pas
     // être appelées avant vérification.
     a_verifier: db.prepare(`SELECT COUNT(*) n FROM op_contacts c
-      WHERE ${where} AND c.courrier_etat = 'A_TRANCHER' AND c.verifie IS NULL`).get(...params).n,
+      WHERE ${where} AND c.a_verifier = 1 AND c.verifie IS NULL`).get(...params).n,
 
     // Les quatre objectifs, au même rang (arbitrage du 20 octobre).
     // « Fiches à jour » est le quatrième : il ne se propose pas au client, il
@@ -694,6 +707,7 @@ router.get('/pilotage', pilotage, (req, res) => {
         SUM(CASE WHEN r.panneau = 1 THEN 1 ELSE 0 END)                AS panneau,
         SUM(CASE WHEN r.adresse_maj IS NOT NULL OR r.statut_actuel IS NOT NULL
                    OR r.projet IS NOT NULL OR r.toujours_proprietaire IS NOT NULL
+                   OR r.fiche_confirmee = 1
                  THEN 1 ELSE 0 END)                                   AS fiches_a_jour,
         SUM(CASE WHEN r.adresse_maj IS NOT NULL THEN 1 ELSE 0 END)    AS adresses_maj,
         SUM(CASE WHEN r.courrier_renvoye = 1 THEN 1 ELSE 0 END)       AS courriers_renvoyes

@@ -79,7 +79,8 @@ if (!dispo) {
     assert.strictEqual(n('SELECT COUNT(*) n FROM op_contacts'), 1088);
     assert.strictEqual(n('SELECT COUNT(*) n FROM op_contacts WHERE a_dispatcher=1'), 363);
     assert.strictEqual(n('SELECT COUNT(*) n FROM op_contacts WHERE stop_telephone=1'), 11);
-    assert.strictEqual(n("SELECT COUNT(*) n FROM op_contacts WHERE objectif_principal='ADRESSE'"), 307);
+    assert.strictEqual(n('SELECT COUNT(*) n FROM op_contacts WHERE adresse_fiable=0'), 307);
+    assert.strictEqual(n('SELECT COUNT(*) n FROM op_contacts WHERE a_verifier=1'), 46);
     assert.strictEqual(n('SELECT COUNT(*) n FROM op_contacts WHERE script=1'), 513);
     assert.strictEqual(n('SELECT COUNT(*) n FROM op_contacts WHERE script IN (3,4)'), 341);
   });

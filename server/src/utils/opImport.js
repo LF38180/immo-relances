@@ -18,7 +18,10 @@ const COLONNES_ATTENDUES = [
   'adresse', 'complement', 'code_postal', 'commune', 'adresse_fiable',
   'tel_portable', 'tel_fixe', 'email', 'email_valide', 'stop_telephone',
   'stop_mail', 'bien_concerne', 'partie_au_registre', 'agence', 'secteur',
-  'objectif_principal', 'fiche_a_corriger',
+  'fiche_a_corriger',
+  // Les 46 fiches dont l'identité n'est pas établie : elles n'entrent pas dans
+  // la file tant qu'un manager ne les a pas confirmées.
+  'a_verifier',
   // Le bien découpé, pour être prononçable au téléphone.
   'bien_type', 'bien_voie', 'bien_commune',
 ];
@@ -77,9 +80,6 @@ const normCourrier = (v) => {
   return ['ENVOYE', 'NON_IMPRIME', 'A_APPELER', 'A_TRANCHER'].includes(x) ? x : 'A_APPELER';
 };
 
-const normObjectif = (v) =>
-  (String(v || '').trim().toUpperCase() === 'ADRESSE' ? 'ADRESSE' : 'ACTUALISATION');
-
 // Vérifie la forme du fichier avant d'écrire quoi que ce soit.
 function verifier(texte) {
   const lignes = lignesDe(texte);
@@ -105,16 +105,16 @@ const INSERT = `
     courrier_etat, courrier_motif, role, civilite, nom, prenom,
     adresse, complement, code_postal, commune, adresse_fiable,
     tel_portable, tel_fixe, email, email_valide, stop_telephone, stop_mail,
-    bien_concerne, partie_au_registre, agence, secteur, objectif_principal,
-    fiche_a_corriger, bien_type, bien_voie, bien_commune
+    bien_concerne, partie_au_registre, agence, secteur,
+    fiche_a_corriger, bien_type, bien_voie, bien_commune, a_verifier
   ) VALUES (
     @id_modelo, @a_dispatcher, @conseiller, @suggestion_conseiller, @suggestion_base,
     @situation, @conseiller_precedent, @prenom_a_dire, @dossier_repris, @script,
     @courrier_etat, @courrier_motif, @role, @civilite, @nom, @prenom,
     @adresse, @complement, @code_postal, @commune, @adresse_fiable,
     @tel_portable, @tel_fixe, @email, @email_valide, @stop_telephone, @stop_mail,
-    @bien_concerne, @partie_au_registre, @agence, @secteur, @objectif_principal,
-    @fiche_a_corriger, @bien_type, @bien_voie, @bien_commune
+    @bien_concerne, @partie_au_registre, @agence, @secteur,
+    @fiche_a_corriger, @bien_type, @bien_voie, @bien_commune, @a_verifier
   )
   ON CONFLICT(id_modelo) DO UPDATE SET
     -- Réimport : on rafraîchit les données venues de Modelo, mais on ne touche
@@ -142,8 +142,8 @@ const INSERT = `
     bien_concerne = excluded.bien_concerne,
     partie_au_registre = excluded.partie_au_registre,
     agence = excluded.agence, secteur = excluded.secteur,
-    objectif_principal = excluded.objectif_principal,
     fiche_a_corriger = excluded.fiche_a_corriger,
+    a_verifier = excluded.a_verifier,
     bien_type = excluded.bien_type,
     bien_voie = excluded.bien_voie,
     bien_commune = excluded.bien_commune,
@@ -265,8 +265,8 @@ function importer(texte, { simulation = false, motDePasseProvisoire = null, user
         bien_concerne: vide(e.bien_concerne),
         partie_au_registre: vide(e.partie_au_registre),
         agence: vide(e.agence), secteur: vide(e.secteur),
-        objectif_principal: normObjectif(e.objectif_principal),
         fiche_a_corriger: bool(e.fiche_a_corriger),
+        a_verifier: bool(e.a_verifier),
         bien_type: vide(e.bien_type), bien_voie: vide(e.bien_voie),
         bien_commune: vide(e.bien_commune),
       });
@@ -285,4 +285,47 @@ function importer(texte, { simulation = false, motDePasseProvisoire = null, user
   return { ok: true, ...compte, comptes };
 }
 
-module.exports = { importer, verifier, decouper, lignesDe, comptesDepuis, separerNom, COLONNES_ATTENDUES };
+// Liste noire : les 191 personnes écartées de l'opération, avec leur motif.
+// Elles n'entrent jamais en file d'appel. Le motif sert si l'une d'elles
+// réapparaît dans un futur import Modelo : on saura pourquoi elle avait été
+// sortie, plutôt que de la rappeler par méconnaissance.
+function importerExclus(texte) {
+  const lignes = lignesDe(texte);
+  if (lignes.length < 2) return { ok: false, erreur: 'Fichier vide' };
+  const entete = decouper(lignes[0]);
+  const iId = entete.indexOf('id_modelo');
+  if (iId === -1) return { ok: false, erreur: 'Colonne id_modelo absente' };
+
+  const col = (nom) => entete.indexOf(nom);
+  const iNom = col('nom'), iPrenom = col('prenom');
+  const iMotif = col('motif_exclusion') !== -1 ? col('motif_exclusion') : col('motif');
+  const iConseiller = col('conseiller');
+
+  const ins = db.prepare(`INSERT INTO op_exclus (id_modelo, nom, prenom, motif, conseiller)
+    VALUES (?,?,?,?,?)
+    ON CONFLICT(id_modelo) DO UPDATE SET
+      nom = excluded.nom, prenom = excluded.prenom,
+      motif = excluded.motif, conseiller = excluded.conseiller`);
+
+  let n = 0;
+  db.transaction(() => {
+    for (let i = 1; i < lignes.length; i++) {
+      const c = decouper(lignes[i]);
+      const id = vide(c[iId]);
+      if (!id) continue;
+      ins.run(id, vide(c[iNom]), vide(c[iPrenom]),
+        iMotif !== -1 ? vide(c[iMotif]) : null,
+        iConseiller !== -1 ? vide(c[iConseiller]) : null);
+      n++;
+    }
+  })();
+
+  // Si l'une d'elles se trouve déjà en file, on l'en sort : la liste noire
+  // prime sur l'import des contacts.
+  const sorties = db.prepare(`UPDATE op_contacts SET stop_telephone = 1, updated_at = datetime('now')
+    WHERE id_modelo IN (SELECT id_modelo FROM op_exclus) AND stop_telephone = 0`).run().changes;
+
+  return { ok: true, exclus: n, retires_de_la_file: sorties };
+}
+
+module.exports = { importer, importerExclus, verifier, decouper, lignesDe, comptesDepuis, separerNom, COLONNES_ATTENDUES };

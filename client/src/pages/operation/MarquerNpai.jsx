@@ -81,7 +81,6 @@ export default function MarquerNpai({ onFermer }) {
                     </div>
                     <div className="text-[11px] text-quai-muted">
                       Suivi par {c.conseiller || '—'}
-                      {c.objectif_principal === 'ADRESSE' && ' · déjà en objectif adresse'}
                     </div>
                   </button>
                 </li>

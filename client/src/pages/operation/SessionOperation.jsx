@@ -287,8 +287,10 @@ function Liste({ file, index, onChoisir, onFermer }) {
                 <span className="text-sm text-quai-navy flex-1 truncate">
                   {c.civilite} {c.prenom} {c.nom}
                 </span>
-                {c.objectif_principal === 'ADRESSE' && (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-quai-gold/25 text-quai-navy">adresse</span>
+                {c.courrier_etat !== 'ENVOYE' && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-quai-light text-quai-muted">
+                    courrier non envoyé
+                  </span>
                 )}
               </div>
               <div className="text-[11px] text-quai-muted pl-8">{c.commune}</div>

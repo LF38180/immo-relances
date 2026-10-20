@@ -572,6 +572,35 @@ db.exec(`
   if (!cols.includes('hors_cadre')) db.exec("ALTER TABLE op_appels ADD COLUMN hors_cadre TEXT");
 }
 
+// « Rien n'a changé » est une information, pas une absence d'information.
+//
+// Sans ce champ, un agent qui vérifie l'adresse et la trouve bonne ne touche à
+// rien : la fiche n'est pas comptée comme à jour, et au prochain appel
+// personne ne saura qu'elle a déjà été vérifiée. On enregistre donc la
+// confirmation, avec sa date.
+{
+  const cols = db.prepare("PRAGMA table_info(op_resultats)").all().map(c => c.name);
+  if (!cols.includes('fiche_confirmee')) db.exec("ALTER TABLE op_resultats ADD COLUMN fiche_confirmee INTEGER NOT NULL DEFAULT 0");
+  if (!cols.includes('confirmee_le')) db.exec("ALTER TABLE op_resultats ADD COLUMN confirmee_le TEXT");
+}
+
+// Le drapeau vient désormais du fichier Modelo : `a_verifier` remplace la
+// déduction sur courrier_etat. Et `objectif_principal` est abandonné — il
+// portait l'opposition adresse / actualisation, qui n'a plus de sens depuis que
+// les quatre objectifs sont au même rang.
+{
+  const cols = db.prepare("PRAGMA table_info(op_contacts)").all().map(c => c.name);
+  if (!cols.includes('a_verifier')) db.exec("ALTER TABLE op_contacts ADD COLUMN a_verifier INTEGER NOT NULL DEFAULT 0");
+}
+
+// Liste noire : 191 personnes écartées de l'opération, avec leur motif. Elles
+// ne doivent jamais entrer dans une file d'appel, et si l'une réapparaît dans
+// un import Modelo, le motif explique pourquoi elle avait été sortie.
+{
+  const cols = db.prepare("PRAGMA table_info(op_exclus)").all().map(c => c.name);
+  if (!cols.includes('conseiller')) db.exec("ALTER TABLE op_exclus ADD COLUMN conseiller TEXT");
+}
+
 // Les 46 fiches dont l'identité n'est pas établie : appariées sur un seul mot
 // du nom, ou sans correspondance au registre des ventes. Les appeler sans
 // vérifier, c'est risquer de raconter à un inconnu qu'un tiers a vendu un bien.

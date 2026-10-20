@@ -52,7 +52,6 @@ export default function EcranAppel({ contact: c, onEnregistre, onPasser, horsFil
 
   const e = c.entete || {}
   const tel = c.tel_portable || c.tel_fixe
-  const cibleAdresse = c.objectif_principal === 'ADRESSE'
   const champ = (k, v) => setRes(r => ({ ...r, [k]: v }))
 
   const enregistrer = async () => {
@@ -81,6 +80,7 @@ export default function EcranAppel({ contact: c, onEnregistre, onPasser, horsFil
       if (res.panneau === 1) parti.push('panneau')
       if (res.recommandation_nom) parti.push('recommandation')
       if (res.consentement_tel != null) parti.push('consentement')
+      if (res.fiche_confirmee === 1) parti.push('fiche confirmée')
       toast.success(
         (parti.length ? 'Enregistré — ' + parti.join(', ') : 'Enregistré')
         + (data.hors_cadre ? ' (hors cadre, tracé)' : ''))
@@ -92,7 +92,7 @@ export default function EcranAppel({ contact: c, onEnregistre, onPasser, horsFil
         // de durable — c'est le quatrième objectif, au même rang que les trois
         // propositions.
         fiche: aSaisi && !!(res.adresse_maj || res.statut_actuel || res.projet
-          || res.toujours_proprietaire != null),
+          || res.toujours_proprietaire != null || res.fiche_confirmee === 1),
       })
     } catch (err) {
       toast.error(err.response?.data?.error || 'Enregistrement impossible')
@@ -202,8 +202,24 @@ export default function EcranAppel({ contact: c, onEnregistre, onPasser, horsFil
               client, il se recueille — et il concerne les 1 088, pas seulement
               les fiches sans adresse valide. */}
           <Carte titre="Mise à jour de la fiche" ouverte>
-            <div className="text-[11px] text-quai-muted bg-quai-light rounded p-2 leading-snug">
-              Au dossier : {[c.adresse, c.code_postal, c.commune].filter(Boolean).join(', ') || 'rien'}
+            <div className="bg-quai-light rounded p-2">
+              <div className="text-[11px] text-quai-muted leading-snug">
+                Au dossier : {[c.adresse, c.code_postal, c.commune].filter(Boolean).join(', ') || 'rien'}
+              </div>
+              {/* « Rien n'a changé » est une information, pas une absence
+                  d'information : sans ce bouton, un agent qui vérifie et trouve
+                  tout bon ne laisse aucune trace, et la fiche n'est pas comptée
+                  comme à jour. */}
+              <button type="button"
+                onClick={() => champ('fiche_confirmee', res.fiche_confirmee === 1 ? null : 1)}
+                className={`mt-2 w-full text-xs px-3 py-2 rounded-lg border transition-colors min-h-[2.5rem] ${
+                  res.fiche_confirmee === 1
+                    ? 'bg-emerald-600 text-white border-emerald-600'
+                    : 'bg-white border-quai-border text-quai-navy hover:border-quai-gold'}`}>
+                {res.fiche_confirmee === 1
+                  ? '✓ Vérifié avec lui — rien n’a changé'
+                  : 'Tout est déjà bon'}
+              </button>
             </div>
             {/* Information, pas consigne. */}
             {c.adresse_fiable === 0 && (
