@@ -501,6 +501,89 @@ router.post('/contacts/:id/verifier', pilotage, (req, res) => {
   res.json({ ok: true, verdict });
 });
 
+// --- Corriger l'attribution d'une fiche ------------------------------------
+//
+// Sert aux écarts constatés avec Modelo : un conseiller qui n'est pas le bon,
+// un conseiller précédent inconnu de l'application, une fiche à renvoyer au
+// pot commun. Le script n'est jamais recalculé — il dépend de données Modelo
+// que l'application n'a pas — mais il peut être corrigé explicitement.
+router.put('/contacts/:id/attribution', pilotage, (req, res) => {
+  const moi = identite(req);
+  const c = getContact(req.params.id);
+  if (!c) return res.status(404).json({ error: 'Contact introuvable' });
+
+  const b = req.body || {};
+  const champs = {};
+
+  // Attribuer, ou renvoyer au pot commun avec la chaîne vide.
+  if (b.conseiller !== undefined) {
+    const vers = String(b.conseiller).trim();
+    if (vers) {
+      const compte = db.prepare(
+        "SELECT agence FROM users WHERE LOWER(TRIM(prenom || ' ' || nom)) = LOWER(?) AND actif = 1").get(vers);
+      if (!compte) return res.status(400).json({ error: `${vers} n'a pas de compte actif` });
+      champs.conseiller = vers;
+      champs.a_dispatcher = 0;
+      if (compte.agence) champs.agence = compte.agence;
+    } else {
+      champs.conseiller = null;
+      champs.a_dispatcher = 1;
+    }
+  }
+
+  // Le conseiller précédent décide de ce que l'agent prononce à l'ouverture.
+  if (b.conseiller_precedent !== undefined) {
+    const prec = String(b.conseiller_precedent).trim();
+    champs.conseiller_precedent = prec || null;
+    // Le prénom à dire en découle, sauf s'il est fourni explicitement.
+    if (b.prenom_a_dire === undefined) {
+      champs.prenom_a_dire = prec ? prec.split(/\s+/)[0] : null;
+    }
+  }
+  if (b.prenom_a_dire !== undefined) champs.prenom_a_dire = String(b.prenom_a_dire).trim() || null;
+
+  if (b.dossier_repris !== undefined) champs.dossier_repris = b.dossier_repris ? 1 : 0;
+  if (b.script !== undefined) {
+    const sc = parseInt(b.script, 10);
+    if (!(sc >= 1 && sc <= 4)) return res.status(400).json({ error: 'Script attendu entre 1 et 4' });
+    champs.script = sc;
+  }
+  if (b.point_attention !== undefined) champs.point_attention = String(b.point_attention).trim() || null;
+  if (b.suggestion_base !== undefined) champs.suggestion_base = String(b.suggestion_base).trim() || null;
+  if (b.situation !== undefined) champs.situation = String(b.situation).trim() || null;
+  if (b.stop_telephone !== undefined) champs.stop_telephone = b.stop_telephone ? 1 : 0;
+  if (b.email !== undefined) champs.email = String(b.email).trim() || null;
+  if (b.email_valide !== undefined) champs.email_valide = b.email_valide ? 1 : 0;
+  if (b.fiche_a_corriger !== undefined) champs.fiche_a_corriger = b.fiche_a_corriger ? 1 : 0;
+
+  const cles = Object.keys(champs);
+  if (!cles.length) return res.status(400).json({ error: 'Rien à corriger' });
+
+  db.prepare(`UPDATE op_contacts SET ${cles.map(k => `${k} = @${k}`).join(', ')},
+    updated_at = datetime('now') WHERE id_modelo = @id`).run({ ...champs, id: c.id_modelo });
+
+  res.json({ ok: true, avant: c, apres: getContact(c.id_modelo), champs: cles });
+});
+
+// Sortir une fiche de l'opération : elle rejoint la liste noire avec son motif.
+router.post('/contacts/:id/exclure', pilotage, (req, res) => {
+  const moi = identite(req);
+  const c = getContact(req.params.id);
+  if (!c) return res.status(404).json({ error: 'Contact introuvable' });
+  const motif = String(req.body?.motif || '').trim();
+  if (!motif) return res.status(400).json({ error: 'Un motif est requis' });
+
+  db.transaction(() => {
+    db.prepare(`INSERT INTO op_exclus (id_modelo, nom, prenom, motif, conseiller)
+      VALUES (?,?,?,?,?)
+      ON CONFLICT(id_modelo) DO UPDATE SET motif = excluded.motif`)
+      .run(c.id_modelo, c.nom, c.prenom, motif, c.conseiller);
+    db.prepare('DELETE FROM op_contacts WHERE id_modelo = ?').run(c.id_modelo);
+  })();
+
+  res.json({ ok: true, exclu: c.id_modelo, motif });
+});
+
 // --- NPAI : le courrier est revenu ----------------------------------------
 //
 // Saisi par le manager au fil des retours. Bascule la fiche en objectif
