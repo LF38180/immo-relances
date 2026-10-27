@@ -151,10 +151,16 @@ export default function EcranAppel({ contact: c, onEnregistre, onPasser, horsFil
             </h2>
 
             {/* Le prénom de l'ancien conseiller : la première phrase du script
-                3 ou 4 en dépend. */}
+                3 ou 4 en dépend. Le nom complet suit, en retrait : on prononce
+                le prénom, mais si le client demande « Charlotte comment ? »,
+                l'agent doit avoir la réponse sous les yeux. */}
             {e.prenom_a_dire && (
               <div className="text-sm text-quai-goldlt mt-1">
                 Dossier suivi avant par <b>{e.prenom_a_dire}</b>
+                {e.ancien_conseiller
+                  && e.ancien_conseiller.toLowerCase() !== e.prenom_a_dire.toLowerCase() && (
+                  <span className="text-white/60"> — {e.ancien_conseiller}</span>
+                )}
               </div>
             )}
 

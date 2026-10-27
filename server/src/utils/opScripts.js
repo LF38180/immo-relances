@@ -38,6 +38,11 @@ function enTete(contact) {
     // Affiché seulement quand il sert : un prénom isolé sur un script 1 ferait
     // croire à l'agent qu'il doit le prononcer.
     prenom_a_dire: s.prenomADire ? (contact.prenom_a_dire || null) : null,
+    // Le nom complet accompagne le prénom : deux Charlotte sont passées par
+    // l'agence, et un client qui demande « Charlotte comment ? » ne doit pas
+    // laisser l'agent sans réponse. On prononce le prénom, on garde le nom
+    // sous les yeux.
+    ancien_conseiller: s.prenomADire ? (contact.conseiller_precedent || null) : null,
     bien: contact.bien_concerne || null,
     // Le millésime est en tête de la référence du bien (« JP-4793 T5… »), pas
     // dans une colonne propre : on ne l'invente pas s'il n'y est pas.
