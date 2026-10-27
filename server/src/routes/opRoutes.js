@@ -529,6 +529,27 @@ router.get('/demo', requireRole('admin'), (req, res) => {
   res.json({ demo: true, total: fiches.length, fiches });
 });
 
+// Effacer un appel enregistré par erreur.
+//
+// Un agent qui clique deux fois, un test de charge laissé en base : la trace
+// est fausse et elle fausse les compteurs. On la retire, mais on garde qui l'a
+// retirée et quand — effacer sans trace serait pire que la trace elle-même.
+router.delete('/appels/:id', requireRole('admin'), (req, res) => {
+  const moi = identite(req);
+  const appel = db.prepare('SELECT * FROM op_appels WHERE id = ?').get(req.params.id);
+  if (!appel) return res.status(404).json({ error: 'Appel introuvable' });
+
+  db.transaction(() => {
+    db.prepare(`INSERT INTO op_resultats_journal (id_modelo, appel_id, auteur, champs)
+      VALUES (?, ?, ?, ?)`)
+      .run(appel.id_modelo, appel.id, moi?.nom_complet || req.user.email,
+           JSON.stringify({ efface: appel }));
+    db.prepare('DELETE FROM op_appels WHERE id = ?').run(req.params.id);
+  })();
+
+  res.json({ ok: true, efface: appel.id, contact: appel.id_modelo });
+});
+
 // --- Corriger l'attribution d'une fiche ------------------------------------
 //
 // Sert aux écarts constatés avec Modelo : un conseiller qui n'est pas le bon,
