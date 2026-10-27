@@ -9,6 +9,7 @@ const AideOperation = lazy(() => import('../../components/AideOperation'))
 const ListingPage = lazy(() => import('./ListingPage'))
 const DispatchPage = lazy(() => import('./DispatchPage'))
 const PilotagePage = lazy(() => import('./PilotagePage'))
+const DemoPage = lazy(() => import('./DemoPage'))
 
 // L'espace de l'opération anciens clients. Cloisonné : il ne donne accès à
 // rien d'autre, et rien d'autre n'y accède.
@@ -20,6 +21,9 @@ const PilotagePage = lazy(() => import('./PilotagePage'))
 export default function OperationHub({ onRetour }) {
   const { user, logout } = useAuth()
   const estPilote = ['manager', 'admin'].includes(user?.role)
+  // La démonstration ne concerne que celui qui la fait : un onglet de plus
+  // sur l'écran de tout le monde serait un onglet de trop.
+  const estAnimateur = (user?.email || '').toLowerCase() === 'performance@lequai-immobilier.com'
   // La page d'accueil s'affiche d'abord : elle se lit une fois, le premier
   // matin, et donne le pourquoi avant le comment.
   const [onglet, setOnglet] = useState('accueil')
@@ -37,6 +41,9 @@ export default function OperationHub({ onRetour }) {
       { id: 'pilotage', label: 'Suivi', icon: 'layout-dashboard' },
       { id: 'dispatch', label: 'Répartir', icon: 'users' },
       { id: 'listing', label: 'Listing', icon: 'table' },
+    ] : []),
+    ...(estAnimateur ? [
+      { id: 'demo', label: 'Démonstration', icon: 'play' },
     ] : []),
   ]
 
@@ -89,6 +96,7 @@ export default function OperationHub({ onRetour }) {
         {onglet === 'pilotage' && <PilotagePage />}
         {onglet === 'dispatch' && <DispatchPage />}
         {onglet === 'listing' && <ListingPage />}
+        {onglet === 'demo' && <DemoPage />}
       </Suspense>
 
       {aide && (

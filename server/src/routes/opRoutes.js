@@ -14,6 +14,7 @@ const { requireAuth, requireRole } = require('../auth');
 const R = require('../utils/opRegles');
 const S = require('../utils/opScripts');
 const I = require('../utils/opImport');
+const D = require('../utils/opDemo');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -510,6 +511,22 @@ router.post('/contacts/:id/verifier', pilotage, (req, res) => {
   })();
 
   res.json({ ok: true, verdict });
+});
+
+// --- Démonstration -----------------------------------------------------
+//
+// Montrer les quatre scripts devant quinze personnes sans toucher aux vraies
+// fiches. Réservé au compte qui anime la présentation : un onglet de plus sur
+// les écrans de tout le monde serait un onglet de trop.
+const ANIMATEUR = 'performance@lequai-immobilier.com';
+const estAnimateur = (req) => (req.user?.email || '').toLowerCase() === ANIMATEUR;
+
+router.get('/demo', requireRole('admin'), (req, res) => {
+  if (!estAnimateur(req)) return res.status(403).json({ error: 'Réservé à l\'animateur' });
+  const moi = identite(req);
+  const fiches = D.fichesDemo(moi?.nom_complet || 'Démonstration', moi?.agence || null)
+    .map(c => ({ ...c, entete: S.enTete(c), avertissements: [] }));
+  res.json({ demo: true, total: fiches.length, fiches });
 });
 
 // --- Corriger l'attribution d'une fiche ------------------------------------

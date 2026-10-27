@@ -21,7 +21,7 @@ const ISSUES = [
   ['REFUS_FERME', 'Refus — ne plus appeler', 'red'],
 ]
 
-export default function EcranAppel({ contact: c, onEnregistre, onPasser, horsFile }) {
+export default function EcranAppel({ contact: c, onEnregistre, onPasser, horsFile, demo }) {
   // Durée de l'appel, mesurée depuis l'ouverture de la fiche. Le manager s'en
   // sert comme signal : un appel qui passe de six minutes à quatre-vingt-dix
   // secondes, c'est quelqu'un qui expédie.
@@ -65,6 +65,16 @@ export default function EcranAppel({ contact: c, onEnregistre, onPasser, horsFil
     if (!issue) return toast.error('Indiquez comment s’est terminé l’appel')
     if (issue === 'A_RAPPELER' && !rappelLe) return toast.error('Précisez quand rappeler')
     setEnvoi(true)
+
+    // En démonstration, rien ne part : l'écran se comporte exactement comme en
+    // vrai, mais la fiche est fictive et la saisie n'est pas enregistrée. On
+    // peut donc la dérouler deux fois de suite devant la salle.
+    if (demo) {
+      toast.success('Démonstration — rien n’a été enregistré')
+      onEnregistre({ issue, rdv: res.actualisation === 'ACCEPTEE', fiche: false })
+      return
+    }
+
     try {
       const { data } = await api.post(`/operation/contacts/${c.id_modelo}/appel`,
         { issue, rappel_le: rappelLe || null, notes: notes.trim() || null,
