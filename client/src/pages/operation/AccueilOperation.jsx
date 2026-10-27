@@ -10,6 +10,7 @@ import Icon from '../../components/ui/Icon'
 // Les chiffres sont ceux du conseiller connecté. Ceux de l'opération entière
 // — 1 088 contacts, 363 orphelins — intéressent le manager, pas l'agent.
 export default function AccueilOperation({ acces, bilan, onCommencer, estPilote }) {
+  const sansCourrier = acces?.sans_courrier
   const [aideOuverte, setAideOuverte] = useState(false)
 
   // Ce que je dois appeler moi-même, pas ce que je supervise.
@@ -36,6 +37,25 @@ export default function AccueilOperation({ acces, bilan, onCommencer, estPilote 
             Plus de mille. Maintenant on les appelle, une par une.
           </p>
         </div>
+
+        {/* Tout le monde n'a pas reçu la lettre. Pour un portefeuille sorti de
+            l'envoi, l'ouverture change et la soirée n'est pas proposée : c'est
+            la première chose à lire, avant les compteurs. */}
+        {sansCourrier && (
+          <div className="border-l-4 border-amber-500 bg-amber-50 rounded-r px-3.5 py-3">
+            <div className="font-semibold text-sm text-amber-900 mb-1">
+              Tes clients n’ont pas reçu le courrier
+            </div>
+            <p className="text-[13px] text-amber-900/90 leading-snug">
+              Ton portefeuille a été sorti de l’envoi. Ne fais jamais référence à une lettre :
+              tous tes appels sont en <b>script 2</b>, celui qui ouvre sans courrier.
+            </p>
+            <p className="text-[13px] text-amber-900/90 leading-snug mt-1.5">
+              <b>N’invite pas à la soirée du 3 décembre.</b> Le reste ne change pas :
+              on prend des nouvelles, on remet la fiche à jour, on propose l’estimation.
+            </p>
+          </div>
+        )}
 
         {/* Ligne 1 — où j'en suis. « Personnes jointes » plutôt qu'un compteur
             d'adresses : trois rendez-vous sur dix personnes jointes et trois sur

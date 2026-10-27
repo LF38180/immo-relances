@@ -123,6 +123,16 @@ router.get('/mon-acces', (req, res) => {
     JOIN op_contacts c ON c.id_modelo = a.id_modelo
     WHERE ${where} AND a.issue = 'JOINT'`).get(...params).n;
 
+  // Tout le portefeuille n'a pas reçu le courrier : celui de Céline a été
+  // sorti de l'envoi, par choix. Un agent dans ce cas ne doit pas ouvrir sur
+  // « vous avez reçu notre lettre » — on le lui dit dès l'accueil, calculé
+  // plutôt qu'écrit en dur pour que la règle vaille pour qui que ce soit.
+  const courrier = db.prepare(`
+    SELECT COUNT(*) AS total,
+           SUM(CASE WHEN courrier_etat = 'NON_IMPRIME' THEN 1 ELSE 0 END) AS sans
+    FROM op_contacts WHERE LOWER(TRIM(conseiller)) = LOWER(?)`).get(moi.nom_complet);
+  const sansCourrier = courrier.total > 0 && courrier.sans === courrier.total;
+
   // Deux chiffres distincts, qu'on confondait : `fiches` est ce que la
   // personne a elle-même à appeler, `perimetre` est ce qu'elle supervise.
   // Un manager voyait « 748 fiches à appeler » au lieu de ses 51.
@@ -132,6 +142,7 @@ router.get('/mon-acces', (req, res) => {
     perimetre: bilan.total || 0,
     pilote: moi.global,
     agence: moi.agence,
+    sans_courrier: sansCourrier,
     bilan: {
       total: bilan.total || 0,
       restants: bilan.restants || 0,
