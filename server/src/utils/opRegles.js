@@ -128,8 +128,8 @@ function avertissementsMail(contact) {
   if (pro) av.push({
     niveau: 'grave', code: 'MAIL_AGENT',
     texte: `Cette adresse est celle d'un professionnel (${pro}), pas du client. `
-      + `Ne lui écrivez pas : le courrier partirait chez un conseiller. `
-      + `Demandez son adresse au téléphone.`,
+      + `Ne lui envoyez pas de mail avant d'avoir la bonne adresse : `
+      + `demandez-la au téléphone.`,
   });
 
   if (!contact.email) av.push({

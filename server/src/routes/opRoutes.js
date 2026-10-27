@@ -634,6 +634,61 @@ router.post('/dispatch', pilotage, (req, res) => {
   res.json({ ok: true, attribuees: n, restantes });
 });
 
+// --- Listing : toutes les fiches, avec leur état ---------------------------
+//
+// La vue d'ensemble du manager : qui a été appelé, par qui, avec quel résultat.
+// Le pilotage donne des totaux ; ici on descend à la fiche, pour répondre à
+// « où en est Untel sur son portefeuille » et « qu'est-ce qu'il a obtenu ».
+router.get('/listing', pilotage, (req, res) => {
+  const moi = identite(req);
+  if (!moi) return res.status(401).json({ error: 'Compte introuvable' });
+  const { where, params } = perimetre(moi, 'c');
+
+  const lignes = db.prepare(`
+    SELECT
+      c.id_modelo, c.civilite, c.nom, c.prenom, c.commune, c.conseiller, c.agence,
+      c.script, c.courrier_etat, c.a_dispatcher, c.a_verifier, c.verifie,
+      c.stop_telephone, c.stop_mail, c.email, c.tel_portable, c.tel_fixe,
+      c.bien_type, c.bien_commune, c.adresse_fiable, c.point_attention,
+
+      (SELECT COUNT(*) FROM op_appels a WHERE a.id_modelo = c.id_modelo)        AS appels,
+      (SELECT MAX(a.horodatage) FROM op_appels a WHERE a.id_modelo = c.id_modelo) AS dernier_le,
+      (SELECT a.issue FROM op_appels a WHERE a.id_modelo = c.id_modelo
+        ORDER BY a.horodatage DESC LIMIT 1)                                     AS derniere_issue,
+      (SELECT a.conseiller FROM op_appels a WHERE a.id_modelo = c.id_modelo
+        ORDER BY a.horodatage DESC LIMIT 1)                                     AS dernier_par,
+      (SELECT a.notes FROM op_appels a WHERE a.id_modelo = c.id_modelo
+        AND a.notes IS NOT NULL ORDER BY a.horodatage DESC LIMIT 1)             AS derniere_note,
+      (SELECT a.rappel_le FROM op_appels a WHERE a.id_modelo = c.id_modelo
+        AND a.issue = 'A_RAPPELER' ORDER BY a.horodatage DESC LIMIT 1)          AS rappel_le,
+
+      r.actualisation, r.date_rdv, r.soiree, r.panneau, r.fiche_confirmee,
+      r.adresse_maj, r.projet, r.projet_echeance, r.courrier_renvoye,
+      r.recommandation_nom, r.toujours_proprietaire
+    FROM op_contacts c
+    LEFT JOIN op_resultats r ON r.id_modelo = c.id_modelo
+    WHERE ${where}
+    ORDER BY c.conseiller, c.nom, c.prenom`).all(...params);
+
+  // L'état d'une fiche en un mot : c'est ce qu'on lit en premier dans un
+  // tableau de 1 088 lignes.
+  const etat = (l) => {
+    if (l.a_dispatcher) return 'A_DISPATCHER';
+    if (l.a_verifier && !l.verifie) return 'A_VERIFIER';
+    if (!l.appels) return 'JAMAIS_APPELE';
+    if (['REFUS_FERME', 'DECEDE'].includes(l.derniere_issue)) return 'CLOS';
+    if (l.derniere_issue === 'A_RAPPELER') return 'A_RAPPELER';
+    if (l.derniere_issue === 'JOINT') return 'JOINT';
+    return 'A_RELANCER';
+  };
+
+  const avecEtat = lignes.map(l => ({ ...l, etat: etat(l) }));
+  const compte = {};
+  avecEtat.forEach(l => { compte[l.etat] = (compte[l.etat] || 0) + 1; });
+
+  res.json({ lignes: avecEtat, total: avecEtat.length, par_etat: compte });
+});
+
 // --- Contrôle des adresses mail -------------------------------------------
 //
 // Une fiche client ne doit jamais porter l'adresse d'un conseiller, de

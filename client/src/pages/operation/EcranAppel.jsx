@@ -327,9 +327,8 @@ export default function EcranAppel({ contact: c, onEnregistre, onPasser, horsFil
                     Ce n’est pas l’adresse du client
                   </div>
                   <p className="text-[12px] text-red-700 mt-1 mb-0">
-                    C’est celle d’un professionnel ({mailAgent.domaine}). Ne lui écrivez pas :
-                    le courrier partirait chez un conseiller. Demandez son adresse au téléphone
-                    et notez-la ci-dessous.
+                    C’est celle d’un professionnel ({mailAgent.domaine}). Ne lui envoyez pas de mail
+                    avant d’avoir la bonne adresse. Demandez-la au téléphone et notez-la ci-dessous.
                   </p>
                 </div>
               )}

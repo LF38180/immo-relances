@@ -6,6 +6,7 @@ import Icon from '../../components/ui/Icon'
 const SessionOperation = lazy(() => import('./SessionOperation'))
 const AccueilOperation = lazy(() => import('./AccueilOperation'))
 const AideOperation = lazy(() => import('../../components/AideOperation'))
+const ListingPage = lazy(() => import('./ListingPage'))
 const DispatchPage = lazy(() => import('./DispatchPage'))
 const PilotagePage = lazy(() => import('./PilotagePage'))
 
@@ -35,6 +36,7 @@ export default function OperationHub({ onRetour }) {
     ...(estPilote ? [
       { id: 'pilotage', label: 'Suivi', icon: 'layout-dashboard' },
       { id: 'dispatch', label: 'Répartir', icon: 'users' },
+      { id: 'listing', label: 'Listing', icon: 'table' },
     ] : []),
   ]
 
@@ -86,6 +88,7 @@ export default function OperationHub({ onRetour }) {
         {onglet === 'file' && <SessionOperation />}
         {onglet === 'pilotage' && <PilotagePage />}
         {onglet === 'dispatch' && <DispatchPage />}
+        {onglet === 'listing' && <ListingPage />}
       </Suspense>
 
       {aide && (
