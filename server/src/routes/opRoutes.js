@@ -628,6 +628,35 @@ router.post('/dispatch', pilotage, (req, res) => {
   res.json({ ok: true, attribuees: n, restantes });
 });
 
+// --- Contrôle des adresses mail -------------------------------------------
+//
+// Une fiche client ne doit jamais porter l'adresse d'un conseiller, de
+// l'agence ou d'un confrère : le « renvoyer le courrier » enverrait le pli à
+// l'agent plutôt qu'au client, et le mail serait compté comme envoyé.
+router.get('/controle-mails', pilotage, (req, res) => {
+  const SUSPECTS = ['lequai-immobilier', 'kwfrance', 'keller', 'orpi', 'century21',
+    'laforet', 'guyhoquet', 'guy-hoquet', 'iadfrance', 'safti', 'optimhome',
+    'nestenn', 'stephaneplaza', 'capifrance', 'era-immobilier', 'foncia', 'citya'];
+
+  const clauses = SUSPECTS.map(() => "LOWER(COALESCE(email,'')) LIKE ?").join(' OR ');
+  const motifs = SUSPECTS.map(d => `%@%${d}%`);
+
+  const suspectes = db.prepare(`
+    SELECT id_modelo, nom, prenom, email, conseiller, a_dispatcher, fiche_a_corriger
+    FROM op_contacts WHERE email IS NOT NULL AND (${clauses})
+    ORDER BY email`).all(...motifs);
+
+  // Une même adresse sur plusieurs fiches : souvent celle d'un agent, ou un
+  // couple dont les deux fiches portent le même mail.
+  const partagees = db.prepare(`
+    SELECT LOWER(email) AS email, COUNT(*) n,
+           GROUP_CONCAT(id_modelo || ' ' || nom, ' | ') AS fiches
+    FROM op_contacts WHERE email IS NOT NULL AND TRIM(email) <> ''
+    GROUP BY LOWER(email) HAVING n > 1 ORDER BY n DESC, email`).all();
+
+  res.json({ suspectes, partagees, total: db.prepare('SELECT COUNT(*) n FROM op_contacts').get().n });
+});
+
 // --- Import du fichier Modelo ----------------------------------------------
 //
 // Réservé à l'admin. La simulation est le comportement par défaut : on ne
