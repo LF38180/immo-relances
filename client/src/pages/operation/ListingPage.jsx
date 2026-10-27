@@ -69,6 +69,13 @@ export default function ListingPage() {
     return b
   }, [visibles])
 
+  const corriger = (fiche) => setData(d => ({
+    ...d,
+    lignes: d.lignes.map(l => l.id_modelo === fiche.id_modelo
+      ? { ...l, ...fiche, a_dispatcher: fiche.conseiller ? 0 : 1 }
+      : l),
+  }))
+
   const exporter = () => {
     if (!visibles.length) return toast.error('Rien à exporter')
     const cols = ['id_modelo', 'conseiller', 'nom', 'prenom', 'commune', 'bien_type', 'bien_commune',
@@ -156,6 +163,8 @@ export default function ListingPage() {
           )}
           {visibles.slice(0, 300).map(l => (
             <Ligne key={l.id_modelo} l={l}
+              conseillers={data?.conseillers || []}
+              onCorrige={corriger}
               ouverte={ouverte === l.id_modelo}
               onBasculer={() => setOuverte(ouverte === l.id_modelo ? null : l.id_modelo)} />
           ))}
@@ -191,7 +200,8 @@ function Pastille({ actif, onClick, children }) {
   )
 }
 
-function Ligne({ l, ouverte, onBasculer }) {
+function Ligne({ l, ouverte, onBasculer, conseillers, onCorrige }) {
+  const [edition, setEdition] = useState(false)
   const e = ETATS[l.etat] || ETATS.JAMAIS_APPELE
   const quand = l.dernier_le
     ? new Date(l.dernier_le.replace(' ', 'T') + 'Z').toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
@@ -251,9 +261,103 @@ function Ligne({ l, ouverte, onBasculer }) {
               {l.point_attention}
             </div>
           )}
+
+          {edition
+            ? <Correction l={l} conseillers={conseillers}
+                onFini={(maj) => { setEdition(false); if (maj) onCorrige(maj) }} />
+            : <button onClick={() => setEdition(true)}
+                className="mt-1 text-[11px] text-quai-navy underline underline-offset-2 hover:text-quai-gold">
+                Corriger cette fiche
+              </button>}
         </div>
       )}
     </div>
+  )
+}
+
+// Corriger une fiche sans quitter le listing.
+//
+// Ce qu'on corrige ici, ce sont des coquilles de reprise : une fiche chez le
+// mauvais conseiller, un conseiller précédent que l'import ignorait. Le script
+// n'est pas recalculé automatiquement — il dépend du courrier reçu, pas de
+// l'attribution — mais il reste modifiable à la main.
+function Correction({ l, conseillers, onFini }) {
+  const [f, setF] = useState({
+    conseiller: l.conseiller || '',
+    conseiller_precedent: l.conseiller_precedent || '',
+    prenom_a_dire: l.prenom_a_dire || '',
+    script: l.script || 1,
+    point_attention: l.point_attention || '',
+  })
+  const [envoi, setEnvoi] = useState(false)
+  const maj = (k) => (e) => setF({ ...f, [k]: e.target.value })
+
+  const valider = async () => {
+    setEnvoi(true)
+    try {
+      const r = await api.put(`/operation/contacts/${l.id_modelo}/attribution`, {
+        ...f, script: Number(f.script),
+      })
+      toast.success('Fiche corrigée')
+      onFini(r.data.apres)
+    } catch (e) {
+      toast.error(e.response?.data?.error || 'Correction impossible')
+      setEnvoi(false)
+    }
+  }
+
+  return (
+    <div className="mt-2 bg-white border border-quai-border rounded p-2.5 space-y-2">
+      <Champ label="Conseiller">
+        <select value={f.conseiller} onChange={maj('conseiller')} className={CLS}>
+          <option value="">— à dispatcher —</option>
+          {conseillers.map(c => <option key={c.nom} value={c.nom}>{c.nom}</option>)}
+        </select>
+      </Champ>
+
+      <Champ label="Conseiller précédent">
+        <input value={f.conseiller_precedent} onChange={maj('conseiller_precedent')}
+          placeholder="celui que le client a connu" className={CLS} />
+      </Champ>
+
+      <Champ label="Prénom à dire">
+        <input value={f.prenom_a_dire} onChange={maj('prenom_a_dire')}
+          placeholder="déduit du conseiller précédent" className={CLS} />
+      </Champ>
+
+      <Champ label="Script">
+        <select value={f.script} onChange={maj('script')} className={CLS}>
+          {[1, 2, 3, 4].map(n => <option key={n} value={n}>Script {n}</option>)}
+        </select>
+      </Champ>
+
+      <Champ label="Point d'attention">
+        <textarea value={f.point_attention} onChange={maj('point_attention')} rows={2}
+          placeholder="ce que l'agent doit savoir avant d'appeler" className={CLS} />
+      </Champ>
+
+      <div className="flex gap-2 pt-0.5">
+        <button onClick={valider} disabled={envoi}
+          className="text-xs px-3 py-1.5 rounded bg-quai-navy text-white disabled:opacity-50">
+          {envoi ? 'Enregistrement…' : 'Enregistrer'}
+        </button>
+        <button onClick={() => onFini(null)} disabled={envoi}
+          className="text-xs px-3 py-1.5 rounded border border-quai-border text-quai-muted">
+          Annuler
+        </button>
+      </div>
+    </div>
+  )
+}
+
+const CLS = 'w-full text-xs border border-quai-border rounded px-2 py-1.5 focus:outline-none focus:border-quai-gold'
+
+function Champ({ label, children }) {
+  return (
+    <label className="block">
+      <span className="text-[10px] uppercase tracking-wide text-quai-muted">{label}</span>
+      <div className="mt-0.5">{children}</div>
+    </label>
   )
 }
 

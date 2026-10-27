@@ -733,6 +733,7 @@ router.get('/listing', pilotage, (req, res) => {
       c.script, c.courrier_etat, c.a_dispatcher, c.a_verifier, c.verifie,
       c.stop_telephone, c.stop_mail, c.email, c.tel_portable, c.tel_fixe,
       c.bien_type, c.bien_commune, c.adresse_fiable, c.point_attention,
+      c.conseiller_precedent, c.prenom_a_dire, c.dossier_repris,
 
       (SELECT COUNT(*) FROM op_appels a WHERE a.id_modelo = c.id_modelo)        AS appels,
       (SELECT MAX(a.horodatage) FROM op_appels a WHERE a.id_modelo = c.id_modelo) AS dernier_le,
@@ -769,7 +770,15 @@ router.get('/listing', pilotage, (req, res) => {
   const compte = {};
   avecEtat.forEach(l => { compte[l.etat] = (compte[l.etat] || 0) + 1; });
 
-  res.json({ lignes: avecEtat, total: avecEtat.length, par_etat: compte });
+  // De quoi réattribuer sans quitter l'écran. Le périmètre d'un manager borne
+  // la liste comme il borne les fiches : on ne donne pas à l'autre agence.
+  const conseillers = db.prepare(`
+    SELECT TRIM(prenom || ' ' || nom) AS nom, agence FROM users
+    WHERE actif = 1 AND role IN ('conseiller', 'manager', 'admin')
+    ${moi.role === 'manager' && moi.agence ? 'AND (agence = ? OR agence IS NULL)' : ''}
+    ORDER BY prenom`).all(...(moi.role === 'manager' && moi.agence ? [moi.agence] : []));
+
+  res.json({ lignes: avecEtat, total: avecEtat.length, par_etat: compte, conseillers });
 });
 
 // --- Contrôle des adresses mail -------------------------------------------
