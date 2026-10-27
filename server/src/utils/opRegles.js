@@ -96,6 +96,23 @@ function avertissementsAppel(contact, nbAppelsCeMois, maintenant = new Date()) {
 // Un appel sort-il du cadre ? Sert à l'horodater comme tel.
 const horsCadre = (avertissements) => avertissements.some(a => a.niveau === 'grave' || a.code === 'HORS_PLAGE');
 
+// Domaines qui ne peuvent pas être ceux d'un client : notre propre agence,
+// notre ancienne enseigne, et les réseaux concurrents. Une fiche qui porte une
+// de ces adresses contient celle d'un agent, pas celle du client — dix-neuf
+// cas trouvés à la relecture du 27 octobre.
+const DOMAINES_PRO = [
+  'lequai-immobilier', 'kwfrance', 'kellerwilliams', 'orpi', 'century21',
+  'laforet', 'guyhoquet', 'guy-hoquet', 'iadfrance', 'safti', 'optimhome',
+  'nestenn', 'stephaneplaza', 'capifrance', 'era-immobilier', 'foncia', 'citya',
+];
+
+// L'adresse est-elle celle d'un professionnel plutôt que du client ?
+function adresseProfessionnelle(email) {
+  if (!email) return null;
+  const bas = String(email).toLowerCase();
+  return DOMAINES_PRO.find(d => bas.includes('@') && bas.split('@')[1].includes(d)) || null;
+}
+
 // Ce qu'il faut savoir avant d'écrire à ce contact.
 function avertissementsMail(contact) {
   const av = [];
@@ -104,6 +121,17 @@ function avertissementsMail(contact) {
     niveau: 'grave', code: 'OPPOSITION_MAIL',
     texte: 'Cette personne a demandé à ne plus recevoir de mails.',
   });
+
+  // On n'efface rien : l'adresse peut servir à retrouver la bonne dans Modelo.
+  // On prévient, et l'agent décide.
+  const pro = adresseProfessionnelle(contact.email);
+  if (pro) av.push({
+    niveau: 'grave', code: 'MAIL_AGENT',
+    texte: `Cette adresse est celle d'un professionnel (${pro}), pas du client. `
+      + `Ne lui écrivez pas : le courrier partirait chez un conseiller. `
+      + `Demandez son adresse au téléphone.`,
+  });
+
   if (!contact.email) av.push({
     niveau: 'attention', code: 'SANS_MAIL', texte: 'Aucune adresse mail connue.',
   });
@@ -157,6 +185,7 @@ const ISSUE_OPPOSITION = 'REFUS_FERME';
 module.exports = {
   PLAGES, PLAFOND_MENSUEL, ISSUES_TERMINALES, ISSUE_OPPOSITION,
   feries, plageAppelOk, avertissementsAppel, avertissementsMail, horsCadre,
+  adresseProfessionnelle, DOMAINES_PRO,
   moisCourant, jourLocal,
   depuisSqlite, depuisSaisieLocale, rappelDu, memeTranche,
 };

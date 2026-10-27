@@ -50,6 +50,13 @@ export default function EcranAppel({ contact: c, onEnregistre, onPasser, horsFil
     return () => window.removeEventListener('keydown', touche)
   }, [scriptOuvert])
 
+  // Le serveur calcule l'avertissement ; on récupère le domaine pour le dire
+  // à l'agent.
+  const avMail = (c.avertissements_mail || []).find(a => a.code === 'MAIL_AGENT')
+  const mailAgent = avMail
+    ? { domaine: (avMail.texte.match(/\(([^)]+)\)/) || [, 'professionnel'])[1] }
+    : null
+
   const e = c.entete || {}
   const tel = c.tel_portable || c.tel_fixe
   const champ = (k, v) => setRes(r => ({ ...r, [k]: v }))
@@ -308,18 +315,50 @@ export default function EcranAppel({ contact: c, onEnregistre, onPasser, horsFil
               {/* Pas d'envoi depuis la fiche : un lien mailto ne peut pas
                   porter de pièce jointe, et le mail doit partir de la boîte du
                   conseiller. On donne donc l'adresse et le fichier. */}
+
+              {/* Certaines fiches portent l'adresse d'un conseiller plutôt que
+                  celle du client : l'envoyer reviendrait à s'écrire à soi-même.
+                  On alerte sans rien effacer — l'adresse aide à retrouver la
+                  bonne dans Modelo. */}
+              {mailAgent && (
+                <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2.5 leading-snug">
+                  <div className="text-[13px] font-semibold text-red-800">
+                    <Icon name="alert-triangle" size="sm" className="inline mr-1" />
+                    Ce n’est pas l’adresse du client
+                  </div>
+                  <p className="text-[12px] text-red-700 mt-1 mb-0">
+                    C’est celle d’un professionnel ({mailAgent.domaine}). Ne lui écrivez pas :
+                    le courrier partirait chez un conseiller. Demandez son adresse au téléphone
+                    et notez-la ci-dessous.
+                  </p>
+                </div>
+              )}
+
               <div>
-                <span className="text-[11px] text-quai-muted">Son adresse mail</span>
+                <span className="text-[11px] text-quai-muted">
+                  {mailAgent ? 'Adresse enregistrée — à ne pas utiliser' : 'Son adresse mail'}
+                </span>
                 <div className="flex items-center gap-2 mt-0.5">
-                  <code className="flex-1 text-[13px] text-quai-navy bg-quai-light rounded px-2.5 py-2
-                                   select-all break-all leading-snug">{c.email}</code>
-                  <button onClick={() => { navigator.clipboard?.writeText(c.email); toast.success('Adresse copiée') }}
-                    className="px-3 py-2 rounded-lg border border-quai-border text-quai-muted
-                               hover:border-quai-gold hover:text-quai-navy text-xs min-h-[2.75rem] shrink-0">
-                    Copier
-                  </button>
+                  <code className={`flex-1 text-[13px] rounded px-2.5 py-2 select-all break-all leading-snug ${
+                    mailAgent ? 'text-red-800 bg-red-50 line-through' : 'text-quai-navy bg-quai-light'}`}>
+                    {c.email}
+                  </code>
+                  {!mailAgent && (
+                    <button onClick={() => { navigator.clipboard?.writeText(c.email); toast.success('Adresse copiée') }}
+                      className="px-3 py-2 rounded-lg border border-quai-border text-quai-muted
+                                 hover:border-quai-gold hover:text-quai-navy text-xs min-h-[2.75rem] shrink-0">
+                      Copier
+                    </button>
+                  )}
                 </div>
               </div>
+
+              {/* Quand l'adresse est fausse, c'est celle du client qu'on vient
+                  chercher — au même endroit que le reste de la mise à jour. */}
+              {mailAgent && (
+                <Saisie label="Sa vraie adresse mail" type="email"
+                  value={res.email_maj || ''} onChange={v => champ('email_maj', v)} />
+              )}
               <a href="/operation/courrier-president.pdf" download
                 className="btn-secondary w-full min-h-[2.75rem] inline-flex items-center justify-center gap-1.5 text-sm">
                 <Icon name="download" size="sm" /> Télécharger le courrier

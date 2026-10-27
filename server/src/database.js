@@ -572,6 +572,14 @@ db.exec(`
   if (!cols.includes('hors_cadre')) db.exec("ALTER TABLE op_appels ADD COLUMN hors_cadre TEXT");
 }
 
+// L'adresse mail recueillie au téléphone, quand celle de la fiche était celle
+// d'un conseiller. On ne remplace pas l'originale : elle sert à retrouver la
+// bonne dans Modelo, et l'écart se voit à l'export.
+{
+  const cols = db.prepare("PRAGMA table_info(op_resultats)").all().map(c => c.name);
+  if (!cols.includes('email_maj')) db.exec("ALTER TABLE op_resultats ADD COLUMN email_maj TEXT");
+}
+
 // « Rien n'a changé » est une information, pas une absence d'information.
 //
 // Sans ce champ, un agent qui vérifie l'adresse et la trouve bonne ne touche à

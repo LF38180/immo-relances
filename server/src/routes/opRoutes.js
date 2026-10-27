@@ -223,6 +223,9 @@ router.get('/file', conseillerOuPlus, (req, res) => {
       ...l,
       entete: S.enTete(l),
       avertissements: R.avertissementsAppel(l, l.appels_ce_mois, maintenant),
+      // L'alerte « adresse d'un conseiller » doit suivre la fiche partout :
+      // elle se découvre au moment d'envoyer le courrier, pas avant.
+      avertissements_mail: R.avertissementsMail(l),
     }));
 
   res.json({
@@ -283,6 +286,7 @@ router.get('/recherche', conseillerOuPlus, (req, res) => {
     ...l,
     entete: S.enTete(l),
     avertissements: R.avertissementsAppel(l, l.appels_ce_mois, maintenant),
+    avertissements_mail: R.avertissementsMail(l),
   })));
 });
 
@@ -357,7 +361,7 @@ router.post('/contacts/:id/appel', conseillerOuPlus, (req, res) => {
 
 // --- Ce qu'on a recueilli ---------------------------------------------------
 const CHAMPS_RESULTAT = [
-  'adresse_maj', 'complement_maj', 'code_postal_maj', 'commune_maj',
+  'adresse_maj', 'complement_maj', 'code_postal_maj', 'commune_maj', 'email_maj',
   'courrier_renvoye', 'date_renvoi', 'npai', 'fiche_confirmee', 'toujours_proprietaire', 'revendu_quand',
   'revendu_par_qui', 'statut_actuel', 'projet', 'projet_echeance',
   'actualisation', 'date_rdv', 'soiree', 'panneau',
