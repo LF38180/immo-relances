@@ -28,16 +28,6 @@ export default function AccueilOperation({ acces, bilan, onCommencer, estPilote 
     <div className="flex-1 overflow-y-auto">
       <div className="max-w-3xl mx-auto p-4 space-y-4">
 
-        <div className="text-center pt-2">
-          <img src="/operation/sceau-badge.png" alt="Opération anciens clients"
-            className="w-40 h-40 md:w-52 md:h-52 rounded-xl mx-auto mb-4" />
-          <h1 className="font-display text-2xl md:text-3xl font-bold text-quai-navy">On reprend contact.</h1>
-          <p className="text-sm text-quai-muted mt-2 leading-snug">
-            Jérémy Bertrand a écrit à toutes les familles qu’on a accompagnées depuis 2021.
-            Plus de mille. Maintenant on les appelle, une par une.
-          </p>
-        </div>
-
         {/* Tout le monde n'a pas reçu la lettre. Pour un portefeuille sorti de
             l'envoi, l'ouverture change et la soirée n'est pas proposée : c'est
             la première chose à lire, avant les compteurs. */}
@@ -56,6 +46,16 @@ export default function AccueilOperation({ acces, bilan, onCommencer, estPilote 
             </p>
           </div>
         )}
+
+        <div className="text-center pt-2">
+          <img src="/operation/sceau-badge.png" alt="Opération anciens clients"
+            className="w-40 h-40 md:w-52 md:h-52 rounded-xl mx-auto mb-4" />
+          <h1 className="font-display text-2xl md:text-3xl font-bold text-quai-navy">On reprend contact.</h1>
+          <p className="text-sm text-quai-muted mt-2 leading-snug">
+            Jérémy Bertrand a écrit à toutes les familles qu’on a accompagnées depuis 2021.
+            Plus de mille. Maintenant on les appelle, une par une.
+          </p>
+        </div>
 
         {/* Ligne 1 — où j'en suis. « Personnes jointes » plutôt qu'un compteur
             d'adresses : trois rendez-vous sur dix personnes jointes et trois sur
@@ -82,7 +82,7 @@ export default function AccueilOperation({ acces, bilan, onCommencer, estPilote 
         </div>
 
         <p className="text-[11px] text-quai-muted text-center">
-          Du 26 octobre au 14 novembre. La soirée est le 3 décembre.
+          Du 3 au 14 novembre. La soirée est le 3 décembre.
         </p>
 
         {/* Un manager a deux casquettes : ses propres appels, et le suivi de
