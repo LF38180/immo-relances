@@ -563,7 +563,9 @@ router.get('/dispatch', pilotage, (req, res) => {
   const lignes = db.prepare(`
     SELECT c.id_modelo, c.nom, c.prenom, c.commune, c.code_postal, c.courrier_etat, c.script,
            c.bien_concerne, c.situation, c.suggestion_conseiller, c.suggestion_base,
-           c.conseiller_precedent, c.point_attention, c.agence
+           c.conseiller_precedent, c.point_attention, c.agence,
+           -- De quoi filtrer : qui suivait, où est le bien, et de quel type.
+           c.bien_type, c.bien_commune
     FROM op_contacts c WHERE ${where} AND c.a_dispatcher = 1
     ORDER BY c.suggestion_base, c.conseiller_precedent, c.nom`).all(...params);
 

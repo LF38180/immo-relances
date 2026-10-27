@@ -26,6 +26,12 @@ export default function DispatchPage() {
   const [destinataire, setDestinataire] = useState('')
   const [filtre, setFiltre] = useState('')
   const [recherche, setRecherche] = useState('')
+  // Trois façons de découper un lot de 340 fiches : par qui les suivait, par
+  // où se trouve le bien, par ce que c'est. On attribue rarement « au hasard » :
+  // on donne un ancien portefeuille, un secteur, ou un type de bien.
+  const [ancien, setAncien] = useState('')
+  const [commune, setCommune] = useState('')
+  const [typeBien, setTypeBien] = useState('')
   const [envoi, setEnvoi] = useState(false)
 
   const charger = () => api.get('/operation/dispatch')
@@ -47,15 +53,29 @@ export default function DispatchPage() {
     return [...m.entries()].sort((a, b) => b[1] - a[1])
   }, [lignes])
 
+  // On ne propose que des valeurs qui existent, avec leur effectif : un filtre
+  // qui ne renvoie rien fait douter de l'outil.
+  const listeDe = (champ) => {
+    const m = new Map()
+    lignes.forEach(l => { const v = l[champ]; if (v) m.set(v, (m.get(v) || 0) + 1) })
+    return [...m.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'fr'))
+  }
+  const anciens = useMemo(() => listeDe('conseiller_precedent'), [lignes])
+  const communes = useMemo(() => listeDe('bien_commune'), [lignes])
+  const types = useMemo(() => listeDe('bien_type'), [lignes])
+
   const visibles = useMemo(() => {
     const q = recherche.trim().toLowerCase()
     return lignes.filter(l => {
       if (filtre && (l.suggestion_base || 'AUCUNE') !== filtre) return false
+      if (ancien && l.conseiller_precedent !== ancien) return false
+      if (commune && l.bien_commune !== commune) return false
+      if (typeBien && l.bien_type !== typeBien) return false
       if (!q) return true
       return [l.nom, l.prenom, l.commune, l.conseiller_precedent, l.suggestion_conseiller]
         .some(x => (x || '').toLowerCase().includes(q))
     })
-  }, [lignes, filtre, recherche])
+  }, [lignes, filtre, recherche, ancien, commune, typeBien])
 
   const basculer = (id) => setSelection(s => {
     const n = new Set(s)
@@ -162,6 +182,21 @@ export default function DispatchPage() {
           </button>
         </div>
 
+        <div className="flex flex-wrap items-center gap-2">
+          <Selecteur label="Ancien conseiller" valeur={ancien} onChange={setAncien} options={anciens} />
+          <Selecteur label="Commune du bien" valeur={commune} onChange={setCommune} options={communes} />
+          <Selecteur label="Type de bien" valeur={typeBien} onChange={setTypeBien} options={types} />
+          {(ancien || commune || typeBien) && (
+            <button onClick={() => { setAncien(''); setCommune(''); setTypeBien('') }}
+              className="text-xs text-quai-muted hover:text-quai-navy underline">
+              Tout afficher
+            </button>
+          )}
+          <span className="text-[11px] text-quai-muted ml-auto">
+            {visibles.length} sur {lignes.length}
+          </span>
+        </div>
+
         <ListeFiches lignes={visibles} selection={selection} onBasculer={basculer} />
       </div>
 
@@ -179,6 +214,21 @@ export default function DispatchPage() {
         />
       )}
     </div>
+  )
+}
+
+// Un sélecteur qui affiche l'effectif de chaque valeur : on voit tout de suite
+// où sont les gros paquets.
+function Selecteur({ label, valeur, onChange, options }) {
+  if (!options.length) return null
+  return (
+    <select value={valeur} onChange={e => onChange(e.target.value)} aria-label={label}
+      className={`text-xs px-2.5 py-2 rounded-lg border bg-white min-h-[2.75rem] md:min-h-0
+                  focus:outline-none focus:ring-2 focus:ring-quai-navy/30 ${
+        valeur ? 'border-quai-gold text-quai-navy font-medium' : 'border-quai-border text-quai-muted'}`}>
+      <option value="">{label}</option>
+      {options.map(([v, n]) => <option key={v} value={v}>{v} ({n})</option>)}
+    </select>
   )
 }
 
@@ -271,7 +321,9 @@ function ListeFiches({ lignes, selection, onBasculer }) {
                 <span className="font-medium text-quai-navy text-sm">
                   {l.nom} {l.prenom}
                 </span>
-                <span className="text-[11px] text-quai-muted">{l.commune}</span>
+                <span className="text-[11px] text-quai-muted">
+                  {[l.bien_type, l.bien_commune].filter(Boolean).join(' · ') || l.commune}
+                </span>
                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-quai-light text-quai-muted">
                   script {l.script}
                 </span>
