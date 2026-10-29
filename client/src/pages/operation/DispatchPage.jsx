@@ -132,16 +132,25 @@ export default function DispatchPage() {
   if (!data) return <p className="p-6 text-quai-muted">Chargement…</p>
 
   if (!lignes.length) return (
-    <div className="p-8 text-center">
-      <Icon name="check-circle-2" size="xl" className="text-emerald-600 mx-auto mb-3" />
-      <p className="font-medium text-quai-navy">Toutes les fiches sont attribuées.</p>
-      <p className="text-sm text-quai-muted mt-1">Plus rien à répartir.</p>
+    <div className="flex-1 overflow-y-auto">
+      <div className="p-4 md:p-6 space-y-4 max-w-6xl mx-auto">
+        <AVerifier />
+        <div className="p-8 text-center">
+          <Icon name="check-circle-2" size="xl" className="text-emerald-600 mx-auto mb-3" />
+          <p className="font-medium text-quai-navy">Toutes les fiches sont attribuées.</p>
+          <p className="text-sm text-quai-muted mt-1">Plus rien à répartir.</p>
+        </div>
+      </div>
     </div>
   )
 
   return (
     <div className="flex-1 overflow-y-auto">
       <div className="p-4 md:p-6 space-y-4 max-w-6xl mx-auto">
+
+        {/* Les fiches à identité incertaine, avant la répartition : les deux
+            sont des décisions à prendre avant qu'un agent ne décroche. */}
+        <AVerifier />
 
         <div>
           <h1 className="font-display text-xl font-bold text-quai-navy">Répartir les fiches</h1>
@@ -387,6 +396,113 @@ function BarreAttribution({ nb, conseillers, destinataire, setDestinataire, envo
           Annuler
         </button>
       </div>
+    </div>
+  )
+}
+
+// Les fiches dont on n'est pas certain qu'elles aient vendu chez nous.
+//
+// Appariées sur un seul mot du nom, ou sans correspondance au registre des
+// ventes. Elles sont hors de toute file tant qu'un manager n'a pas tranché —
+// et les routes pour le faire existaient sans écran : trente-quatre clients
+// que personne ne pouvait débloquer, invisibles. Le nom tel qu'il figure au
+// registre est ce qui permet de trancher à l'œil, sans appeler.
+function AVerifier() {
+  const [data, setData] = useState(null)
+  const [enCours, setEnCours] = useState(null)
+  const [ouvert, setOuvert] = useState(true)
+  const [voirTranchees, setVoirTranchees] = useState(false)
+
+  useEffect(() => {
+    api.get('/operation/a-verifier').then(r => setData(r.data)).catch(() => setData({ lignes: [], restantes: 0 }))
+  }, [])
+
+  const trancher = async (l, verdict) => {
+    if (verdict === 'ECARTE' && !window.confirm(
+      `Écarter ${l.prenom} ${l.nom} ?\n\nLa fiche ne sera appelée par personne, et une opposition sera posée. ` +
+      `À réserver aux cas où ce n'est vraiment pas la bonne personne.`)) return
+    setEnCours(l.id_modelo)
+    try {
+      await api.post(`/operation/contacts/${l.id_modelo}/verifier`, { verdict })
+      setData(d => {
+        const lignes = d.lignes.map(x => x.id_modelo === l.id_modelo ? { ...x, verifie: verdict } : x)
+        return { lignes, restantes: lignes.filter(x => !x.verifie).length }
+      })
+      toast.success(verdict === 'CONFIRME'
+        ? `${l.nom} : confirmée, elle entre dans la file de ${l.conseiller || 'son conseiller'}`
+        : `${l.nom} : écartée, elle ne sera pas appelée`)
+    } catch (e) { toast.error(e.messageLisible || 'Échec') }
+    finally { setEnCours(null) }
+  }
+
+  if (!data || !data.lignes.length) return null
+  const aTrancher = data.lignes.filter(l => !l.verifie)
+  const tranchees = data.lignes.filter(l => l.verifie)
+
+  return (
+    <div className={`rounded-xl border ${data.restantes ? 'border-amber-300 bg-amber-50' : 'border-quai-border bg-white'}`}>
+      <button onClick={() => setOuvert(v => !v)} className="w-full p-3 flex items-center gap-3 text-left">
+        <Icon name={data.restantes ? 'alert-triangle' : 'check-circle-2'} size="md"
+          className={`shrink-0 ${data.restantes ? 'text-amber-700' : 'text-emerald-600'}`} />
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-semibold text-quai-navy">
+            {data.restantes
+              ? `${data.restantes} fiche${data.restantes > 1 ? 's' : ''} à vérifier avant d'appeler`
+              : 'Toutes les fiches douteuses ont été tranchées'}
+          </div>
+          <div className="text-[11px] text-quai-muted leading-snug">
+            On n'est pas sûr que ces personnes aient vendu chez nous. Tant que ce n'est pas tranché, elles
+            ne sont dans la file de personne.
+          </div>
+        </div>
+        <Icon name={ouvert ? 'chevron-up' : 'chevron-down'} size="sm" className="text-quai-muted shrink-0" />
+      </button>
+
+      {ouvert && (
+        <div className="border-t border-amber-200/60 divide-y divide-quai-border/60">
+          {aTrancher.map(l => (
+            <div key={l.id_modelo} className="p-3 bg-white/70">
+              <div className="flex flex-wrap items-baseline gap-x-2">
+                <span className="text-sm font-medium text-quai-navy">{l.civilite} {l.prenom} {l.nom}</span>
+                <span className="text-[11px] text-quai-muted">{l.commune}{l.conseiller && ` · ${l.conseiller}`}</span>
+              </div>
+              {l.bien_concerne && <div className="text-[12px] text-quai-text mt-0.5">{l.bien_concerne}</div>}
+              <div className="text-[12px] mt-1">
+                <span className="text-quai-muted">Au registre des ventes : </span>
+                <b className="text-quai-navy">{l.partie_au_registre || 'aucune correspondance'}</b>
+              </div>
+              {l.courrier_motif && <div className="text-[11px] text-quai-muted mt-0.5 italic">{l.courrier_motif}</div>}
+              <div className="flex gap-2 mt-2">
+                <button onClick={() => trancher(l, 'CONFIRME')} disabled={enCours === l.id_modelo}
+                  className="text-xs px-3 py-2 rounded-lg bg-quai-navy text-white min-h-[2.75rem] disabled:opacity-40">
+                  C'est bien cette personne
+                </button>
+                <button onClick={() => trancher(l, 'ECARTE')} disabled={enCours === l.id_modelo}
+                  className="text-xs px-3 py-2 rounded-lg border border-red-200 text-red-700 bg-white min-h-[2.75rem] disabled:opacity-40">
+                  Ce n'est pas elle — écarter
+                </button>
+              </div>
+            </div>
+          ))}
+          {tranchees.length > 0 && (
+            <div className="p-2">
+              <button onClick={() => setVoirTranchees(v => !v)} className="text-[11px] text-quai-muted underline underline-offset-2">
+                {voirTranchees ? 'Masquer' : 'Voir'} les {tranchees.length} déjà tranchée{tranchees.length > 1 ? 's' : ''}
+              </button>
+              {voirTranchees && (
+                <ul className="mt-1.5 space-y-0.5 text-[11px] text-quai-muted">
+                  {tranchees.map(l => (
+                    <li key={l.id_modelo}>
+                      {l.prenom} {l.nom} — <b className={l.verifie === 'CONFIRME' ? 'text-emerald-700' : 'text-red-700'}>
+                        {l.verifie === 'CONFIRME' ? 'confirmée' : 'écartée'}</b>{l.verifie_par && ` par ${l.verifie_par}`}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

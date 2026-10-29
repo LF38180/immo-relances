@@ -242,7 +242,11 @@ router.get('/file', conseillerOuPlus, (req, res) => {
       AND c.a_dispatcher = 0
       -- Les fiches à identité incertaine sortent de la file tant qu'un manager
       -- ne les a pas vérifiées : les appeler est le pire démarrage possible.
-      AND NOT (c.a_verifier = 1 AND c.verifie IS NULL)
+      -- Identité incertaine : hors de la file tant qu'un manager n'a pas
+      -- tranché, et définitivement si elle a été écartée. L'opposition posée
+      -- à l'écart ne faisait que la reléguer en fin de liste, numéro
+      -- cliquable — l'inverse de ce que « écarter » promet.
+      AND NOT (c.a_verifier = 1 AND (c.verifie IS NULL OR c.verifie = 'ECARTE'))
       -- Une file d'appels ne propose que des fiches appelables. Trente-neuf
       -- fiches n'ont aucun numéro : l'agent arrivait sur « Aucun numéro »,
       -- passait, et la retrouvait à la même place à chaque session. Elles
@@ -257,7 +261,7 @@ router.get('/file', conseillerOuPlus, (req, res) => {
   const sansTelephone = db.prepare(`
     SELECT COUNT(*) n FROM op_contacts c
     WHERE ${where} AND c.a_dispatcher = 0
-      AND NOT (c.a_verifier = 1 AND c.verifie IS NULL)
+      AND NOT (c.a_verifier = 1 AND (c.verifie IS NULL OR c.verifie = 'ECARTE'))
       AND NULLIF(TRIM(COALESCE(c.tel_portable, '')), '') IS NULL
       AND NULLIF(TRIM(COALESCE(c.tel_fixe, '')), '') IS NULL`).get(...params).n;
 
@@ -988,6 +992,7 @@ router.get('/listing', pilotage, (req, res) => {
   const etat = (l) => {
     if (l.a_dispatcher) return 'A_DISPATCHER';
     if (l.a_verifier && !l.verifie) return 'A_VERIFIER';
+    if (l.a_verifier && l.verifie === 'ECARTE') return 'CLOS';
     if (!String(l.tel_portable || '').trim() && !String(l.tel_fixe || '').trim()) return 'SANS_TELEPHONE';
     if (!l.appels) return 'JAMAIS_APPELE';
     if (['REFUS_FERME', 'DECEDE'].includes(l.derniere_issue)) return 'CLOS';

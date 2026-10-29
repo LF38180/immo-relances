@@ -62,6 +62,24 @@ export default function AdminPage() {
     } catch { toast.error('Erreur (email déjà utilisé ?)') }
   }
 
+  // Un agent qui oublie le mot de passe qu'il vient de choisir : l'admin lui en
+  // donne un provisoire, que l'application lui fera changer à la prochaine
+  // connexion. Il n'y avait aucun moyen de le faire depuis l'écran — seule la
+  // création d'un compte acceptait un mot de passe.
+  const reinitialiserMdp = async (u) => {
+    const saisi = window.prompt(
+      `Nouveau mot de passe provisoire pour ${u.prenom} ${u.nom} (8 caractères minimum).\n` +
+      `Il devra en choisir un autre à sa prochaine connexion.`, 'LeQuai2026')
+    if (saisi === null) return
+    const mdp = saisi.trim()
+    if (mdp.length < 8) return toast.error('8 caractères minimum')
+    try {
+      await api.put(`/admin/users/${u.id}`, { password: mdp, must_change_password: 1 })
+      toast.success(`Mot de passe provisoire posé pour ${u.prenom}. Il le changera à sa prochaine connexion.`, { duration: 6000 })
+      chargerUsers()
+    } catch (e) { toast.error(e.messageLisible || 'Échec') }
+  }
+
   const toggleUser = async (u) => {
     await api.put(`/admin/users/${u.id}`, { actif: u.actif ? 0 : 1 })
     toast.success(u.actif ? 'Utilisateur désactivé' : 'Utilisateur activé')
@@ -153,9 +171,17 @@ export default function AdminPage() {
                         </span>
                       </td>
                       <td className="px-4 py-3">
-                        <button onClick={() => toggleUser(u)} className="text-xs text-quai-navy hover:text-quai-gold font-medium">
-                          {u.actif ? 'Désactiver' : 'Activer'}
-                        </button>
+                        <div className="flex items-center gap-3 whitespace-nowrap">
+                          <button onClick={() => reinitialiserMdp(u)} className="text-xs text-quai-navy hover:text-quai-gold font-medium">
+                            Nouveau mot de passe
+                          </button>
+                          <button onClick={() => toggleUser(u)} className="text-xs text-quai-muted hover:text-quai-navy font-medium">
+                            {u.actif ? 'Désactiver' : 'Activer'}
+                          </button>
+                        </div>
+                        {!!u.must_change_password && (
+                          <div className="text-[10px] text-amber-700 mt-0.5">changement demandé à la prochaine connexion</div>
+                        )}
                       </td>
                     </tr>
                   ))}

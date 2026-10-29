@@ -140,6 +140,16 @@ export default function PilotagePage({ onAppeler }) {
             fiches. */}
         <SectionNpai npai={d.npai} onSaisir={() => setNpaiOuvert(true)} onAppeler={onAppeler} />
 
+        {/* Le serveur comptait ces fiches depuis le début ; l'écran ne le
+            montrait pas, et aucun écran ne permettait de les trancher. */}
+        {d.a_verifier > 0 && (
+          <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5 leading-snug">
+            <Icon name="alert-triangle" size="sm" className="inline mr-1" />
+            <b>{d.a_verifier}</b> fiche{d.a_verifier > 1 ? 's' : ''} à vérifier avant d’appeler — identité
+            incertaine. Elles ne sont dans la file de personne tant qu’un manager n’a pas tranché,
+            dans l’onglet <b>Répartir</b>.
+          </div>
+        )}
         {d.a_dispatcher > 0 && (
           <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5 leading-snug">
             <Icon name="alert-triangle" size="sm" className="inline mr-1" />
