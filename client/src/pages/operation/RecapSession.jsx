@@ -130,7 +130,10 @@ function Appel({ appel: a, enEdition, onEditer, onEnregistre }) {
     } finally { setEnvoi(false) }
   }
 
-  const quand = new Date(a.horodatage).toLocaleString('fr-FR',
+  // SQLite écrit `datetime('now')` en UTC sans marqueur de fuseau. Lu tel
+  // quel, Node y voit de l'heure locale : un appel passé à 15h30 s'affichait
+  // à 14h30. Le suffixe 'Z' rétablit la bonne heure.
+  const quand = new Date(a.horodatage.replace(' ', 'T') + 'Z').toLocaleString('fr-FR',
     { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
 
   return (

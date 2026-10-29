@@ -71,23 +71,32 @@ export default function EcranAppel({ contact: c, onEnregistre, onPasser, horsFil
     // peut donc la dérouler deux fois de suite devant la salle.
     if (demo) {
       toast.success('Démonstration — rien n’a été enregistré')
+      // Rendre la main : sur la dernière fiche de démonstration, le composant
+      // n'est pas remonté, et le bouton restait figé sur « Enregistrement… »
+      // devant toute la salle.
+      setEnvoi(false)
       onEnregistre({ issue, rdv: res.actualisation === 'ACCEPTEE', fiche: false })
       return
     }
 
     try {
+      // L'appel et la saisie partent ensemble, en une seule requête : le
+      // serveur les écrit dans la même transaction.
+      //
+      // Avant, c'étaient deux requêtes. Si la seconde échouait — une seconde
+      // de réseau perdue en mobilité suffit — l'appel était enregistré, la
+      // saisie de l'agent était perdue, et le message disait « Enregistrement
+      // impossible ». L'agent recommençait, et créait un deuxième appel sur
+      // la même fiche.
+      //
+      // Ce que l'agent a saisi est enregistré quelle que soit l'issue : un
+      // client qui dit « rappelez-moi jeudi, mais notez ma nouvelle adresse »
+      // ne doit pas voir son adresse jetée.
+      const aSaisi = Object.keys(res).length > 0
       const { data } = await api.post(`/operation/contacts/${c.id_modelo}/appel`,
         { issue, rappel_le: rappelLe || null, notes: notes.trim() || null,
-          duree_sec: Math.round((Date.now() - ouvertA) / 1000) })
-
-      // Ce que l'agent a saisi est enregistré quelle que soit l'issue.
-      //
-      // La condition précédente ne gardait que les appels « Joint » : un client
-      // qui dit « rappelez-moi jeudi, mais notez ma nouvelle adresse » voyait
-      // son adresse jetée, et le message affiché disait « Enregistré ».
-      // Le consentement téléphonique se perdait de la même façon.
-      const aSaisi = Object.keys(res).length > 0
-      if (aSaisi) await api.put(`/operation/contacts/${c.id_modelo}/resultat`, res)
+          duree_sec: Math.round((Date.now() - ouvertA) / 1000),
+          resultat: aSaisi ? res : undefined })
 
       // Le message dit ce qui est parti, pour que l'agent n'ait pas à le croire.
       const parti = []

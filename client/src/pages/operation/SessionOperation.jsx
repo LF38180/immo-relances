@@ -162,7 +162,7 @@ function Progression({ index, total, bilan, cumul, plage, horsFile, recherche, s
           <span className="text-quai-muted">
             {horsFile
               ? <span className="text-quai-gold font-medium">Rappel entrant</span>
-              : <>Appel <b className="text-quai-navy">{index + 1}</b> / {total}</>}
+              : <>Fiche <b className="text-quai-navy">{index + 1}</b> / {total}</>}
           </span>
           <div className="flex items-center gap-2.5 text-[11px]">
             {/* Les quatre objectifs depuis le début de l'opération, pas depuis

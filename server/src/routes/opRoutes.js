@@ -74,12 +74,31 @@ function enrichir(c, maintenant = new Date()) {
   const n = compteurMois(c.id_modelo, maintenant);
   const dernier = db.prepare(
     'SELECT issue, horodatage, conseiller FROM op_appels WHERE id_modelo = ? ORDER BY horodatage DESC LIMIT 1').get(c.id_modelo);
+
+  // L'historique, sous les mêmes noms que dans /file.
+  //
+  // L'écran d'appel affiche « N appels déjà passés · dernier le … par … », et
+  // la dernière note. Il lit ces champs à plat ; `enrichir` ne renvoyait que
+  // l'objet `dernier_appel`, sous d'autres noms. Résultat : une fiche ouverte
+  // depuis la recherche, le listing ou le suivi n'affichait aucun historique —
+  // l'agent décrochait en croyant que personne n'avait jamais appelé, alors
+  // qu'un collègue avait peut-être laissé une note la veille. Le bloc entier
+  // disparaissait sans erreur, `undefined > 0` étant faux.
+  const total = db.prepare('SELECT COUNT(*) n FROM op_appels WHERE id_modelo = ?').get(c.id_modelo).n;
+  const note = db.prepare(`SELECT notes FROM op_appels WHERE id_modelo = ?
+    AND notes IS NOT NULL ORDER BY horodatage DESC LIMIT 1`).get(c.id_modelo);
+
   return {
     ...c,
     appels_ce_mois: n,
     avertissements: R.avertissementsAppel(c, n, maintenant),
     avertissements_mail: R.avertissementsMail(c),
     dernier_appel: dernier || null,
+    appels_total: total,
+    dernier_appel_le: dernier?.horodatage || null,
+    dernier_par: dernier?.conseiller || null,
+    derniere_issue: dernier?.issue || null,
+    derniere_note: note?.notes || null,
     entete: S.enTete(c),
     resultat: db.prepare('SELECT * FROM op_resultats WHERE id_modelo = ?').get(c.id_modelo) || null,
   };
@@ -323,6 +342,79 @@ router.get('/contacts/:id', conseillerOuPlus, (req, res) => {
 // L'appel n'est jamais refusé : c'est le conseiller qui décide. Mais s'il sort
 // du cadre légal — hors plage, au-delà du plafond, ou vers une personne
 // opposée — la raison est écrite sur la ligne d'appel.
+// Écrire la saisie d'un appel sur une fiche.
+//
+// Extrait de la route PUT /resultat pour que l'enregistrement d'un appel
+// puisse écrire les deux dans la MÊME transaction. Avant, l'écran envoyait
+// deux requêtes : si la seconde échouait — une seconde de réseau perdue en
+// mobilité suffit — l'appel était enregistré, la saisie de l'agent était
+// perdue, et le message affiché disait « Enregistrement impossible ». L'agent
+// recommençait, et créait un deuxième appel sur la même fiche.
+//
+// Ne fait rien et renvoie null si aucun champ connu n'est fourni.
+// À appeler DANS une transaction : n'en ouvre pas elle-même.
+function ecrireResultat(contact, corps, moi, appelId = null) {
+  const fournis = CHAMPS_RESULTAT.filter(k => k in (corps || {}));
+  if (!fournis.length) return null;
+
+  // Quatre colonnes sont NOT NULL DEFAULT 0 : les vider veut dire « non »,
+  // pas « inconnu ».
+  //
+  // À l'écran, re-cliquer un bouton déjà choisi le désélectionne et envoie
+  // null — c'est le seul geste offert pour annuler un oui. La contrainte
+  // SQLite refusait alors toute l'écriture, et l'agent perdait l'adresse, le
+  // projet, la recommandation qu'il venait de recueillir au téléphone, avec
+  // pour seul message « Enregistrement impossible ». Le cas se produit dès
+  // qu'un client se ravise sur la soirée ou le panneau.
+  const BOOLEENS_NON_NULS = ['soiree', 'panneau', 'courrier_renvoye', 'fiche_confirmee'];
+
+  const valeurs = {};
+  for (const k of fournis) {
+    const v = corps[k] === '' ? null : corps[k];
+    valeurs[k] = (v == null && BOOLEENS_NON_NULS.includes(k)) ? 0 : v;
+  }
+  // Le consentement est daté automatiquement : c'est la date qui lui donne sa
+  // valeur, et un agent ne doit pas avoir à y penser.
+  if (valeurs.consentement_tel != null && !valeurs.date_consentement)
+    valeurs.date_consentement = new Date().toISOString();
+  if (valeurs.courrier_renvoye && !valeurs.date_renvoi)
+    valeurs.date_renvoi = new Date().toISOString().slice(0, 10);
+  // « Rien n'a changé » se date aussi : c'est ce qui permet de dire qu'une
+  // fiche a été vérifiée, et quand.
+  if (valeurs.fiche_confirmee) valeurs.confirmee_le = new Date().toISOString().slice(0, 10);
+
+  // L'appel qui produit cette saisie. Fourni directement quand les deux
+  // s'écrivent ensemble ; sinon le dernier appel sur cette fiche.
+  const id = appelId ?? db.prepare(`SELECT id FROM op_appels WHERE id_modelo = ?
+    ORDER BY horodatage DESC, id DESC LIMIT 1`).get(contact.id_modelo)?.id ?? null;
+
+  const avant = db.prepare('SELECT * FROM op_resultats WHERE id_modelo = ?').get(contact.id_modelo);
+  const cles = Object.keys(valeurs);
+
+  db.prepare(`
+    INSERT INTO op_resultats (id_modelo, appel_id, saisi_par, ${cles.join(', ')})
+    VALUES (@id_modelo, @appel_id, @saisi_par, ${cles.map(k => '@' + k).join(', ')})
+    ON CONFLICT(id_modelo) DO UPDATE SET
+      ${cles.map(k => `${k} = excluded.${k}`).join(', ')},
+      appel_id = excluded.appel_id,
+      saisi_par = excluded.saisi_par,
+      updated_at = datetime('now')
+  `).run({ id_modelo: contact.id_modelo, appel_id: id, saisi_par: moi.nom_complet, ...valeurs });
+
+  // Journal : ce qui change, et par rapport à quoi. Une correction ne doit
+  // pas effacer sans laisser de trace.
+  const modifs = {};
+  for (const k of cles) {
+    const ancien = avant ? avant[k] : null;
+    if (String(ancien ?? '') !== String(valeurs[k] ?? '')) modifs[k] = { avant: ancien, apres: valeurs[k] };
+  }
+  if (Object.keys(modifs).length) {
+    db.prepare(`INSERT INTO op_resultats_journal (id_modelo, appel_id, auteur, champs)
+      VALUES (?,?,?,?)`).run(contact.id_modelo, id, moi.nom_complet, JSON.stringify(modifs));
+  }
+  return cles;
+}
+
 router.post('/contacts/:id/appel', conseillerOuPlus, (req, res) => {
   const moi = identite(req);
   const c = getContact(req.params.id);
@@ -345,12 +437,19 @@ router.post('/contacts/:id/appel', conseillerOuPlus, (req, res) => {
   const trace = R.horsCadre(av) ? av.filter(a => a.niveau === 'grave' || a.code === 'HORS_PLAGE')
     .map(a => a.code).join(',') : null;
 
+  // La saisie de l'agent voyage avec l'appel et s'écrit dans la même
+  // transaction : soit les deux sont enregistrés, soit aucun des deux. Rien ne
+  // peut plus se perdre entre les deux écritures.
+  let champsEcrits = null;
+
   const ecrire = db.transaction(() => {
-    db.prepare(`INSERT INTO op_appels (id_modelo, conseiller, user_id, issue, rappel_le, duree_sec, notes, hors_cadre)
+    const r = db.prepare(`INSERT INTO op_appels (id_modelo, conseiller, user_id, issue, rappel_le, duree_sec, notes, hors_cadre)
       VALUES (?,?,?,?,?,?,?,?)`).run(
       c.id_modelo, moi.nom_complet, moi.id, issue,
       issue === 'A_RAPPELER' ? b.rappel_le : null,
       b.duree_sec || null, (b.notes || '').trim() || null, trace);
+
+    if (b.resultat) champsEcrits = ecrireResultat(c, b.resultat, moi, r.lastInsertRowid);
 
     // Un refus ferme vaut opposition : journal inaltérable, et retrait de
     // toutes les files, celle-ci comme les suivantes.
@@ -367,6 +466,9 @@ router.post('/contacts/:id/appel', conseillerOuPlus, (req, res) => {
   res.status(201).json({
     ok: true,
     hors_cadre: trace,
+    // Ce qui a réellement été écrit : l'écran l'annonce à l'agent plutôt que
+    // de le lui faire croire.
+    champs_enregistres: champsEcrits,
     contact: enrichir(getContact(c.id_modelo), maintenant),
   });
 });
@@ -389,53 +491,9 @@ router.put('/contacts/:id/resultat', conseillerOuPlus, (req, res) => {
     return res.status(403).json({ error: 'Ce contact ne vous est pas attribué' });
 
   const b = req.body || {};
-  const fournis = CHAMPS_RESULTAT.filter(k => k in b);
-  if (!fournis.length) return res.status(400).json({ error: 'Rien à enregistrer' });
+  if (!CHAMPS_RESULTAT.some(k => k in b)) return res.status(400).json({ error: 'Rien à enregistrer' });
 
-  // Le consentement est daté automatiquement : c'est la date qui lui donne sa
-  // valeur, et un agent ne doit pas avoir à y penser.
-  const valeurs = {};
-  for (const k of fournis) valeurs[k] = b[k] === '' ? null : b[k];
-  if (valeurs.consentement_tel != null && !valeurs.date_consentement)
-    valeurs.date_consentement = new Date().toISOString();
-  if (valeurs.courrier_renvoye && !valeurs.date_renvoi)
-    valeurs.date_renvoi = new Date().toISOString().slice(0, 10);
-  // « Rien n'a changé » se date aussi : c'est ce qui permet de dire qu'une
-  // fiche a été vérifiée, et quand.
-  if (valeurs.fiche_confirmee) valeurs.confirmee_le = new Date().toISOString().slice(0, 10);
-
-  // L'appel qui produit cette saisie : le dernier de cet agent sur cette fiche.
-  // Sert au récapitulatif, qui ne doit proposer de corriger que le bon.
-  const appel = db.prepare(`SELECT id FROM op_appels WHERE id_modelo = ?
-    ORDER BY horodatage DESC, id DESC LIMIT 1`).get(c.id_modelo);
-
-  const avant = db.prepare('SELECT * FROM op_resultats WHERE id_modelo = ?').get(c.id_modelo);
-
-  const cles = Object.keys(valeurs);
-  const ecrire = db.transaction(() => {
-    db.prepare(`
-      INSERT INTO op_resultats (id_modelo, appel_id, saisi_par, ${cles.join(', ')})
-      VALUES (@id_modelo, @appel_id, @saisi_par, ${cles.map(k => '@' + k).join(', ')})
-      ON CONFLICT(id_modelo) DO UPDATE SET
-        ${cles.map(k => `${k} = excluded.${k}`).join(', ')},
-        appel_id = excluded.appel_id,
-        saisi_par = excluded.saisi_par,
-        updated_at = datetime('now')
-    `).run({ id_modelo: c.id_modelo, appel_id: appel?.id || null, saisi_par: moi.nom_complet, ...valeurs });
-
-    // Journal : ce qui change, et par rapport à quoi. Une correction ne doit
-    // pas effacer sans laisser de trace.
-    const modifs = {};
-    for (const k of cles) {
-      const ancien = avant ? avant[k] : null;
-      if (String(ancien ?? '') !== String(valeurs[k] ?? '')) modifs[k] = { avant: ancien, apres: valeurs[k] };
-    }
-    if (Object.keys(modifs).length) {
-      db.prepare(`INSERT INTO op_resultats_journal (id_modelo, appel_id, auteur, champs)
-        VALUES (?,?,?,?)`).run(c.id_modelo, appel?.id || null, moi.nom_complet, JSON.stringify(modifs));
-    }
-  });
-  ecrire();
+  db.transaction(() => ecrireResultat(c, b, moi))();
 
   res.json({ ok: true, resultat: db.prepare('SELECT * FROM op_resultats WHERE id_modelo = ?').get(c.id_modelo) });
 });
@@ -955,6 +1013,9 @@ router.get('/pilotage', pilotage, (req, res) => {
   const aujourdhui = new Date().toISOString().slice(0, 10);
 
   res.json({
+    // Qui a appelé, quel jour. Le rythme d'une opération de phoning se lit
+    // là : une journée creuse chez quelqu'un qui tenait la cadence se voit
+    // avant que le retard ne soit irrattrapable.
     appels_par_jour: joint(`
       SELECT date(a.horodatage) AS jour, a.conseiller, COUNT(*) n
       FROM op_appels a JOIN op_contacts c ON c.id_modelo = a.id_modelo

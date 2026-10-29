@@ -23,6 +23,25 @@ app.use('/api/operation', require('./routes/opRoutes'));
 
 app.get('/api/health', (_, res) => res.json({ status: 'ok', time: new Date().toISOString() }));
 
+// Filet : une erreur imprévue sur une route d'API doit rester du JSON.
+//
+// Sans ce gestionnaire, Express renvoie une page HTML d'erreur : le client lit
+// `err.response.data.error`, n'y trouve rien, et affiche un message générique.
+// L'agent ne sait pas ce qui s'est passé, et personne n'en garde la trace.
+//
+// Placé après les routes d'API et avant le service des fichiers statiques :
+// une route inconnue reste traitée par le catch-all React.
+app.use('/api', (err, req, res, _next) => {
+  console.error(`[${new Date().toISOString()}] ${req.method} ${req.originalUrl} —`, err);
+  if (res.headersSent) return;
+  // Le détail n'est montré qu'en développement : un message d'erreur SQLite
+  // révèle la structure de la base.
+  res.status(err.status || 500).json({
+    error: isProd ? "Une erreur est survenue. Réessayez, et prévenez Loïck si cela recommence."
+                  : String(err.message || err),
+  });
+});
+
 // En production : servir le build React
 if (isProd) {
   // Depuis la racine du projet : client/dist

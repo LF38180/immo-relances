@@ -24,19 +24,31 @@ export default function PilotagePage({ onAppeler }) {
   if (erreur) return <p className="p-6 text-quai-muted">Impossible de charger le suivi.</p>
   if (!d) return <p className="p-6 text-quai-muted">Chargement…</p>
 
+  // Les listes sont lues avec un tableau vide par défaut : un champ absent
+  // côté serveur faisait planter tout l'écran sur `.length`, et le Suivi
+  // s'affichait blanc. Une section qui disparaît est un défaut visible ; un
+  // écran blanc le jour du lancement, non.
   const r = d.resultats || {}
-  const totalPortefeuille = d.avancement.reduce((s, a) => s + a.portefeuille, 0)
-  const totalAppeles = d.avancement.reduce((s, a) => s + a.appeles, 0)
+  const avancement = d.avancement || []
+  const rappelsDuJour = d.rappels_du_jour || []
+  const appelsParJour = d.appels_par_jour || []
+  const refusRecents = d.refus_recents || []
+  const totalPortefeuille = avancement.reduce((s, a) => s + a.portefeuille, 0)
+  const totalAppeles = avancement.reduce((s, a) => s + a.appeles, 0)
 
   return (
     <div className="flex-1 overflow-y-auto">
       <div className="p-4 md:p-6 space-y-4 max-w-4xl mx-auto">
 
-        {/* L'indicateur qui compte, en grand. */}
+        {/* L'indicateur qui compte, en grand.
+            Le champ s'appelle `estimations` côté serveur — c'est le mot de la
+            base. L'écran dit « actualisations », qui est le mot qu'on emploie
+            devant le client. Lire `r.actualisations` laissait la tuile à zéro
+            quoi qu'il arrive. */}
         <div className="bg-quai-navy text-white rounded-xl p-4">
           <div className="text-[11px] text-white/60 uppercase tracking-wide">Actualisations calées</div>
           <div className="font-display text-4xl font-bold text-quai-gold leading-none mt-1">
-            {r.actualisations || 0}
+            {r.estimations || 0}
           </div>
           <div className="text-[11px] text-white/60 mt-1.5">
             C’est le seul indicateur qui se transforme en mandat.
@@ -61,7 +73,7 @@ export default function PilotagePage({ onAppeler }) {
               </tr>
             </thead>
             <tbody>
-              {d.avancement.map(a => {
+              {avancement.map(a => {
                 const pct = a.portefeuille ? Math.round((a.appeles / a.portefeuille) * 100) : 0
                 return (
                   <tr key={a.conseiller} className="border-t border-quai-border/50">
@@ -80,10 +92,10 @@ export default function PilotagePage({ onAppeler }) {
           </table>
         </Section>
 
-        {d.rappels_du_jour.length > 0 && (
+        {rappelsDuJour.length > 0 && (
           <Section titre="Rappels à honorer aujourd’hui" aide="Un rendez-vous téléphonique manqué annule le bénéfice de l’appel précédent.">
             <ul className="text-xs space-y-1">
-              {d.rappels_du_jour.map((x, i) => (
+              {rappelsDuJour.map((x, i) => (
                 <li key={i} className="flex justify-between gap-2 py-1 border-t border-quai-border/50 first:border-0">
                   <span className="text-quai-navy">{x.prenom} {x.nom}</span>
                   <span className="text-quai-muted">{x.conseiller}</span>
@@ -93,10 +105,10 @@ export default function PilotagePage({ onAppeler }) {
           </Section>
         )}
 
-        {d.appels_par_jour.length > 0 && (
+        {appelsParJour.length > 0 && (
           <Section titre="Appels des sept derniers jours">
             <ul className="text-xs space-y-1">
-              {d.appels_par_jour.map((x, i) => (
+              {appelsParJour.map((x, i) => (
                 <li key={i} className="flex justify-between gap-2 py-1 border-t border-quai-border/50 first:border-0">
                   <span className="text-quai-muted w-20 shrink-0">
                     {new Date(x.jour + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric' })}
@@ -109,10 +121,10 @@ export default function PilotagePage({ onAppeler }) {
           </Section>
         )}
 
-        {d.refus_recents.length > 0 && (
+        {refusRecents.length > 0 && (
           <Section titre="Refus récents" aide="Retirés définitivement, retrait horodaté.">
             <ul className="text-xs space-y-1">
-              {d.refus_recents.map((x, i) => (
+              {refusRecents.map((x, i) => (
                 <li key={i} className="flex justify-between gap-2 py-1 border-t border-quai-border/50 first:border-0">
                   <span className="text-quai-navy">{x.prenom} {x.nom}</span>
                   <span className="text-quai-muted">{x.conseiller}</span>
