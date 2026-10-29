@@ -241,12 +241,16 @@ export default function AdminPage() {
         {tab === 'donnees' && estAdmin && (
           <div>
             <h2 className="font-semibold text-quai-navy mb-4">Données</h2>
+            {/* La sauvegarde d'abord, l'effacement ensuite : on ne met pas un
+                bouton irréversible seul sur un écran. */}
+            <Sauvegardes />
             <div className="card border-2 border-red-200">
               <div className="flex items-start gap-3 mb-3">
                 <Icon name="alert-triangle" size="md" className="text-red-600 flex-shrink-0 mt-0.5" />
                 <div>
-                  <h3 className="font-medium text-quai-navy">Effacer tous les contacts</h3>
-                  <p className="text-sm text-quai-muted">Supprime définitivement la totalité des contacts et leur historique de relances. Action irréversible. Utile avant un ré-import propre.</p>
+                  <h3 className="font-medium text-quai-navy">Effacer tous les contacts du module relances</h3>
+                  <p className="text-sm text-quai-muted">Supprime définitivement la totalité des contacts d’Immo Relances et leur historique. Action irréversible. Utile avant un ré-import propre.
+                    Les fiches de l’opération anciens clients ne sont <b>pas</b> concernées. Téléchargez une sauvegarde avant.</p>
                 </div>
               </div>
               <label className="block text-xs font-medium text-quai-muted mb-1">Tapez <span className="font-mono font-bold">EFFACER</span> pour confirmer</label>
@@ -482,6 +486,94 @@ function ParamField({ label, cle, params, setParams, type = 'text', min, max, pl
         value={params[cle] || ''}
         onChange={e => setParams(p => ({ ...p, [cle]: e.target.value }))}
       />
+    </div>
+  )
+}
+
+// Les copies de la base.
+//
+// Le serveur en écrit une toutes les six heures, sur le même volume que la
+// base : contre la corruption et l'erreur humaine. Le bouton livre une copie
+// fraîche à ranger ailleurs — le seul filet si le volume lui-même est perdu.
+// C'est ici qu'on la cherche : l'onglet « Données » n'avait que l'effacement.
+function Sauvegardes() {
+  const [etat, setEtat] = useState(null)
+  const [telechargement, setTelechargement] = useState(false)
+
+  const charger = () => api.get('/admin/sauvegardes')
+    .then(r => setEtat(r.data))
+    .catch(() => setEtat({ fichiers: [], erreur: true }))
+  useEffect(() => { charger() }, [])
+
+  // Le lien direct ne porterait pas le jeton : on télécharge par l'API, puis
+  // on tend le fichier au navigateur.
+  const telecharger = async () => {
+    setTelechargement(true)
+    try {
+      const r = await api.get('/admin/sauvegarde', { responseType: 'blob', timeout: 120000 })
+      const nom = (r.headers['content-disposition'] || '').match(/filename="?([^"]+)"?/)?.[1]
+        || `immo-${new Date().toISOString().slice(0, 10)}.db`
+      const url = URL.createObjectURL(r.data)
+      const a = document.createElement('a'); a.href = url; a.download = nom; a.click()
+      URL.revokeObjectURL(url)
+      toast.success(`Sauvegarde téléchargée : ${nom}`)
+      charger()
+    } catch (e) {
+      toast.error(e.messageLisible || 'La sauvegarde a échoué')
+    } finally { setTelechargement(false) }
+  }
+
+  const fichiers = etat?.fichiers || []
+  const derniere = fichiers[0]
+  const ancienne = derniere && (Date.now() - new Date(derniere.le).getTime()) > 7 * 3600 * 1000
+  const quand = (iso) => new Date(iso).toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+  const taille = (o) => o > 1e6 ? `${(o / 1e6).toFixed(1)} Mo` : `${Math.round(o / 1e3)} Ko`
+
+  return (
+    <div className="card mb-4">
+      <div className="flex items-start gap-3">
+        <Icon name="database" size="md" className="text-quai-gold flex-shrink-0 mt-0.5" />
+        <div className="min-w-0 flex-1">
+          <h3 className="font-medium text-quai-navy">Sauvegardes de la base</h3>
+          <p className="text-sm text-quai-muted">
+            Le serveur en fait une toutes les six heures, sur son propre disque. Téléchargez-en une
+            chaque soir et gardez-la ailleurs : c'est la seule protection si ce disque est perdu.
+          </p>
+        </div>
+      </div>
+
+      {etat === null && <p className="text-sm text-quai-muted mt-3">Chargement…</p>}
+      {etat?.erreur && <p className="text-sm text-red-700 mt-3">Impossible de lire les sauvegardes.</p>}
+      {etat && !etat.erreur && (
+        <div className="mt-3">
+          {!derniere ? (
+            <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+              Aucune sauvegarde automatique pour l’instant. La première arrive une minute après le démarrage du serveur.
+            </p>
+          ) : (
+            <p className={`text-sm rounded-lg px-3 py-2 ${ancienne
+              ? 'text-red-700 bg-red-50 border border-red-200'
+              : 'text-emerald-800 bg-emerald-50 border border-emerald-200'}`}>
+              Dernière copie automatique : <b>{quand(derniere.le)}</b> ({taille(derniere.octets)})
+              {ancienne && ' — plus de sept heures : la sauvegarde automatique ne tourne plus, prévenir Loïck.'}
+            </p>
+          )}
+          {fichiers.length > 1 && (
+            <details className="mt-2 text-xs text-quai-muted">
+              <summary className="cursor-pointer">{fichiers.length} copies sur le serveur</summary>
+              <ul className="mt-1 space-y-0.5 pl-3">
+                {fichiers.map(f => <li key={f.nom}>{quand(f.le)} · {taille(f.octets)}</li>)}
+              </ul>
+            </details>
+          )}
+        </div>
+      )}
+
+      <button onClick={telecharger} disabled={telechargement}
+        className="btn-primary mt-4 inline-flex items-center gap-2 min-h-[2.75rem]">
+        <Icon name="file-down" size="sm" />
+        {telechargement ? 'Préparation…' : 'Télécharger une sauvegarde maintenant'}
+      </button>
     </div>
   )
 }
