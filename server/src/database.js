@@ -672,6 +672,21 @@ db.exec(`
   if (!cols.includes('npai_le')) db.exec("ALTER TABLE op_resultats ADD COLUMN npai_le TEXT");
 }
 
+// Le NPAI est aussi porté par op_contacts, et pour la même raison
+// qu'adresse_fiable : l'écran d'appel doit l'annoncer, et les quatre requêtes
+// qui alimentent la file, la recherche et la fiche lisent op_contacts sans
+// jointure. La trace datée reste dans op_resultats ; ici, c'est le drapeau qui
+// suit la fiche partout. Les retours déjà saisis sont recopiés : sans ce
+// rattrapage, les quarante premiers NPAI garderaient un contexte d'appel faux.
+{
+  const cols = db.prepare("PRAGMA table_info(op_contacts)").all().map(c => c.name);
+  if (!cols.includes('npai')) {
+    db.exec("ALTER TABLE op_contacts ADD COLUMN npai INTEGER NOT NULL DEFAULT 0");
+    db.exec(`UPDATE op_contacts SET npai = 1 WHERE id_modelo IN (
+      SELECT id_modelo FROM op_resultats WHERE npai = 1)`);
+  }
+}
+
 // Recommandation : un nom seul ne se rappelle pas. Sans numéro ni motif, la
 // personne signalée reste dans la fiche et personne ne la contacte.
 {

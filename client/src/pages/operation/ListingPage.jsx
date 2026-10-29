@@ -21,13 +21,48 @@ const ETATS = {
 
 const ORDRE = ['JAMAIS_APPELE', 'JOINT', 'A_RAPPELER', 'A_RELANCER', 'CLOS', 'A_DISPATCHER', 'A_VERIFIER']
 
-export default function ListingPage() {
+// Ce qu'un agent peut rapporter d'un appel. Sert à répondre à « qu'est-ce qui
+// a changé sur cette fiche » : le pilotage en donne le nombre, mais c'est ici
+// qu'on voit quoi, et sur qui — c'est ce qu'il faut pour reporter dans Modelo.
+//
+// « Vérifié, rien n'a changé » en fait partie : c'est une information, pas une
+// absence d'information, et une fiche confirmée n'est pas une fiche oubliée.
+const RECUEILLI = [
+  ['adresse_maj', 'adresse'],
+  ['commune_maj', 'commune'],
+  ['statut_actuel', 'situation'],
+  ['toujours_proprietaire', 'propriétaire ?'],
+  ['revendu_quand', 'revente'],
+  ['projet', 'projet'],
+  ['recommandation_nom', 'recommandation'],
+  ['fiche_confirmee', 'vérifié, rien changé'],
+]
+
+// Un champ compte comme recueilli s'il porte une valeur. Deux pièges :
+//
+//  - `fiche_confirmee` vaut 0 par défaut sur toute fiche ayant une ligne de
+//    résultats. Seul 1 signifie « vérifié avec lui ». Testé à zéro, il faisait
+//    passer sept fiches jamais appelées pour des fiches enrichies.
+//  - `toujours_proprietaire` est un vrai booléen : 0 veut dire « non, il a
+//    revendu », ce qui est une information. On le garde.
+const majFiche = (l) => RECUEILLI.filter(([k]) => {
+  if (k === 'fiche_confirmee') return l[k] === 1
+  return l[k] !== null && l[k] !== undefined && l[k] !== ''
+})
+
+export default function ListingPage({ onAppeler }) {
   const [data, setData] = useState(null)
   const [erreur, setErreur] = useState(false)
   const [agent, setAgent] = useState('')
   const [etat, setEtat] = useState('')
   const [recherche, setRecherche] = useState('')
   const [ouverte, setOuverte] = useState(null)
+  // Les courriers revenus : un filtre à part, parce qu'ils se regardent en
+  // bloc quand un lot de retours arrive.
+  const [npaiSeuls, setNpaiSeuls] = useState(false)
+  // Les fiches que les agents ont enrichies : c'est ce qui se reporte dans
+  // Modelo à la fin de l'opération.
+  const [majSeules, setMajSeules] = useState(false)
 
   useEffect(() => {
     api.get('/operation/listing')
@@ -43,16 +78,21 @@ export default function ListingPage() {
     return [...m.entries()].sort((a, b) => b[1] - a[1])
   }, [lignes])
 
+  const nbNpai = useMemo(() => lignes.filter(l => l.npai === 1).length, [lignes])
+  const nbMaj = useMemo(() => lignes.filter(l => majFiche(l).length).length, [lignes])
+
   const visibles = useMemo(() => {
     const q = recherche.trim().toLowerCase()
     return lignes.filter(l => {
       if (agent && l.conseiller !== agent) return false
       if (etat && l.etat !== etat) return false
+      if (npaiSeuls && l.npai !== 1) return false
+      if (majSeules && !majFiche(l).length) return false
       if (!q) return true
       return [l.nom, l.prenom, l.commune, l.bien_commune, l.id_modelo]
         .some(x => String(x || '').toLowerCase().includes(q))
     })
-  }, [lignes, agent, etat, recherche])
+  }, [lignes, agent, etat, recherche, npaiSeuls, majSeules])
 
   // Les chiffres se recalculent sur ce qui est affiché : filtrer par agent
   // donne son propre bilan, sans changer d'écran.
@@ -78,10 +118,16 @@ export default function ListingPage() {
 
   const exporter = () => {
     if (!visibles.length) return toast.error('Rien à exporter')
+    // L'export est ce qui remonte dans Modelo : tout ce que l'agent a recueilli
+    // doit y être, y compris le NPAI — une adresse fausse se corrige à la
+    // source, pas seulement dans cette application.
     const cols = ['id_modelo', 'conseiller', 'nom', 'prenom', 'commune', 'bien_type', 'bien_commune',
-      'script', 'courrier_etat', 'etat', 'appels', 'dernier_le', 'derniere_issue', 'dernier_par',
-      'actualisation', 'date_rdv', 'soiree', 'panneau', 'adresse_maj', 'projet',
-      'recommandation_nom', 'derniere_note']
+      'script', 'courrier_etat', 'npai', 'etat', 'appels', 'dernier_le', 'derniere_issue', 'dernier_par',
+      'actualisation', 'date_rdv', 'soiree', 'panneau',
+      'adresse_maj', 'code_postal_maj', 'commune_maj', 'statut_actuel',
+      'toujours_proprietaire', 'revendu_quand', 'projet', 'projet_echeance',
+      'recommandation_nom', 'recommandation_tel', 'recommandation_motif',
+      'fiche_confirmee', 'fiche_maj_le', 'derniere_note']
     const ech = (v) => {
       const x = v == null ? '' : String(v)
       return /[";\n]/.test(x) ? '"' + x.replace(/"/g, '""') + '"' : x
@@ -155,6 +201,16 @@ export default function ListingPage() {
               {ETATS[e].label} <span className="opacity-70">{data.par_etat[e]}</span>
             </Pastille>
           ))}
+          {!!nbNpai && (
+            <Pastille actif={npaiSeuls} onClick={() => setNpaiSeuls(v => !v)}>
+              Courrier revenu <span className="opacity-70">{nbNpai}</span>
+            </Pastille>
+          )}
+          {!!nbMaj && (
+            <Pastille actif={majSeules} onClick={() => setMajSeules(v => !v)}>
+              Infos mises à jour <span className="opacity-70">{nbMaj}</span>
+            </Pastille>
+          )}
         </div>
 
         <div className="bg-white border border-quai-border rounded-xl divide-y divide-quai-border/60">
@@ -165,6 +221,7 @@ export default function ListingPage() {
             <Ligne key={l.id_modelo} l={l}
               conseillers={data?.conseillers || []}
               onCorrige={corriger}
+              onAppeler={onAppeler}
               ouverte={ouverte === l.id_modelo}
               onBasculer={() => setOuverte(ouverte === l.id_modelo ? null : l.id_modelo)} />
           ))}
@@ -200,9 +257,10 @@ function Pastille({ actif, onClick, children }) {
   )
 }
 
-function Ligne({ l, ouverte, onBasculer, conseillers, onCorrige }) {
+function Ligne({ l, ouverte, onBasculer, conseillers, onCorrige, onAppeler }) {
   const [edition, setEdition] = useState(false)
   const e = ETATS[l.etat] || ETATS.JAMAIS_APPELE
+  const maj = majFiche(l)
   const quand = l.dernier_le
     ? new Date(l.dernier_le.replace(' ', 'T') + 'Z').toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
     : null
@@ -218,6 +276,17 @@ function Ligne({ l, ouverte, onBasculer, conseillers, onCorrige }) {
               {l.actualisation === 'ACCEPTEE' && (
                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-600 text-white font-medium">
                   estimation
+                </span>
+              )}
+              {l.npai === 1 && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-400 text-quai-navy font-medium">
+                  courrier revenu
+                </span>
+              )}
+              {!!maj.length && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-quai-gold/25 text-quai-navy
+                                 font-medium">
+                  {maj.length === 1 ? maj[0][1] : `${maj.length} infos à jour`}
                 </span>
               )}
               {l.stop_telephone === 1 && (
@@ -238,7 +307,9 @@ function Ligne({ l, ouverte, onBasculer, conseillers, onCorrige }) {
       {ouverte && (
         <div className="px-3 pb-3 pt-1 bg-quai-light/50 text-[12px] space-y-1.5">
           <Info label="Identifiant Modelo" v={l.id_modelo} />
-          <Info label="Script" v={`${l.script} · ${l.courrier_etat?.toLowerCase().replace(/_/g, ' ')}`} />
+          <Info label="Script" v={`${l.script} · ${l.npai === 1
+            ? 'courrier revenu (NPAI)'
+            : l.courrier_etat?.toLowerCase().replace(/_/g, ' ')}`} />
           <Info label="Bien" v={[l.bien_type, l.bien_commune].filter(Boolean).join(' · ')} />
           <Info label="Téléphone" v={l.tel_portable || l.tel_fixe} />
           <Info label="Mail" v={l.email} />
@@ -248,9 +319,46 @@ function Ligne({ l, ouverte, onBasculer, conseillers, onCorrige }) {
           )}
           {l.rappel_le && <Info label="Rappel prévu" v={new Date(l.rappel_le).toLocaleString('fr-FR')} />}
           {l.actualisation && <Info label="Estimation" v={`${l.actualisation.toLowerCase()}${l.date_rdv ? ` — ${l.date_rdv}` : ''}`} />}
-          {l.adresse_maj && <Info label="Nouvelle adresse" v={l.adresse_maj} />}
-          {l.projet && <Info label="Projet" v={`${l.projet.toLowerCase()}${l.projet_echeance ? ` — ${l.projet_echeance} mois` : ''}`} />}
-          {l.recommandation_nom && <Info label="Recommande" v={l.recommandation_nom} />}
+          {/* Ce que l'agent a rapporté de l'appel, regroupé : c'est ce bloc
+              qu'on recopie dans Modelo. */}
+          {!!maj.length && (
+            <div className="bg-white border border-quai-gold/40 rounded-lg px-2.5 py-2 space-y-1">
+              <div className="text-[11px] font-semibold text-quai-navy">
+                Recueilli pendant l'appel
+                {l.fiche_maj_le && (
+                  <span className="font-normal text-quai-muted">
+                    {' · '}{new Date(l.fiche_maj_le.replace(' ', 'T') + 'Z')
+                      .toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
+                  </span>
+                )}
+              </div>
+              {l.adresse_maj && (
+                <Info label="Nouvelle adresse"
+                  v={[l.adresse_maj, l.code_postal_maj, l.commune_maj].filter(Boolean).join(' ')} />
+              )}
+              {!l.adresse_maj && l.commune_maj && <Info label="Nouvelle commune" v={l.commune_maj} />}
+              {l.statut_actuel && <Info label="Situation" v={l.statut_actuel} />}
+              {l.toujours_proprietaire != null && (
+                <Info label="Toujours propriétaire"
+                  v={l.toujours_proprietaire === 1 ? 'oui' : 'non'} />
+              )}
+              {l.revendu_quand && <Info label="Revendu" v={l.revendu_quand} />}
+              {l.projet && (
+                <Info label="Projet"
+                  v={`${l.projet.toLowerCase()}${l.projet_echeance ? ` — ${l.projet_echeance} mois` : ''}`} />
+              )}
+              {l.recommandation_tel && (
+                <Info label="Recommandation"
+                  v={[l.recommandation_nom, l.recommandation_tel, l.recommandation_motif]
+                    .filter(Boolean).join(' · ')} />
+              )}
+              {l.fiche_confirmee === 1 && !l.adresse_maj && (
+                <div className="text-[11px] text-quai-muted">
+                  Vérifié avec lui : rien n'avait changé.
+                </div>
+              )}
+            </div>
+          )}
           {l.derniere_note && (
             <div className="text-quai-text italic bg-white rounded px-2 py-1.5 leading-snug">
               « {l.derniere_note} »
@@ -265,10 +373,24 @@ function Ligne({ l, ouverte, onBasculer, conseillers, onCorrige }) {
           {edition
             ? <Correction l={l} conseillers={conseillers}
                 onFini={(maj) => { setEdition(false); if (maj) onCorrige(maj) }} />
-            : <button onClick={() => setEdition(true)}
-                className="mt-1 text-[11px] text-quai-navy underline underline-offset-2 hover:text-quai-gold">
-                Corriger cette fiche
-              </button>}
+            : (
+              <div className="flex items-center gap-3 flex-wrap pt-1">
+                {/* Ouvrir l'appel sans faire chercher le client dans sa liste :
+                    c'est de ce listing qu'on repère une fiche à traiter tout
+                    de suite. */}
+                {onAppeler && (
+                  <button onClick={() => onAppeler(l)}
+                    className="text-[11px] px-2.5 py-1.5 rounded-lg bg-quai-navy text-white
+                               inline-flex items-center gap-1.5 hover:bg-quai-navy/90">
+                    <Icon name="phone" size="sm" /> Ouvrir l'appel
+                  </button>
+                )}
+                <button onClick={() => setEdition(true)}
+                  className="text-[11px] text-quai-navy underline underline-offset-2 hover:text-quai-gold">
+                  Corriger cette fiche
+                </button>
+              </div>
+            )}
         </div>
       )}
     </div>

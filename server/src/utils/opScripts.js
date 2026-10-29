@@ -32,8 +32,13 @@ function enTete(contact) {
   const nomComplet = [contact.civilite, contact.prenom, contact.nom].filter(Boolean).join(' ');
   return {
     script: contact.script,
-    titre: s.titre,
+    // Le numéro et le PDF ne bougent pas pour un NPAI : le script encode qui
+    // suivait le dossier, pas le sort du pli, et basculer un script 1 en 2
+    // ferait chercher à l'agent un prénom d'ancien conseiller qui n'existe
+    // pas. C'est le titre affiché à côté du PDF qui porte l'information.
+    titre: contact.npai ? titreNpai(contact.script) : s.titre,
     pdf: s.pdf,
+    npai: contact.npai ? 1 : 0,
     client: nomComplet,
     // Affiché seulement quand il sert : un prénom isolé sur un script 1 ferait
     // croire à l'agent qu'il doit le prononcer.
@@ -54,13 +59,24 @@ function enTete(contact) {
 }
 
 // Une ligne de contexte, pour que l'agent sache où il met les pieds avant la
-// première seconde. Aucun courrier n'est revenu : les plis sont partis et les
-// NPAI mettront des semaines. Quand quelqu'un n'a rien reçu, c'est qu'on a
-// renoncé à lui écrire — il n'appelle donc pas après un échec d'envoi, il
-// appelle quelqu'un à qui on n'a jamais écrit.
+// première seconde.
+//
+// Les courriers reviennent désormais : quarante NPAI saisis le 29 octobre, et
+// d'autres suivront pendant l'opération. Le NPAI passe donc avant
+// courrier_etat — une fiche revenue est marquée ENVOYE, et sans cette priorité
+// l'agent lirait qu'un courrier a bien été reçu alors que le pli est sur le
+// bureau du manager. Si le client dit « je n'ai rien reçu », l'agent doit
+// savoir que c'est normal.
+//
+// L'identité incertaine reste au-dessus : savoir à qui l'on parle précède tout
+// le reste.
 function contexteAppel(c) {
   if (c.a_verifier) {
     return "Identité non confirmée : vérifiez que c'est la bonne personne avant de parler du bien.";
+  }
+  if (c.npai) {
+    return "Le courrier lui a été envoyé mais nous est revenu : son adresse est fausse. "
+      + "C'est elle qu'il faut récupérer.";
   }
   if (c.courrier_etat === 'A_APPELER') {
     return "Le courrier n'a pas été envoyé : son adresse était fausse ou absente.";
@@ -71,4 +87,11 @@ function contexteAppel(c) {
   return 'Le courrier du président lui a été envoyé la semaine dernière.';
 }
 
-module.exports = { SCRIPTS, enTete, contexteAppel };
+// Le titre d'un script dont le courrier est revenu. « courrier reçu » devient
+// faux dès le retour du pli, et c'est la première ligne que l'agent lit.
+function titreNpai(script) {
+  const repris = script === 3 || script === 4;
+  return `${repris ? 'Dossier repris' : 'Son client'} · courrier revenu (NPAI)`;
+}
+
+module.exports = { SCRIPTS, enTete, contexteAppel, titreNpai };

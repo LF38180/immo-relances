@@ -638,6 +638,11 @@ router.post('/contacts/:id/exclure', pilotage, (req, res) => {
 // Saisi par le manager au fil des retours. Bascule la fiche en objectif
 // adresse : on sait désormais que l'adresse est fausse, et c'est elle qu'il
 // faut récupérer au téléphone.
+//
+// La fiche ne change pas de place dans la file : les fiches sans adresse
+// valide sont servies dans l'ordre alphabétique comme les autres (arbitrage du
+// 20 octobre, voir le tri de /file). Les remonter ferait démarrer la journée
+// par les appels les plus difficiles.
 router.post('/contacts/:id/npai', pilotage, (req, res) => {
   const c = getContact(req.params.id);
   if (!c) return res.status(404).json({ error: 'Contact introuvable' });
@@ -652,15 +657,56 @@ router.post('/contacts/:id/npai', pilotage, (req, res) => {
       .run(c.id_modelo, npai ? 1 : 0, npai ? new Date().toISOString().slice(0, 10) : null);
 
     // L'objectif de l'appel change : ce n'est plus l'actualisation, c'est
-    // l'adresse. La fiche remonte dans la file du conseiller.
+    // l'adresse. Le drapeau est recopié sur la fiche pour que l'écran d'appel
+    // l'annonce — sans quoi le script continuerait de promettre un courrier
+    // bien reçu. Un décochage rend la fiche à son état normal, mais ne
+    // rétablit pas adresse_fiable : le pli est revenu, l'adresse reste
+    // douteuse jusqu'à vérification au téléphone.
     if (npai) {
       db.prepare(`UPDATE op_contacts
-        SET adresse_fiable = 0, updated_at = datetime('now')
+        SET npai = 1, adresse_fiable = 0, updated_at = datetime('now')
+        WHERE id_modelo = ?`).run(c.id_modelo);
+    } else {
+      db.prepare(`UPDATE op_contacts
+        SET npai = 0, updated_at = datetime('now')
         WHERE id_modelo = ?`).run(c.id_modelo);
     }
   })();
 
   res.json({ ok: true, contact: enrichir(getContact(c.id_modelo)) });
+});
+
+// --- La liste des courriers revenus ----------------------------------------
+//
+// Compter ne suffit pas : il faut pouvoir ouvrir les fiches. Un NPAI chez un
+// conseiller qui a fini sa liste est une fiche à rappeler pour l'adresse ;
+// quarante NPAI non répartis sont un problème de dispatch.
+router.get('/npai', pilotage, (req, res) => {
+  const moi = identite(req);
+  const { where, params } = perimetre(moi, 'c');
+
+  const lignes = db.prepare(`
+    SELECT c.id_modelo, c.civilite, c.nom, c.prenom, c.commune, c.conseiller,
+      c.script, c.courrier_etat, c.a_dispatcher, c.adresse, c.code_postal,
+      c.tel_portable, c.tel_fixe, c.bien_type, c.bien_commune,
+      r.npai_le,
+      r.adresse_maj, r.commune_maj,
+      (SELECT COUNT(*) FROM op_appels a WHERE a.id_modelo = c.id_modelo) AS appels,
+      (SELECT a.issue FROM op_appels a WHERE a.id_modelo = c.id_modelo
+        ORDER BY a.horodatage DESC LIMIT 1)                              AS derniere_issue
+    FROM op_contacts c
+    LEFT JOIN op_resultats r ON r.id_modelo = c.id_modelo
+    WHERE ${where} AND c.npai = 1
+    ORDER BY r.npai_le DESC, c.conseiller, c.nom, c.prenom`).all(...params);
+
+  res.json({
+    total: lignes.length,
+    // L'adresse récupérée au téléphone est l'issue de ces fiches : la compter
+    // dit où en est le rattrapage.
+    adresse_recuperee: lignes.filter(l => l.adresse_maj).length,
+    a_dispatcher: lignes.filter(l => l.a_dispatcher === 1).length,
+    lignes,
+  });
 });
 
 // Récapitulatif des appels passés, pour la réunion ou le suivi personnel.
@@ -782,7 +828,7 @@ router.get('/listing', pilotage, (req, res) => {
       c.script, c.courrier_etat, c.a_dispatcher, c.a_verifier, c.verifie,
       c.stop_telephone, c.stop_mail, c.email, c.tel_portable, c.tel_fixe,
       c.bien_type, c.bien_commune, c.adresse_fiable, c.point_attention,
-      c.conseiller_precedent, c.prenom_a_dire, c.dossier_repris,
+      c.conseiller_precedent, c.prenom_a_dire, c.dossier_repris, c.npai,
 
       (SELECT COUNT(*) FROM op_appels a WHERE a.id_modelo = c.id_modelo)        AS appels,
       (SELECT MAX(a.horodatage) FROM op_appels a WHERE a.id_modelo = c.id_modelo) AS dernier_le,
@@ -797,7 +843,12 @@ router.get('/listing', pilotage, (req, res) => {
 
       r.actualisation, r.date_rdv, r.soiree, r.panneau, r.fiche_confirmee,
       r.adresse_maj, r.projet, r.projet_echeance, r.courrier_renvoye,
-      r.recommandation_nom, r.toujours_proprietaire
+      r.recommandation_nom, r.toujours_proprietaire,
+      -- Ce que l'agent a recueilli pendant l'appel. Le pilotage en donne le
+      -- nombre ; ici il faut savoir quoi, sur quelle fiche, pour pouvoir
+      -- reporter dans Modelo.
+      r.code_postal_maj, r.commune_maj, r.statut_actuel, r.revendu_quand,
+      r.recommandation_tel, r.recommandation_motif, r.updated_at AS fiche_maj_le
     FROM op_contacts c
     LEFT JOIN op_resultats r ON r.id_modelo = c.id_modelo
     WHERE ${where}
@@ -975,6 +1026,36 @@ router.get('/pilotage', pilotage, (req, res) => {
       ORDER BY a.horodatage DESC`, ...params, hier),
 
     a_dispatcher: db.prepare('SELECT COUNT(*) n FROM op_contacts WHERE a_dispatcher = 1').get().n,
+
+    // Les courriers revenus. Trois angles parce qu'ils répondent à trois
+    // questions différentes : combien au total (pour recouper avec la pile de
+    // plis sur le bureau), qui en a (un conseiller avec dix NPAI sur douze
+    // fiches a une liste d'adresses, pas une liste d'appels), et combien par
+    // jour de saisie (pour retrouver un lot saisi deux fois).
+    npai: {
+      total: db.prepare(`SELECT COUNT(*) n FROM op_contacts c
+        WHERE ${where} AND c.npai = 1`).get(...params).n,
+
+      par_conseiller: joint(`
+        SELECT c.conseiller, COUNT(*) AS npai,
+          (SELECT COUNT(*) FROM op_contacts x
+            WHERE LOWER(TRIM(COALESCE(x.conseiller,''))) = LOWER(TRIM(COALESCE(c.conseiller,'')))
+              AND x.a_dispatcher = 0) AS portefeuille
+        FROM op_contacts c
+        WHERE ${where} AND c.npai = 1
+        GROUP BY c.conseiller ORDER BY npai DESC`, ...params),
+
+      par_jour: joint(`
+        SELECT r.npai_le AS le, COUNT(*) AS n
+        FROM op_resultats r JOIN op_contacts c ON c.id_modelo = r.id_modelo
+        WHERE ${where} AND r.npai = 1 AND r.npai_le IS NOT NULL
+        GROUP BY r.npai_le ORDER BY r.npai_le DESC`, ...params),
+
+      // Celles qui restent à répartir : elles n'ont pas de conseiller, donc
+      // personne ne récupérera l'adresse.
+      a_dispatcher: db.prepare(`SELECT COUNT(*) n FROM op_contacts c
+        WHERE ${where} AND c.npai = 1 AND c.a_dispatcher = 1`).get(...params).n,
+    },
   });
 });
 

@@ -10,7 +10,7 @@ import MarquerNpai from './MarquerNpai'
 // qui se transforme en mandat. On ne compte pas les mandats — le délai entre
 // l'appel et la signature se mesure en mois, et un compteur bloqué à zéro
 // pendant six semaines démobilise une équipe.
-export default function PilotagePage() {
+export default function PilotagePage({ onAppeler }) {
   const [d, setD] = useState(null)
   const [erreur, setErreur] = useState(false)
   const [npaiOuvert, setNpaiOuvert] = useState(false)
@@ -122,20 +122,11 @@ export default function PilotagePage() {
           </Section>
         )}
 
-        {/* Les plis sont partis le 16 octobre : les NPAI arriveront pendant
-            l'opération. Les saisir bascule la fiche en objectif adresse. */}
-        <button onClick={() => setNpaiOuvert(true)}
-          className="w-full bg-white border border-quai-border rounded-xl p-3 text-left
-                     hover:border-quai-gold transition-colors flex items-center gap-3">
-          <Icon name="mail" size="md" className="text-quai-gold shrink-0" />
-          <div className="min-w-0">
-            <div className="text-sm font-semibold text-quai-navy">Un courrier est revenu</div>
-            <div className="text-[11px] text-quai-muted leading-snug">
-              Signaler un NPAI : la fiche passe en objectif adresse et remonte dans la file du conseiller.
-            </div>
-          </div>
-          <Icon name="chevron-right" size="sm" className="text-quai-muted ml-auto shrink-0" />
-        </button>
+        {/* Les courriers revenus. Les plis sont partis le 16 octobre et les
+            retours arrivent pendant l'opération : il faut pouvoir recouper le
+            nombre saisi avec la pile de plis, voir qui en porte, et ouvrir les
+            fiches. */}
+        <SectionNpai npai={d.npai} onSaisir={() => setNpaiOuvert(true)} onAppeler={onAppeler} />
 
         {d.a_dispatcher > 0 && (
           <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5 leading-snug">
@@ -147,6 +138,152 @@ export default function PilotagePage() {
       </div>
 
       {npaiOuvert && <MarquerNpai onFermer={() => setNpaiOuvert(false)} />}
+    </div>
+  )
+}
+
+// Les courriers revenus, en trois temps : combien, chez qui, et lesquels.
+//
+// Le total se recoupe avec la pile de plis sur le bureau — c'est la seule
+// vérification possible, l'application ne sait pas combien de courriers sont
+// partis. Le détail par jour de saisie sert à retrouver un lot entré deux
+// fois : quarante retours saisis d'un coup le 29 octobre se voient.
+function SectionNpai({ npai, onSaisir, onAppeler }) {
+  const [ouvert, setOuvert] = useState(false)
+  const [liste, setListe] = useState(null)
+  const n = npai || {}
+
+  // La liste n'est chargée qu'à l'ouverture : la plupart des matins, on ne
+  // regarde que le nombre.
+  useEffect(() => {
+    if (!ouvert || liste) return
+    api.get('/operation/npai')
+      .then(r => setListe(r.data))
+      .catch(() => toast.error('Liste des NPAI inaccessible'))
+  }, [ouvert, liste])
+
+  return (
+    <div className="bg-white border border-quai-border rounded-xl overflow-hidden">
+      <div className="p-3 flex items-center gap-3">
+        <Icon name="mail" size="md" className="text-quai-gold shrink-0" />
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-semibold text-quai-navy">
+            Courriers revenus
+            {!!n.total && <span className="ml-1.5 text-quai-gold">{n.total}</span>}
+          </div>
+          <div className="text-[11px] text-quai-muted leading-snug">
+            {n.total
+              ? "Ces clients n'ont rien reçu : l'adresse est à récupérer au téléphone."
+              : 'Aucun retour saisi pour le moment.'}
+          </div>
+        </div>
+        <button onClick={onSaisir}
+          className="text-[11px] px-2.5 py-1.5 rounded-lg bg-quai-navy text-white shrink-0
+                     hover:bg-quai-navy/90">
+          Saisir
+        </button>
+      </div>
+
+      {!!n.total && (
+        <>
+          {/* Le rapprochement avec la saisie : par jour, pour repérer un lot
+              entré deux fois. */}
+          {!!n.par_jour?.length && (
+            <div className="px-3 pb-2 flex flex-wrap gap-1.5">
+              {n.par_jour.map(j => (
+                <span key={j.le}
+                  className="text-[11px] px-2 py-1 rounded-lg bg-quai-light text-quai-muted">
+                  {new Date(j.le + 'T12:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
+                  {' · '}<b className="text-quai-navy">{j.n}</b>
+                </span>
+              ))}
+            </div>
+          )}
+
+          {n.a_dispatcher > 0 && (
+            <div className="mx-3 mb-2 text-[11px] text-amber-800 bg-amber-50 border border-amber-200
+                            rounded-lg px-2.5 py-2 leading-snug">
+              <b>{n.a_dispatcher}</b> de ces fiches {n.a_dispatcher > 1 ? 'n\'ont' : 'n\'a'} pas
+              de conseiller : personne n'ira chercher {n.a_dispatcher > 1 ? 'leur' : 'son'} adresse.
+            </div>
+          )}
+
+          {/* Par conseiller : dix NPAI sur douze fiches, ce n'est plus une
+              liste d'appels, c'est une liste d'adresses à retrouver. */}
+          {!!n.par_conseiller?.length && (
+            <div className="px-3 pb-2">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-quai-muted text-left">
+                    <th className="font-medium pb-1.5">Conseiller</th>
+                    <th className="font-medium pb-1.5 text-right w-20">Revenus</th>
+                    <th className="font-medium pb-1.5 text-right w-24">Portefeuille</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {n.par_conseiller.map((c, i) => (
+                    <tr key={i} className="border-t border-quai-border/60">
+                      <td className="py-1.5 text-quai-navy">{c.conseiller || 'sans conseiller'}</td>
+                      <td className="py-1.5 text-right font-semibold text-quai-navy tabular-nums">{c.npai}</td>
+                      {/* Une fiche sans conseiller n'appartient à aucun
+                          portefeuille : afficher « 0 » laisserait croire à un
+                          compte faux. */}
+                      <td className="py-1.5 text-right text-quai-muted tabular-nums">
+                        {c.conseiller ? c.portefeuille : '—'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          <button onClick={() => setOuvert(v => !v)}
+            className="w-full px-3 py-2 text-[11px] text-quai-navy border-t border-quai-border
+                       hover:bg-quai-light inline-flex items-center justify-center gap-1">
+            <Icon name={ouvert ? 'chevron-up' : 'chevron-down'} size="sm" />
+            {ouvert ? 'Masquer les fiches' : 'Voir les fiches'}
+          </button>
+
+          {ouvert && (
+            <div className="border-t border-quai-border divide-y divide-quai-border/60">
+              {!liste && <p className="text-xs text-quai-muted p-3">Chargement…</p>}
+              {liste && (
+                <div className="px-3 py-2 text-[11px] text-quai-muted">
+                  {liste.adresse_recuperee} adresse{liste.adresse_recuperee > 1 ? 's' : ''} déjà
+                  récupérée{liste.adresse_recuperee > 1 ? 's' : ''} sur {liste.total}.
+                </div>
+              )}
+              {liste?.lignes.map(l => (
+                <div key={l.id_modelo} className="px-3 py-2 flex items-start gap-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-xs font-medium text-quai-navy">
+                      {l.nom} {l.prenom}
+                      {l.adresse_maj && (
+                        <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded bg-emerald-100
+                                         text-emerald-800 font-medium">adresse à jour</span>
+                      )}
+                    </div>
+                    <div className="text-[11px] text-quai-muted">
+                      {l.conseiller || 'sans conseiller'}
+                      {l.commune && ` · ${l.commune}`}
+                      {` · script ${l.script}`}
+                      {l.appels > 0 && ` · ${l.appels} appel${l.appels > 1 ? 's' : ''}`}
+                    </div>
+                  </div>
+                  {onAppeler && (
+                    <button onClick={() => onAppeler(l)}
+                      className="text-[11px] px-2 py-1 rounded-lg border border-quai-border text-quai-navy
+                                 shrink-0 hover:border-quai-gold inline-flex items-center gap-1">
+                      <Icon name="phone" size="sm" /> Appeler
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
     </div>
   )
 }

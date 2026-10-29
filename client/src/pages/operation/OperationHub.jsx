@@ -27,12 +27,23 @@ export default function OperationHub({ onRetour }) {
   // La page d'accueil s'affiche d'abord : elle se lit une fois, le premier
   // matin, et donne le pourquoi avant le comment.
   const [onglet, setOnglet] = useState('accueil')
+  // Une fiche ouverte depuis le listing ou le suivi : on bascule sur l'écran
+  // d'appel sans faire chercher le client dans sa liste. Consommée une fois,
+  // puis oubliée — sinon revenir sur l'onglet la rouvrirait.
+  const [ficheAOuvrir, setFicheAOuvrir] = useState(null)
   const [acces, setAcces] = useState(null)
   const [aide, setAide] = useState(null)   // rubrique ouverte, ou null
 
   useEffect(() => {
     api.get('/operation/mon-acces').then(r => setAcces(r.data)).catch(() => {})
   }, [onglet === 'accueil'])
+
+  // Ouvrir une fiche en appel depuis un écran de pilotage : la fiche est mise
+  // de côté, puis l'onglet bascule. L'agent arrive directement sur l'appel.
+  const ouvrirAppel = (fiche) => {
+    setFicheAOuvrir(fiche)
+    setOnglet('file')
+  }
 
   const onglets = [
     { id: 'accueil', label: 'Repères', icon: 'file-text' },
@@ -92,10 +103,13 @@ export default function OperationHub({ onRetour }) {
           <AccueilOperation acces={acces} bilan={acces?.bilan} estPilote={estPilote}
             onCommencer={() => setOnglet('file')} />
         )}
-        {onglet === 'file' && <SessionOperation />}
-        {onglet === 'pilotage' && <PilotagePage />}
+        {onglet === 'file' && (
+          <SessionOperation ficheAOuvrir={ficheAOuvrir}
+            onFicheOuverte={() => setFicheAOuvrir(null)} />
+        )}
+        {onglet === 'pilotage' && <PilotagePage onAppeler={ouvrirAppel} />}
         {onglet === 'dispatch' && <DispatchPage />}
-        {onglet === 'listing' && <ListingPage />}
+        {onglet === 'listing' && <ListingPage onAppeler={ouvrirAppel} />}
         {onglet === 'demo' && <DemoPage />}
       </Suspense>
 

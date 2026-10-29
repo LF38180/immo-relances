@@ -21,7 +21,7 @@ const ISSUES = [
   ['REFUS_FERME', 'Refus — ne plus appeler', 'red'],
 ]
 
-export default function EcranAppel({ contact: c, onEnregistre, onPasser, horsFile, demo }) {
+export default function EcranAppel({ contact: c, onEnregistre, onPasser, horsFile, origine, demo }) {
   // Durée de l'appel, mesurée depuis l'ouverture de la fiche. Le manager s'en
   // sert comme signal : un appel qui passe de six minutes à quatre-vingt-dix
   // secondes, c'est quelqu'un qui expédie.
@@ -126,7 +126,10 @@ export default function EcranAppel({ contact: c, onEnregistre, onPasser, horsFil
           <div className="bg-quai-navy text-white rounded-xl p-4">
             {horsFile && (
               <div className="text-[11px] text-quai-goldlt mb-1.5 inline-flex items-center gap-1">
-                <Icon name="phone-call" size="sm" /> Hors de votre liste — rappel entrant
+                <Icon name="phone-call" size="sm" />
+                {origine === 'ouverte'
+                  ? ' Fiche ouverte depuis le suivi'
+                  : ' Hors de votre liste — rappel entrant'}
               </div>
             )}
             <div className="flex items-center gap-2 flex-wrap mb-1.5">
@@ -136,7 +139,13 @@ export default function EcranAppel({ contact: c, onEnregistre, onPasser, horsFil
               {/* Le vocabulaire de la feuille imprimée : ce dont l'agent a
                   besoin avant de décrocher, c'est de savoir quel script il
                   prend — pas un objectif inventé pour l'écran. */}
-              {c.courrier_etat !== 'ENVOYE' && (
+              {/* Le NPAI remplace « courrier non envoyé » : un pli revenu a bien
+                  été envoyé, et afficher les deux brouillerait le message. */}
+              {c.npai === 1 ? (
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-400 text-quai-navy font-bold">
+                  courrier revenu
+                </span>
+              ) : c.courrier_etat !== 'ENVOYE' && (
                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/20 font-medium">
                   courrier non envoyé
                 </span>
@@ -164,7 +173,29 @@ export default function EcranAppel({ contact: c, onEnregistre, onPasser, horsFil
               </div>
             )}
 
-            <div className="text-[11px] text-white/70 mt-2 leading-snug">{e.contexte}</div>
+            {/* L'encart NPAI ci-dessous dit la même chose en plus clair :
+                afficher les deux fait lire deux fois la même phrase. */}
+            {c.npai !== 1 && (
+              <div className="text-[11px] text-white/70 mt-2 leading-snug">{e.contexte}</div>
+            )}
+
+            {/* Le pli est revenu : l'agent doit le savoir avant de décrocher,
+                parce que le client va dire « je n'ai rien reçu » et que la
+                réponse n'est pas « si, on vous l'a envoyé ». Encart plein et
+                non une ligne grise : c'est la seule chose qui change dans son
+                appel par rapport aux autres fiches du même script. */}
+            {c.npai === 1 && (
+              <div className="mt-2 rounded-lg bg-amber-400/15 border border-amber-300/40 p-2.5">
+                <div className="text-[11px] font-semibold text-amber-200 mb-0.5">
+                  Son courrier nous est revenu
+                </div>
+                <p className="text-[11px] text-white/80 leading-snug">
+                  Il n'a rien reçu, et ce n'est pas de sa faute : l'adresse que nous avons est
+                  fausse. Ne lui dites pas qu'il a reçu la lettre — dites-lui qu'elle vous est
+                  revenue, et profitez-en pour lui demander sa bonne adresse.
+                </p>
+              </div>
+            )}
 
             <div className="flex gap-2 mt-3 md:max-w-md">
               {tel ? (
@@ -248,7 +279,9 @@ export default function EcranAppel({ contact: c, onEnregistre, onPasser, horsFil
               </button>
             </div>
             {/* Information, pas consigne. */}
-            {c.adresse_fiable === 0 && (
+            {/* Pour un NPAI, l'encart en tête l'a déjà dit. Cette phrase sert
+                aux fiches dont l'adresse était douteuse dès l'import. */}
+            {c.adresse_fiable === 0 && c.npai !== 1 && (
               <p className="text-[11px] text-quai-muted leading-snug">
                 Sa fiche porte l'adresse du bien qu'il a vendu — il n'y habite plus.
               </p>

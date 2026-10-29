@@ -12,7 +12,7 @@ const RecapSession = lazy(() => import('./RecapSession'))
 //
 // C'est ce qui fait la différence sur 149 appels : aucune décision à prendre
 // entre deux fiches, et personne n'est sauté.
-export default function SessionOperation() {
+export default function SessionOperation({ ficheAOuvrir, onFicheOuverte }) {
   const [file, setFile] = useState([])
   const [infos, setInfos] = useState(null)
   const [index, setIndex] = useState(0)
@@ -35,6 +35,10 @@ export default function SessionOperation() {
   // Contact trouvé par la recherche : un client rappelle, on le traite sans
   // perdre sa place dans la file.
   const [horsFile, setHorsFile] = useState(null)
+  // « rappel » quand l'agent a cherché un client qui vient de rappeler ;
+  // « ouverte » quand la fiche vient du listing ou du suivi. Le bandeau de
+  // l'écran d'appel ne dit pas la même chose dans les deux cas.
+  const [origine, setOrigine] = useState('rappel')
   const [recherche, setRecherche] = useState('')
   const [resultats, setResultats] = useState([])
 
@@ -61,6 +65,19 @@ export default function SessionOperation() {
   }, [])
 
   useEffect(() => { charger() }, [charger])
+
+  // Une fiche ouverte depuis le listing ou le suivi. On la recharge au lieu de
+  // la prendre telle quelle : les écrans de pilotage renvoient des lignes de
+  // tableau, sans en-tête de script ni avertissements, et l'écran d'appel a
+  // besoin des deux. L'identifiant suffit donc à l'appelant.
+  useEffect(() => {
+    if (!ficheAOuvrir) return
+    const id = ficheAOuvrir.id_modelo || ficheAOuvrir
+    api.get(`/operation/contacts/${id}`)
+      .then(r => { setOrigine('ouverte'); setHorsFile(r.data.contact) })
+      .catch(() => toast.error('Fiche inaccessible'))
+      .finally(() => onFicheOuverte?.())
+  }, [ficheAOuvrir, onFicheOuverte])
 
   const contact = horsFile || file[index]
 
@@ -102,7 +119,7 @@ export default function SessionOperation() {
         plage={infos?.plage}
         horsFile={!!horsFile}
         recherche={recherche} setRecherche={setRecherche} resultats={resultats}
-        onOuvrirHorsFile={c => { setHorsFile(c); setRecherche(''); setResultats([]) }}
+        onOuvrirHorsFile={c => { setOrigine('rappel'); setHorsFile(c); setRecherche(''); setResultats([]) }}
         onListe={() => setListeOuverte(true)}
         onRecap={() => setRecapOuvert(true)}
       />
@@ -111,6 +128,7 @@ export default function SessionOperation() {
         key={contact.id_modelo}
         contact={contact}
         horsFile={!!horsFile}
+        origine={origine}
         onEnregistre={suivant}
         onPasser={() => {
           if (horsFile) { setHorsFile(null); return }
