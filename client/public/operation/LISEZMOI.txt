@@ -1,0 +1,14 @@
+mode-emploi.html est une COPIE de docs/Tuto-agents.html.
+
+La source est docs/Tuto-agents.html : c'est elle qu'on modifie, et c'est elle
+qu'on envoie par mail. Celle-ci n'existe que pour être servie par
+l'application, aux deux endroits où l'agent peut la demander :
+
+  - la page Repères, sous le bouton « Commencer les appels »
+  - le bas du panneau d'aide
+
+Après toute modification du tuto :
+
+  cp docs/Tuto-agents.html client/public/operation/mode-emploi.html
+
+Sans ça, l'agent lit une version et vous en envoyez une autre.

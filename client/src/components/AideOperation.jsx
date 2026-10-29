@@ -138,13 +138,27 @@ const RUBRIQUES = {
         '3 — vous reprenez ce dossier, il a reçu le courrier.',
         '4 — vous reprenez ce dossier, il n’a rien reçu.',
         'Sur les scripts 3 et 4, le prénom de l’ancien conseiller s’affiche en haut de la fiche. Ne restez pas vague : c’est là que l’appel se gagne.',
+        'Son nom de famille est affiché juste à côté, en plus discret. Vous ne le prononcez pas — mais si le client demande « Charlotte comment ? », vous avez la réponse.',
       ],
     },
     {
       titre: '« Courrier non envoyé »',
       corps: [
-        'Le pli n’est pas parti — soit l’adresse était fausse, soit l’impression a bloqué. Aucun courrier n’est revenu : vous appelez quelqu’un à qui on n’a jamais écrit, pas quelqu’un dont le courrier a échoué.',
+        'Le pli n’est pas parti — soit l’adresse était fausse, soit l’impression a bloqué. Vous appelez quelqu’un à qui on n’a jamais écrit : il ne sait pas qu’il y avait une lettre.',
         'N’en faites pas une affaire. Le courrier se renvoie à la fin, sans s’excuser.',
+      ],
+    },
+    {
+      // Les premiers retours sont arrivés le 29 octobre. Avant cette date
+      // l’aide affirmait qu’aucun courrier n’était revenu — un agent qui la
+      // lisait pendant un appel NPAI lisait l’inverse de ce que son écran lui
+      // disait.
+      titre: '« Courrier revenu »',
+      corps: [
+        'La lettre est bien partie, et elle nous est revenue : l’adresse qu’on a est fausse. Le pli est à l’agence.',
+        'Ne lui dites pas qu’il a reçu le courrier — il vous répondrait que non, et vous n’auriez rien à répondre. Dites-lui l’inverse, et servez-vous-en pour récupérer sa bonne adresse.',
+        { dire: 'Jérémy Bertrand vous a adressé un courrier il y a quelques jours — il nous est revenu, on n’a plus votre bonne adresse. C’est d’ailleurs l’occasion : vous êtes toujours au même endroit ?' },
+        'C’est votre meilleure accroche pour la fiche à jour, le quatrième objectif.',
       ],
     },
     {
@@ -250,6 +264,27 @@ export default function AideOperation({ onFermer, rubrique = 'appel' }) {
               )}
             </div>
           ))}
+
+          {/* Le mode d'emploi complet, avec les captures d'écran. Il ne vit pas
+              dans cette aide : celle-ci se consulte un client en ligne, et
+              dix sections de mode d'emploi y noieraient les phrases
+              d'objection. Un lien suffit — il s'ouvre à côté, et le service
+              worker le garde consultable hors ligne après une première
+              ouverture. */}
+          <a href="/operation/mode-emploi.html" target="_blank" rel="noopener"
+            className="block bg-white border border-quai-border rounded-xl px-3 py-2.5
+                       hover:border-quai-gold transition-colors">
+            <div className="flex items-center gap-2">
+              <Icon name="file-text" size="sm" className="text-quai-gold shrink-0" />
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-medium text-quai-navy">Le mode d'emploi complet</div>
+                <div className="text-[11px] text-quai-muted leading-snug">
+                  Tous les écrans en images — à lire au calme, pas pendant un appel.
+                </div>
+              </div>
+              <Icon name="chevron-right" size="sm" className="text-quai-muted shrink-0" />
+            </div>
+          </a>
         </div>
       </div>
     </div>

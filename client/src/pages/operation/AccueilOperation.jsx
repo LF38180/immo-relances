@@ -99,6 +99,14 @@ export default function AccueilOperation({ acces, bilan, onCommencer, estPilote 
           {restants > 0 ? 'Commencer les appels' : 'Voir ma liste'}
         </button>
 
+        {/* Le mode d'emploi, à hauteur du premier matin : cette page n'est plus
+            ouverte ensuite, et l'aide pendant l'appel sert à autre chose. */}
+        <a href="/operation/mode-emploi.html" target="_blank" rel="noopener"
+          className="block text-center text-xs text-quai-muted hover:text-quai-navy
+                     underline underline-offset-2 py-1">
+          Lire le mode d'emploi, avec les écrans en images
+        </a>
+
         <Carte titre="Tu n’appelles pas pour vendre.">
           <p className="text-sm text-quai-text leading-snug">
             Le courrier du président le promet noir sur blanc : on ne proposera rien.
