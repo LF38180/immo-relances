@@ -39,12 +39,47 @@ app.get('/api/health', (_, res) => {
   try { const st = require('fs').statSync(DB_PATH); base = { octets: st.size, modifiee_le: st.mtime.toISOString() }; }
   catch { base = { octets: null }; }
   const maintenant = new Date();
+
+  // Des compteurs, jamais des noms ni des données clients : de quoi laisser
+  // un contrôle automatique (ou un simple coup d'œil) repérer une mauvaise
+  // surprise avant les agents — un manager qui ne verrait rien, un conseiller
+  // sans fiche, une sauvegarde qui ne tourne plus.
+  let controles = null;
+  try {
+    const { db } = require('./database');
+    const S = require('./sauvegarde');
+    const sauvegardes = S.lister();
+    controles = {
+      fuseau_ok: Intl.DateTimeFormat().resolvedOptions().timeZone === 'Europe/Paris',
+      sauvegarde: { nombre: sauvegardes.length, derniere_le: sauvegardes[0]?.le || null },
+      conseillers_sans_fiche: db.prepare(`SELECT COUNT(*) n FROM users u
+        WHERE u.actif = 1 AND u.role = 'conseiller'
+          AND NOT EXISTS (SELECT 1 FROM op_contacts c
+            WHERE sans_casse(c.conseiller) = sans_casse(u.prenom || ' ' || u.nom) AND c.a_dispatcher = 0)`).get().n,
+      managers_sans_fiche: db.prepare(`SELECT COUNT(*) n FROM users u
+        WHERE u.actif = 1 AND u.role = 'manager' AND u.agence IS NOT NULL AND TRIM(u.agence) <> ''
+          AND NOT EXISTS (SELECT 1 FROM op_contacts c WHERE sans_casse(c.agence) = sans_casse(u.agence))`).get().n,
+      fiches_sans_compte: db.prepare(`SELECT COUNT(*) n FROM op_contacts c
+        WHERE c.a_dispatcher = 0 AND c.conseiller IS NOT NULL
+          AND NOT EXISTS (SELECT 1 FROM users u WHERE u.actif = 1
+            AND sans_casse(u.prenom || ' ' || u.nom) = sans_casse(c.conseiller))`).get().n,
+      sans_numero: db.prepare(`SELECT COUNT(*) n FROM op_contacts
+        WHERE a_dispatcher = 0 AND NULLIF(TRIM(COALESCE(tel_portable,'')),'') IS NULL
+          AND NULLIF(TRIM(COALESCE(tel_fixe,'')),'') IS NULL`).get().n,
+      a_repartir: db.prepare('SELECT COUNT(*) n FROM op_contacts WHERE a_dispatcher = 1').get().n,
+      npai: db.prepare('SELECT COUNT(*) n FROM op_contacts WHERE npai = 1').get().n,
+      appels_aujourdhui: db.prepare(`SELECT COUNT(*) n FROM op_appels
+        WHERE date(horodatage, 'localtime') = date('now', 'localtime')`).get().n,
+    };
+  } catch (e) { controles = { erreur: String(e.message || e) }; }
+
   res.json({
     status: 'ok',
     time: maintenant.toISOString(),
     fuseau: Intl.DateTimeFormat().resolvedOptions().timeZone,
     heure_locale: maintenant.toLocaleString('fr-FR'),
     base,
+    controles,
   });
 });
 
