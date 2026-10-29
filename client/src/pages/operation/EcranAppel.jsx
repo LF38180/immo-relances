@@ -31,6 +31,9 @@ export default function EcranAppel({ contact: c, onEnregistre, onPasser, horsFil
   const [notes, setNotes] = useState('')
   const [res, setRes] = useState({})
   const [envoi, setEnvoi] = useState(false)
+  // Une clé par fiche ouverte : si la réponse du serveur se perd et que
+  // l'agent réessaie, le serveur reconnaît la clé et ne crée pas de doublon.
+  const [cle] = useState(() => (globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`))
   const [scriptOuvert, setScriptOuvert] = useState(false)
 
   // Raccourcis : l'agent est au casque, une main sur le clavier. Chaque aller
@@ -96,7 +99,7 @@ export default function EcranAppel({ contact: c, onEnregistre, onPasser, horsFil
       const { data } = await api.post(`/operation/contacts/${c.id_modelo}/appel`,
         { issue, rappel_le: rappelLe || null, notes: notes.trim() || null,
           duree_sec: Math.round((Date.now() - ouvertA) / 1000),
-          resultat: aSaisi ? res : undefined })
+          resultat: aSaisi ? res : undefined, cle })
 
       // Le message dit ce qui est parti, pour que l'agent n'ait pas à le croire.
       const parti = []
@@ -107,9 +110,10 @@ export default function EcranAppel({ contact: c, onEnregistre, onPasser, horsFil
       if (res.recommandation_nom) parti.push('recommandation')
       if (res.consentement_tel != null) parti.push('consentement')
       if (res.fiche_confirmee === 1) parti.push('fiche confirmée')
-      toast.success(
-        (parti.length ? 'Enregistré — ' + parti.join(', ') : 'Enregistré')
-        + (data.hors_cadre ? ' (hors cadre, tracé)' : ''))
+      toast.success(data.deja
+        ? 'Déjà enregistré — rien n’a été dupliqué'
+        : (parti.length ? 'Enregistré — ' + parti.join(', ') : 'Enregistré')
+          + (data.hors_cadre ? ' (hors cadre, tracé)' : ''))
 
       onEnregistre({
         issue,
@@ -121,7 +125,7 @@ export default function EcranAppel({ contact: c, onEnregistre, onPasser, horsFil
           || res.toujours_proprietaire != null || res.fiche_confirmee === 1),
       })
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Enregistrement impossible')
+      toast.error(err.messageLisible || err.response?.data?.error || 'Enregistrement impossible', { duration: 6000 })
       setEnvoi(false)
     }
   }
@@ -251,6 +255,14 @@ export default function EcranAppel({ contact: c, onEnregistre, onPasser, horsFil
                   .toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}</>}
                 {c.dernier_par && <> par {c.dernier_par}</>}
                 {c.derniere_issue && <> ({c.derniere_issue.replace(/_/g, ' ').toLowerCase()})</>}
+                {/* Le rappel convenu : sans l'heure, une fiche « à rappeler
+                    jeudi 15h » resservie mardi se rappelait à contretemps. */}
+                {c.derniere_issue === 'A_RAPPELER' && c.rappel_le && (
+                  <div className="mt-0.5 font-semibold text-amber-200">
+                    Rappel convenu : {new Date(c.rappel_le).toLocaleString('fr-FR',
+                      { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}
+                  </div>
+                )}
                 {c.derniere_note && <div className="italic mt-0.5">« {c.derniere_note} »</div>}
               </div>
             )}
@@ -278,7 +290,7 @@ export default function EcranAppel({ contact: c, onEnregistre, onPasser, horsFil
                   comme à jour. */}
               <button type="button"
                 onClick={() => champ('fiche_confirmee', res.fiche_confirmee === 1 ? null : 1)}
-                className={`mt-2 w-full text-xs px-3 py-2 rounded-lg border transition-colors min-h-[2.5rem] ${
+                className={`mt-2 w-full text-xs px-3 py-2 rounded-lg border transition-colors min-h-[2.75rem] ${
                   res.fiche_confirmee === 1
                     ? 'bg-emerald-600 text-white border-emerald-600'
                     : 'bg-white border-quai-border text-quai-navy hover:border-quai-gold'}`}>
@@ -465,8 +477,11 @@ export default function EcranAppel({ contact: c, onEnregistre, onPasser, horsFil
         </div>
       </div>
 
-      {/* Barre d'action fixe : le geste qui enchaîne. */}
-      <div className="border-t border-quai-border bg-white p-3 shrink-0">
+      {/* Barre d'action fixe : le geste qui enchaîne. Le padding-bottom suit
+          l'indicateur home des iPhone en PWA plein écran : sans lui, la moitié
+          basse du bouton tombait dans la zone du geste système. */}
+      <div className="border-t border-quai-border bg-white p-3 shrink-0"
+        style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}>
         <div className="max-w-3xl mx-auto flex gap-2">
           <button onClick={onPasser}
             className="px-4 rounded-lg border border-quai-border text-quai-muted text-sm min-h-[3rem] whitespace-nowrap">
@@ -540,7 +555,7 @@ function Boutons({ label, valeur, options, onChange }) {
       <div className="flex flex-wrap gap-1.5 mt-1">
         {options.map(([v, l]) => (
           <button key={String(v)} onClick={() => onChange(valeur === v ? null : v)}
-            className={`text-xs px-3 py-2 rounded-lg border transition-colors min-h-[2.5rem] ${
+            className={`text-xs px-3 py-2 rounded-lg border transition-colors min-h-[2.75rem] ${
               valeur === v ? 'bg-quai-navy text-white border-quai-navy'
                            : 'border-quai-border text-quai-muted hover:border-quai-gold'}`}>
             {l}

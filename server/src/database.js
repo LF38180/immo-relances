@@ -10,6 +10,14 @@ const db = new Database(DB_PATH);
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
 
+// Comparaison sans casse ni espaces de bord, accents compris. LOWER() de
+// SQLite ne touche pas aux lettres accentuées : LOWER('SAINT ÉGRÈVE') garde
+// É et È, et ne vaut jamais 'saint égrève'. Un manager dont l'agence était
+// saisie en minuscules ne voyait aucune fiche. toLowerCase() de JavaScript
+// sait le faire.
+db.function('sans_casse', { deterministic: true },
+  (s) => (s == null ? null : String(s).trim().toLowerCase()));
+
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -660,6 +668,18 @@ db.exec(`
   if (!cols.includes('bien_type')) db.exec("ALTER TABLE op_contacts ADD COLUMN bien_type TEXT");
   if (!cols.includes('bien_voie')) db.exec("ALTER TABLE op_contacts ADD COLUMN bien_voie TEXT");
   if (!cols.includes('bien_commune')) db.exec("ALTER TABLE op_contacts ADD COLUMN bien_commune TEXT");
+}
+
+// Clé d'idempotence sur les appels. En mobilité, une requête peut atteindre
+// le serveur sans que la réponse revienne : l'agent voit une erreur, réessaie,
+// et créait un second appel sur la même fiche — compté contre le plafond légal
+// de quatre par mois. L'écran génère une clé par fiche ouverte ; le serveur ne
+// l'enregistre qu'une fois et renvoie l'existant ensuite. Index partiel : les
+// appels anciens, sans clé, ne sont pas contraints.
+{
+  const cols = db.prepare("PRAGMA table_info(op_appels)").all().map(c => c.name);
+  if (!cols.includes('cle')) db.exec("ALTER TABLE op_appels ADD COLUMN cle TEXT");
+  db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_op_appels_cle ON op_appels(cle) WHERE cle IS NOT NULL");
 }
 
 // NPAI : le courrier est revenu « n'habite pas à l'adresse indiquée ». Les plis

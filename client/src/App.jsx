@@ -1,4 +1,5 @@
 import { useState, useEffect, lazy, Suspense } from 'react'
+import ErrorBoundary from './components/ErrorBoundary'
 import api from './utils/api'
 import { Toaster } from 'react-hot-toast'
 import { AuthProvider, useAuth } from './hooks/useAuth'
@@ -34,9 +35,11 @@ function AppInner() {
   // Changement de mot de passe obligatoire : écran bloquant avant tout accès.
   if (user.must_change_password) {
     return (
-      <Suspense fallback={<div className="min-h-screen flex"><ChargementPage /></div>}>
-        <ChangePasswordGate />
-      </Suspense>
+      <ErrorBoundary>
+        <Suspense fallback={<div className="min-h-screen flex"><ChargementPage /></div>}>
+          <ChangePasswordGate />
+        </Suspense>
+      </ErrorBoundary>
     )
   }
 
@@ -63,6 +66,13 @@ function AppConnecte({ user, page, setPage }) {
 
   const espaceHabituel = user.role === 'courtage' ? 'courtage' : 'agence'
 
+  // Un conseiller recruté pour l'opération et qui n'a (pas encore) de fiche
+  // à son nom atterrissait sur le tableau de bord des relances, vide, sans
+  // menu ni explication. Il doit savoir que ce n'est pas lui.
+  if (!acces.participe && user.role === 'conseiller') {
+    return <SansFiche prenom={user.prenom} />
+  }
+
   // Ne participe pas : strictement le comportement d'avant.
   if (!acces.participe) {
     return espaceHabituel === 'courtage' ? <EspaceCourtage /> : <EspaceAgence page={page} setPage={setPage} />
@@ -77,9 +87,11 @@ function AppConnecte({ user, page, setPage }) {
   const aUnAutreEspace = user.role !== 'conseiller'
   if (!aUnAutreEspace) {
     return (
-      <Suspense fallback={<div className="min-h-screen flex"><ChargementPage /></div>}>
-        <OperationHub />
-      </Suspense>
+      <ErrorBoundary>
+        <Suspense fallback={<div className="min-h-screen flex"><ChargementPage /></div>}>
+          <OperationHub />
+        </Suspense>
+      </ErrorBoundary>
     )
   }
 
@@ -197,5 +209,26 @@ export default function App() {
       }} />
       <AppInner />
     </AuthProvider>
+  )
+}
+
+// Conseiller sans fiche attribuée : dire pourquoi l'écran est vide.
+function SansFiche({ prenom }) {
+  const { logout } = useAuth()
+  return (
+    <div className="min-h-screen bg-quai-light flex items-center justify-center p-4">
+      <div className="bg-white border border-quai-border rounded-xl p-6 max-w-md w-full text-center">
+        <img src="/operation/sceau-badge.png" alt="" className="w-16 h-16 rounded mx-auto mb-3" />
+        <h1 className="text-xl font-display font-bold text-quai-navy">Bonjour {prenom}</h1>
+        <p className="text-sm text-quai-muted mt-2 leading-snug">
+          Aucune fiche ne t’est attribuée pour l’instant. Ce n’est pas une erreur de ta part :
+          la répartition est en cours. Vois avec Loïck, puis reviens ici.
+        </p>
+        <div className="flex gap-2 justify-center mt-5">
+          <button onClick={() => window.location.reload()} className="btn-primary min-h-[3rem] px-5">Réessayer</button>
+          <button onClick={logout} className="btn-secondary min-h-[3rem] px-5">Se déconnecter</button>
+        </div>
+      </div>
+    </div>
   )
 }

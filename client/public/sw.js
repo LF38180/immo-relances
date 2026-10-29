@@ -5,7 +5,7 @@
 // travailler des jours sur une version corrigée depuis longtemps, sans aucun
 // moyen de s'en apercevoir. À incrémenter à chaque livraison qui change le
 // comportement de l'application.
-const CACHE_NAME = 'immo-relances-v11';
+const CACHE_NAME = 'immo-relances-v12';
 
 self.addEventListener('install', () => {
   // Pas de pré-chargement : l'index mis en cache à l'installation fige les
@@ -28,6 +28,9 @@ self.addEventListener('fetch', event => {
 
   // L'API n'est jamais mise en cache.
   if (url.pathname.startsWith('/api/')) return;
+  // Ni les autres sites : l'API Adresse du gouvernement était gardée en cache
+  // pour toujours, réponse par réponse, à chaque chaîne tapée.
+  if (url.origin !== self.location.origin) return;
 
   // La page elle-même vient toujours du réseau quand il répond : c'est elle
   // qui désigne les fichiers à charger, et une version figée en cache renvoie
@@ -56,7 +59,12 @@ self.addEventListener('fetch', event => {
   event.respondWith(
     caches.match(event.request).then(enCache => enCache || fetch(event.request)
       .then(reponse => {
-        if (reponse.ok) {
+        // Jamais de HTML sous l'URL d'un script ou d'un style : c'est la page
+        // d'accueil renvoyée à la place d'un fichier disparu, et la garder
+        // empoisonnait le cache jusqu'à la version suivante.
+        const type = reponse.headers.get('content-type') || '';
+        const estAsset = /\.(js|css|woff2?|png|jpe?g|svg|webp|pdf)(\?|$)/i.test(url.pathname);
+        if (reponse.ok && !(estAsset && type.includes('text/html'))) {
           const copie = reponse.clone();
           caches.open(CACHE_NAME).then(c => c.put(event.request, copie));
         }

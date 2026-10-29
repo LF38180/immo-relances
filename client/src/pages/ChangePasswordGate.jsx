@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import toast from 'react-hot-toast'
 import api from '../utils/api'
 import { useAuth } from '../hooks/useAuth'
@@ -16,6 +16,16 @@ export default function ChangePasswordGate() {
   const [erreur, setErreur] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
+  // Le drapeau vient du localStorage de CET appareil. Si le changement a déjà
+  // été fait sur un autre (ordinateur le matin, téléphone ensuite), ce
+  // formulaire redemanderait l'ancien mot de passe, désormais faux. On
+  // interroge le serveur : s'il dit que c'est fait, on passe.
+  useEffect(() => {
+    api.get('/auth/me')
+      .then(r => { if (r.data && !r.data.must_change_password) updateUser({ must_change_password: 0 }) })
+      .catch(() => {})
+  }, [])
+
   const submit = async (e) => {
     e.preventDefault()
     setErreur('')
@@ -28,7 +38,7 @@ export default function ChangePasswordGate() {
       toast.success('Mot de passe modifié')
       updateUser({ must_change_password: 0 })
     } catch (err) {
-      setErreur(err.response?.data?.error || 'Erreur lors du changement de mot de passe.')
+      setErreur(err.messageLisible || err.response?.data?.error || 'Erreur lors du changement de mot de passe.')
     } finally {
       setSubmitting(false)
     }

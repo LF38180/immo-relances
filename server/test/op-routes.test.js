@@ -72,8 +72,17 @@ const t = (n, fn) => { try { fn(); console.log('  OK  ' + n) } catch (e) { conso
     assert.strictEqual(r.status, 200);
     // Tara a 149 fiches, dont 8 « à trancher » : on n'appelle pas quelqu'un
     // dont on n'est pas sûr qu'il ait vendu chez nous. Elles reviennent dans
-    // la file une fois vérifiées par un manager.
-    assert.strictEqual(r.body.compteurs.portefeuille, 141, 'portefeuille : ' + r.body.compteurs.portefeuille);
+    // la file une fois vérifiées par un manager. Depuis le 29 octobre, les
+    // fiches sans aucun numéro n'y sont plus non plus : une file d'appels ne
+    // propose que ce qui s'appelle. Elles sont comptées à part.
+    const sansNumero = db.prepare(`SELECT COUNT(*) n FROM op_contacts
+      WHERE LOWER(TRIM(conseiller)) = LOWER(?) AND a_dispatcher = 0
+        AND NOT (a_verifier = 1 AND verifie IS NULL)
+        AND NULLIF(TRIM(COALESCE(tel_portable,'')),'') IS NULL
+        AND NULLIF(TRIM(COALESCE(tel_fixe,'')),'') IS NULL`).get('Tara ZOPPAS').n;
+    assert.ok(sansNumero > 0, 'le jeu de données devrait contenir des fiches sans numéro');
+    assert.strictEqual(r.body.compteurs.portefeuille, 141 - sansNumero, 'portefeuille : ' + r.body.compteurs.portefeuille);
+    assert.strictEqual(r.body.compteurs.sans_telephone, sansNumero, 'sans_telephone : ' + r.body.compteurs.sans_telephone);
   });
 
   t('les fiches à vérifier sont bien hors de la file', () => {

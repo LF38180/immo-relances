@@ -16,6 +16,28 @@ router.use(requireAuth, requireRole('manager', 'admin'));
 // n'était gardée que par `requireRole('manager','admin')` au niveau du
 // routeur, si bien qu'un manager pouvait lire, modifier et désactiver
 // n'importe quel compte, y compris celui d'un admin.
+// Sauvegarde de la base — admin seulement.
+//
+// `GET /sauvegarde` produit une copie fraîche et la livre en téléchargement :
+// c'est le seul filet contre la perte du volume, et il tient en un clic chaque
+// soir. `GET /sauvegardes` liste celles que le serveur écrit toutes les six
+// heures, pour vérifier qu'il le fait.
+router.get('/sauvegarde', requireRole('admin'), async (req, res) => {
+  const S = require('../sauvegarde');
+  try {
+    const f = await S.sauvegarder();
+    res.download(f, require('path').basename(f));
+  } catch (e) {
+    console.error('[sauvegarde] téléchargement —', e);
+    res.status(500).json({ error: 'La sauvegarde a échoué.' });
+  }
+});
+
+router.get('/sauvegardes', requireRole('admin'), (req, res) => {
+  const S = require('../sauvegarde');
+  res.json({ dossier: require('path').basename(S.DOSSIER), fichiers: S.lister() });
+});
+
 router.get('/users', requireRole('admin'), (req, res) => {
   // `agence` restreint un manager à son agence : sans elle à l'écran, on ne
   // voyait pas qui était rattaché à quoi.
@@ -53,9 +75,12 @@ router.put('/users/:id', requireRole('admin'), (req, res) => {
   if (agence !== undefined) {
     db.prepare('UPDATE users SET agence = ? WHERE id = ?').run(agence || null, req.params.id);
   }
+  // L'email est normalisé comme à la création et au login : une majuscule
+  // saisie ici rendait le compte impossible à ouvrir, sans message.
+  const emailNorm = email == null ? null : String(email).toLowerCase().trim();
   db.prepare(`UPDATE users SET nom = COALESCE(?, nom), prenom = COALESCE(?, prenom),
     email = COALESCE(?, email), role = COALESCE(?, role), actif = COALESCE(?, actif) WHERE id = ?`)
-    .run(nom, prenom, email, role, actif, req.params.id);
+    .run(nom, prenom, emailNorm, role, actif, req.params.id);
   res.json({ ok: true });
 });
 

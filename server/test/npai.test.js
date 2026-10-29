@@ -32,8 +32,10 @@ const jeton = (email) => {
 };
 
 const contact = (id, extra = {}) => {
+  // Un numéro : la file ne propose plus les fiches qui n'en ont aucun.
   const c = { id_modelo: id, nom: 'Durand', prenom: 'Paul', conseiller: 'Marie Manager',
-    agence: 'LE QUAI', script: 1, courrier_etat: 'ENVOYE', a_dispatcher: 0, ...extra };
+    agence: 'LE QUAI', script: 1, courrier_etat: 'ENVOYE', a_dispatcher: 0,
+    tel_portable: '0639980000', ...extra };
   const cols = Object.keys(c);
   db.prepare(`INSERT INTO op_contacts (${cols.join(',')}) VALUES (${cols.map(k => '@' + k).join(',')})`).run(c);
   return c;

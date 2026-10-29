@@ -48,9 +48,38 @@ function identite(req) {
 // Clause SQL restreignant ce qu'une personne a le droit de voir.
 function perimetre(moi, prefixe = '') {
   const p = prefixe ? prefixe + '.' : '';
-  if (!moi.global) return { where: `LOWER(TRIM(${p}conseiller)) = LOWER(?)`, params: [moi.nom_complet] };
-  if (moi.agence) return { where: `${p}agence = ?`, params: [moi.agence] };
+  // `sans_casse` (database.js) : casse, espaces de bord et accents ignorés.
+  if (!moi.global) return { where: `sans_casse(${p}conseiller) = sans_casse(?)`, params: [moi.nom_complet] };
+  // Un admin voit tout, même si son compte porte une agence : l'agence d'un
+  // admin dit où il travaille, pas ce qu'il a le droit de voir.
+  if (moi.role === 'admin') return { where: '1=1', params: [] };
+  // Une majuscule ou un espace final saisi dans le formulaire admin rendait un
+  // manager aveugle sur toutes ses fiches, sans erreur.
+  if (moi.agence) return { where: `sans_casse(${p}agence) = sans_casse(?)`, params: [moi.agence] };
   return { where: '1=1', params: [] };
+}
+
+// Cette fiche est-elle dans le périmètre de cette personne ?
+//
+// Les listes sont cloisonnées par `perimetre()`, mais les routes qui agissent
+// sur une fiche par son identifiant ne l'étaient pas : un manager d'agence
+// qui connaissait un id_modelo de l'autre agence pouvait l'exclure, la
+// réattribuer, y enregistrer un appel. L'identifiant Modelo figure dans
+// l'export du listing — il n'a rien de secret.
+const memeAgence = (a, b) => String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
+function dansPerimetre(req, res, next) {
+  const moi = identite(req);
+  if (!moi) return res.status(401).json({ error: 'Compte introuvable' });
+  const c = getContact(req.params.id);
+  if (!c) return res.status(404).json({ error: 'Contact introuvable' });
+  if (moi.role === 'admin') return next();
+  if (moi.global) {
+    if (moi.agence && !memeAgence(c.agence, moi.agence))
+      return res.status(403).json({ error: 'Ce contact est hors de votre agence' });
+    return next();
+  }
+  if (!estSien(c, moi)) return res.status(403).json({ error: 'Ce contact ne vous est pas attribué' });
+  next();
 }
 
 // Nombre d'appels passés ce mois civil à cette personne, toutes issues et tous
@@ -95,6 +124,13 @@ function enrichir(c, maintenant = new Date()) {
     avertissements_mail: R.avertissementsMail(c),
     dernier_appel: dernier || null,
     appels_total: total,
+    // L'heure du rappel convenu, pour que l'écran puisse l'afficher : sans
+    // elle, une fiche « à rappeler jeudi 15h » resservie mardi se rappelait
+    // à contretemps.
+    rappel_le: dernier?.issue === 'A_RAPPELER'
+      ? db.prepare('SELECT rappel_le FROM op_appels WHERE id_modelo = ? AND issue = ? ORDER BY horodatage DESC LIMIT 1')
+          .get(c.id_modelo, 'A_RAPPELER')?.rappel_le || null
+      : null,
     dernier_appel_le: dernier?.horodatage || null,
     dernier_par: dernier?.conseiller || null,
     derniere_issue: dernier?.issue || null,
@@ -207,8 +243,23 @@ router.get('/file', conseillerOuPlus, (req, res) => {
       -- Les fiches à identité incertaine sortent de la file tant qu'un manager
       -- ne les a pas vérifiées : les appeler est le pire démarrage possible.
       AND NOT (c.a_verifier = 1 AND c.verifie IS NULL)
+      -- Une file d'appels ne propose que des fiches appelables. Trente-neuf
+      -- fiches n'ont aucun numéro : l'agent arrivait sur « Aucun numéro »,
+      -- passait, et la retrouvait à la même place à chaque session. Elles
+      -- restent au listing, comptées à part, pour qu'un manager cherche le
+      -- numéro dans Modelo.
+      AND (NULLIF(TRIM(COALESCE(c.tel_portable, '')), '') IS NOT NULL
+        OR NULLIF(TRIM(COALESCE(c.tel_fixe, '')), '') IS NOT NULL)
     ORDER BY c.nom, c.prenom
   `).all(R.moisCourant(), ...params);
+
+  // Même périmètre que la file : les fiches à vérifier sont comptées ailleurs.
+  const sansTelephone = db.prepare(`
+    SELECT COUNT(*) n FROM op_contacts c
+    WHERE ${where} AND c.a_dispatcher = 0
+      AND NOT (c.a_verifier = 1 AND c.verifie IS NULL)
+      AND NULLIF(TRIM(COALESCE(c.tel_portable, '')), '') IS NULL
+      AND NULLIF(TRIM(COALESCE(c.tel_fixe, '')), '') IS NULL`).get(...params).n;
 
   const maintenant = new Date();
 
@@ -220,8 +271,11 @@ router.get('/file', conseillerOuPlus, (req, res) => {
   const plafonnes = ouverts.filter(l => l.appels_ce_mois >= R.PLAFOND_MENSUEL).length;
   const opposes = ouverts.filter(l => l.stop_telephone).length;
 
+  // Par heure convenue, pas par ordre alphabétique : le rappel de 10h avant
+  // celui de 11h30.
   const rappelsDus = ouverts.filter(l => l.derniere_issue === 'A_RAPPELER'
-    && R.rappelDu(l.rappel_le, maintenant));
+    && R.rappelDu(l.rappel_le, maintenant))
+    .sort((x, y) => String(x.rappel_le).localeCompare(String(y.rappel_le)));
   const reste = ouverts.filter(l => !rappelsDus.includes(l));
 
   // Ordre alphabétique simple pour les fiches jamais appelées (arbitrage du
@@ -269,6 +323,7 @@ router.get('/file', conseillerOuPlus, (req, res) => {
       a_revoir: autres.length,
     },
     compteurs: {
+      sans_telephone: sansTelephone,
       portefeuille: lignes.length,
       plafonnes,
       opposes,
@@ -322,7 +377,7 @@ router.get('/recherche', conseillerOuPlus, (req, res) => {
 });
 
 // --- Une fiche --------------------------------------------------------------
-router.get('/contacts/:id', conseillerOuPlus, (req, res) => {
+router.get('/contacts/:id', conseillerOuPlus, dansPerimetre, (req, res) => {
   const moi = identite(req);
   const c = getContact(req.params.id);
   if (!c) return res.status(404).json({ error: 'Contact introuvable' });
@@ -415,7 +470,7 @@ function ecrireResultat(contact, corps, moi, appelId = null) {
   return cles;
 }
 
-router.post('/contacts/:id/appel', conseillerOuPlus, (req, res) => {
+router.post('/contacts/:id/appel', conseillerOuPlus, dansPerimetre, (req, res) => {
   const moi = identite(req);
   const c = getContact(req.params.id);
   if (!c) return res.status(404).json({ error: 'Contact introuvable' });
@@ -440,14 +495,27 @@ router.post('/contacts/:id/appel', conseillerOuPlus, (req, res) => {
   // La saisie de l'agent voyage avec l'appel et s'écrit dans la même
   // transaction : soit les deux sont enregistrés, soit aucun des deux. Rien ne
   // peut plus se perdre entre les deux écritures.
+  // Même clé déjà vue : la requête précédente avait abouti, seule sa réponse
+  // s'était perdue. On renvoie l'existant sans rien réécrire.
+  const cle = String(b.cle || '').trim().slice(0, 64) || null;
+  if (cle) {
+    const deja = db.prepare('SELECT hors_cadre FROM op_appels WHERE cle = ?').get(cle);
+    if (deja) {
+      return res.status(200).json({
+        ok: true, deja: true, hors_cadre: deja.hors_cadre, champs_enregistres: null,
+        contact: enrichir(getContact(c.id_modelo), maintenant),
+      });
+    }
+  }
+
   let champsEcrits = null;
 
   const ecrire = db.transaction(() => {
-    const r = db.prepare(`INSERT INTO op_appels (id_modelo, conseiller, user_id, issue, rappel_le, duree_sec, notes, hors_cadre)
-      VALUES (?,?,?,?,?,?,?,?)`).run(
+    const r = db.prepare(`INSERT INTO op_appels (id_modelo, conseiller, user_id, issue, rappel_le, duree_sec, notes, hors_cadre, cle)
+      VALUES (?,?,?,?,?,?,?,?,?)`).run(
       c.id_modelo, moi.nom_complet, moi.id, issue,
       issue === 'A_RAPPELER' ? b.rappel_le : null,
-      b.duree_sec || null, (b.notes || '').trim() || null, trace);
+      b.duree_sec || null, (b.notes || '').trim() || null, trace, cle);
 
     if (b.resultat) champsEcrits = ecrireResultat(c, b.resultat, moi, r.lastInsertRowid);
 
@@ -483,7 +551,7 @@ const CHAMPS_RESULTAT = [
   'recommandation_motif', 'recommandation_mode', 'consentement_tel', 'date_consentement',
 ];
 
-router.put('/contacts/:id/resultat', conseillerOuPlus, (req, res) => {
+router.put('/contacts/:id/resultat', conseillerOuPlus, dansPerimetre, (req, res) => {
   const moi = identite(req);
   const c = getContact(req.params.id);
   if (!c) return res.status(404).json({ error: 'Contact introuvable' });
@@ -503,7 +571,7 @@ router.put('/contacts/:id/resultat', conseillerOuPlus, (req, res) => {
 // Sert aux cas où l'agence venue de Modelo ne correspond plus à qui travaille
 // la fiche — le manager d'agence ne verrait alors jamais ce que son conseiller
 // y fait.
-router.post('/contacts/:id/agence', pilotage, (req, res) => {
+router.post('/contacts/:id/agence', pilotage, dansPerimetre, (req, res) => {
   const c = getContact(req.params.id);
   if (!c) return res.status(404).json({ error: 'Contact introuvable' });
 
@@ -545,7 +613,7 @@ router.get('/a-verifier', pilotage, (req, res) => {
 });
 
 // Trancher : « c'est bien la bonne personne » ou « ce n'est pas elle ».
-router.post('/contacts/:id/verifier', pilotage, (req, res) => {
+router.post('/contacts/:id/verifier', pilotage, dansPerimetre, (req, res) => {
   const moi = identite(req);
   const c = getContact(req.params.id);
   if (!c) return res.status(404).json({ error: 'Contact introuvable' });
@@ -614,7 +682,7 @@ router.delete('/appels/:id', requireRole('admin'), (req, res) => {
 // un conseiller précédent inconnu de l'application, une fiche à renvoyer au
 // pot commun. Le script n'est jamais recalculé — il dépend de données Modelo
 // que l'application n'a pas — mais il peut être corrigé explicitement.
-router.put('/contacts/:id/attribution', pilotage, (req, res) => {
+router.put('/contacts/:id/attribution', pilotage, dansPerimetre, (req, res) => {
   const moi = identite(req);
   const c = getContact(req.params.id);
   if (!c) return res.status(404).json({ error: 'Contact introuvable' });
@@ -673,7 +741,7 @@ router.put('/contacts/:id/attribution', pilotage, (req, res) => {
 });
 
 // Sortir une fiche de l'opération : elle rejoint la liste noire avec son motif.
-router.post('/contacts/:id/exclure', pilotage, (req, res) => {
+router.post('/contacts/:id/exclure', pilotage, dansPerimetre, (req, res) => {
   const moi = identite(req);
   const c = getContact(req.params.id);
   if (!c) return res.status(404).json({ error: 'Contact introuvable' });
@@ -701,7 +769,7 @@ router.post('/contacts/:id/exclure', pilotage, (req, res) => {
 // valide sont servies dans l'ordre alphabétique comme les autres (arbitrage du
 // 20 octobre, voir le tri de /file). Les remonter ferait démarrer la journée
 // par les appels les plus difficiles.
-router.post('/contacts/:id/npai', pilotage, (req, res) => {
+router.post('/contacts/:id/npai', pilotage, dansPerimetre, (req, res) => {
   const c = getContact(req.params.id);
   if (!c) return res.status(404).json({ error: 'Contact introuvable' });
   const npai = req.body?.npai !== false;
@@ -856,13 +924,16 @@ router.post('/dispatch', pilotage, (req, res) => {
     "SELECT agence FROM users WHERE LOWER(TRIM(prenom || ' ' || nom)) = LOWER(?) AND actif = 1").get(vers);
   const agenceCible = compte?.agence || null;
 
+  // Les identifiants viennent de l'écran, mais rien n'empêche d'en envoyer
+  // d'autres : seules les fiches du périmètre sont touchées.
+  const { where: wp, params: pp } = perimetre(moi, '');
   const maj = db.prepare(`UPDATE op_contacts
      SET conseiller = ?, a_dispatcher = 0,
          agence = COALESCE(?, agence),
          updated_at = datetime('now')
-     WHERE id_modelo = ? AND a_dispatcher = 1`);
+     WHERE id_modelo = ? AND a_dispatcher = 1 AND ${wp}`);
   let n = 0;
-  db.transaction(() => { for (const id of ids) n += maj.run(vers, agenceCible, id).changes; })();
+  db.transaction(() => { for (const id of ids) n += maj.run(vers, agenceCible, id, ...pp).changes; })();
 
   const { where: w2, params: p2 } = perimetre(moi, 'c');
   const restantes = db.prepare(
@@ -917,6 +988,7 @@ router.get('/listing', pilotage, (req, res) => {
   const etat = (l) => {
     if (l.a_dispatcher) return 'A_DISPATCHER';
     if (l.a_verifier && !l.verifie) return 'A_VERIFIER';
+    if (!String(l.tel_portable || '').trim() && !String(l.tel_fixe || '').trim()) return 'SANS_TELEPHONE';
     if (!l.appels) return 'JAMAIS_APPELE';
     if (['REFUS_FERME', 'DECEDE'].includes(l.derniere_issue)) return 'CLOS';
     if (l.derniere_issue === 'A_RAPPELER') return 'A_RAPPELER';
@@ -945,6 +1017,8 @@ router.get('/listing', pilotage, (req, res) => {
 // l'agence ou d'un confrère : le « renvoyer le courrier » enverrait le pli à
 // l'agent plutôt qu'au client, et le mail serait compté comme envoyé.
 router.get('/controle-mails', pilotage, (req, res) => {
+  const moi = identite(req);
+  const { where, params } = perimetre(moi, '');
   const SUSPECTS = ['lequai-immobilier', 'kwfrance', 'keller', 'orpi', 'century21',
     'laforet', 'guyhoquet', 'guy-hoquet', 'iadfrance', 'safti', 'optimhome',
     'nestenn', 'stephaneplaza', 'capifrance', 'era-immobilier', 'foncia', 'citya'];
@@ -954,18 +1028,19 @@ router.get('/controle-mails', pilotage, (req, res) => {
 
   const suspectes = db.prepare(`
     SELECT id_modelo, nom, prenom, email, conseiller, a_dispatcher, fiche_a_corriger
-    FROM op_contacts WHERE email IS NOT NULL AND (${clauses})
-    ORDER BY email`).all(...motifs);
+    FROM op_contacts WHERE ${where} AND email IS NOT NULL AND (${clauses})
+    ORDER BY email`).all(...params, ...motifs);
 
   // Une même adresse sur plusieurs fiches : souvent celle d'un agent, ou un
   // couple dont les deux fiches portent le même mail.
   const partagees = db.prepare(`
     SELECT LOWER(email) AS email, COUNT(*) n,
            GROUP_CONCAT(id_modelo || ' ' || nom, ' | ') AS fiches
-    FROM op_contacts WHERE email IS NOT NULL AND TRIM(email) <> ''
-    GROUP BY LOWER(email) HAVING n > 1 ORDER BY n DESC, email`).all();
+    FROM op_contacts WHERE ${where} AND email IS NOT NULL AND TRIM(email) <> ''
+    GROUP BY LOWER(email) HAVING n > 1 ORDER BY n DESC, email`).all(...params);
 
-  res.json({ suspectes, partagees, total: db.prepare('SELECT COUNT(*) n FROM op_contacts').get().n });
+  res.json({ suspectes, partagees,
+    total: db.prepare(`SELECT COUNT(*) n FROM op_contacts WHERE ${where}`).get(...params).n });
 });
 
 // --- Import du fichier Modelo ----------------------------------------------
@@ -1086,7 +1161,9 @@ router.get('/pilotage', pilotage, (req, res) => {
       WHERE ${where} AND a.issue = 'REFUS_FERME' AND date(a.horodatage) >= date(?)
       ORDER BY a.horodatage DESC`, ...params, hier),
 
-    a_dispatcher: db.prepare('SELECT COUNT(*) n FROM op_contacts WHERE a_dispatcher = 1').get().n,
+    // Dans le périmètre, comme le reste : un manager d'agence lisait le total
+    // des deux agences, et un onglet Répartir vide juste en dessous.
+    a_dispatcher: db.prepare(`SELECT COUNT(*) n FROM op_contacts c WHERE ${where} AND c.a_dispatcher = 1`).get(...params).n,
 
     // Les courriers revenus. Trois angles parce qu'ils répondent à trois
     // questions différentes : combien au total (pour recouper avec la pile de

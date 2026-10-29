@@ -31,8 +31,23 @@
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
         navigator.serviceWorker.register('/sw.js')
-          .then(reg => console.log('PWA prête'))
+          .then(reg => {
+            console.log('PWA prête');
+            // Un onglet resté ouvert ne vérifie jamais seul s'il existe une
+            // nouvelle version : on le fait toutes les trente minutes.
+            setInterval(() => reg.update().catch(() => {}), 30 * 60 * 1000);
+          })
           .catch(err => console.log('SW erreur:', err));
+        // Le nouveau service worker a pris la main : la page tourne encore sur
+        // l'ancien code. On le signale (bandeau dans l'application) sans
+        // recharger d'autorité — un rechargement en plein appel perdrait la
+        // saisie. Ignoré au tout premier contrôle (première visite).
+        let avaitUnControleur = !!navigator.serviceWorker.controller;
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+          if (!avaitUnControleur) { avaitUnControleur = true; return; }
+          window.__nouvelleVersion = true;
+          window.dispatchEvent(new Event('nouvelle-version'));
+        });
       });
     }
   </script>

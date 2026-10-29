@@ -18,7 +18,7 @@ export default function LoginPage() {
         toast.error(err.response.data?.error || 'Email ou mot de passe incorrect')
       } else {
         // Pas de réponse : serveur injoignable (souvent le backend non démarré)
-        toast.error('Serveur injoignable. Vérifiez que l\'application est bien démarrée (npm run dev / start.sh).')
+        toast.error('Pas de réseau, ou serveur indisponible. Réessayez dans un instant.')
       }
     } finally {
       setLoading(false)

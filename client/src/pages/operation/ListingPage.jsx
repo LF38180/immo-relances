@@ -17,9 +17,11 @@ const ETATS = {
   CLOS:          { label: 'Clos',          couleur: 'bg-red-100 text-red-800' },
   A_DISPATCHER:  { label: 'Sans conseiller', couleur: 'bg-quai-navy text-white' },
   A_VERIFIER:    { label: 'À vérifier',    couleur: 'bg-amber-200 text-amber-900' },
+  // Hors de la file : rien à composer. Le numéro est à chercher dans Modelo.
+  SANS_TELEPHONE: { label: 'Sans numéro',  couleur: 'bg-red-50 text-red-800 border border-red-200' },
 }
 
-const ORDRE = ['JAMAIS_APPELE', 'JOINT', 'A_RAPPELER', 'A_RELANCER', 'CLOS', 'A_DISPATCHER', 'A_VERIFIER']
+const ORDRE = ['JAMAIS_APPELE', 'JOINT', 'A_RAPPELER', 'A_RELANCER', 'CLOS', 'A_DISPATCHER', 'A_VERIFIER', 'SANS_TELEPHONE']
 
 // Ce qu'un agent peut rapporter d'un appel. Sert à répondre à « qu'est-ce qui
 // a changé sur cette fiche » : le pilotage en donne le nombre, mais c'est ici
