@@ -48,7 +48,10 @@ export default function OperationHub({ onRetour }) {
 
   const onglets = [
     { id: 'accueil', label: 'Repères', icon: 'file-text' },
-    { id: 'file', label: 'Mes appels', icon: 'phone' },
+    // Un pilote sans fiche à son nom (assistant de direction, par exemple)
+    // n'appelle pas : sans cet onglet, il ne tombe jamais sur un écran
+    // d'appel. Pour lui, « Mes appels » aurait listé tout le périmètre.
+    ...((!estPilote || (acces?.fiches ?? 1) > 0) ? [{ id: 'file', label: 'Mes appels', icon: 'phone' }] : []),
     ...(estPilote ? [
       { id: 'pilotage', label: 'Suivi', icon: 'layout-dashboard' },
       { id: 'dispatch', label: 'Répartir', icon: 'users' },

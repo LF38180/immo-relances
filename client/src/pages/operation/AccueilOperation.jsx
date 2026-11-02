@@ -15,6 +15,8 @@ export default function AccueilOperation({ acces, bilan, onCommencer, estPilote 
 
   // Ce que je dois appeler moi-même, pas ce que je supervise.
   const mesFiches = acces?.fiches || 0
+  // Un pilote sans fiche à son nom suit l'opération, il n'appelle pas.
+  const appelle = !estPilote || mesFiches > 0
   const perimetre = acces?.perimetre || mesFiches
   const total = estPilote ? perimetre : mesFiches
   const restants = bilan?.restants ?? total
@@ -93,11 +95,14 @@ export default function AccueilOperation({ acces, bilan, onCommencer, estPilote 
           </p>
         )}
 
-        <button onClick={onCommencer}
-          className="btn-primary w-full min-h-[3.25rem] text-base inline-flex items-center justify-center gap-2">
-          <Icon name="phone" size="sm" />
-          {restants > 0 ? 'Commencer les appels' : 'Voir ma liste'}
-        </button>
+        {/* Pas de bouton d'appel pour un pilote qui n'a aucune fiche à son nom. */}
+        {appelle && (
+          <button onClick={onCommencer}
+            className="btn-primary w-full min-h-[3.25rem] text-base inline-flex items-center justify-center gap-2">
+            <Icon name="phone" size="sm" />
+            {restants > 0 ? 'Commencer les appels' : 'Voir ma liste'}
+          </button>
+        )}
 
         {/* Le mode d'emploi, à hauteur du premier matin : cette page n'est plus
             ouverte ensuite, et l'aide pendant l'appel sert à autre chose. */}
@@ -192,10 +197,12 @@ export default function AccueilOperation({ acces, bilan, onCommencer, estPilote 
           aujourd’hui — c’est à nous de leur redonner une raison.
         </p>
 
-        <button onClick={onCommencer}
-          className="btn-primary w-full min-h-[3.25rem] text-base inline-flex items-center justify-center gap-2 mb-4">
-          <Icon name="phone" size="sm" /> Commencer les appels
-        </button>
+        {appelle && (
+          <button onClick={onCommencer}
+            className="btn-primary w-full min-h-[3.25rem] text-base inline-flex items-center justify-center gap-2 mb-4">
+            <Icon name="phone" size="sm" /> Commencer les appels
+          </button>
+        )}
       </div>
     </div>
   )

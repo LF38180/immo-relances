@@ -50,8 +50,12 @@ router.post('/users', requireRole('admin'), (req, res) => {
   if (!ROLES_VALIDES.includes(role)) return res.status(400).json({ error: 'Rôle invalide' });
   if (!nom || !prenom || !email || !password) return res.status(400).json({ error: 'Champs requis manquants' });
   try {
-    const result = db.prepare('INSERT INTO users (nom, prenom, email, password, role, agence) VALUES (?, ?, ?, ?, ?, ?)')
-      .run(nom, prenom, email.toLowerCase(), bcrypt.hashSync(password, 10), role, agence || null);
+    // Le mot de passe saisi ici est provisoire : la personne en choisit un
+    // autre à sa première connexion, comme pour les comptes importés. Sans ce
+    // drapeau, celui tapé par l'admin restait définitif — et connu de lui.
+    const result = db.prepare(`INSERT INTO users (nom, prenom, email, password, role, agence, must_change_password)
+      VALUES (?, ?, ?, ?, ?, ?, 1)`)
+      .run(nom.trim(), prenom.trim(), email.toLowerCase().trim(), bcrypt.hashSync(String(password).trim(), 10), role, agence || null);
     res.status(201).json({ id: result.lastInsertRowid });
   } catch {
     res.status(400).json({ error: 'Email déjà utilisé' });
