@@ -48,7 +48,7 @@ export default function MarquerNpai({ onFermer }) {
           <div className="min-w-0 flex-1">
             <div className="font-semibold text-quai-navy text-sm">Un courrier est revenu</div>
             <div className="text-[11px] text-quai-muted leading-snug">
-              La fiche passe en objectif adresse et remonte dans la file du conseiller.
+              La fiche passe en objectif adresse : le conseiller le verra sur l’écran d’appel.
             </div>
           </div>
           <button onClick={onFermer} className="text-quai-muted hover:text-quai-navy p-1">
