@@ -428,9 +428,9 @@ function AVerifier() {
         const lignes = d.lignes.map(x => x.id_modelo === l.id_modelo ? { ...x, verifie: verdict } : x)
         return { lignes, restantes: lignes.filter(x => !x.verifie).length }
       })
-      toast.success(verdict === 'CONFIRME'
-        ? `${l.nom} : confirmée, elle entre dans la file de ${l.conseiller || 'son conseiller'}`
-        : `${l.nom} : écartée, elle ne sera pas appelée`)
+      toast.success(verdict === 'ECARTE'
+        ? `${l.nom} : écartée, elle ne sera pas appelée`
+        : `${l.nom} : ${verdict === 'GARDEE' ? 'gardée' : 'confirmée'}, elle entre dans la file de ${l.conseiller || 'son conseiller'}`)
     } catch (e) { toast.error(e.messageLisible || 'Échec') }
     finally { setEnCours(null) }
   }
@@ -472,10 +472,17 @@ function AVerifier() {
                 <b className="text-quai-navy">{l.partie_au_registre || 'aucune correspondance'}</b>
               </div>
               {l.courrier_motif && <div className="text-[11px] text-quai-muted mt-0.5 italic">{l.courrier_motif}</div>}
-              <div className="flex gap-2 mt-2">
+              <div className="flex flex-wrap gap-2 mt-2">
                 <button onClick={() => trancher(l, 'CONFIRME')} disabled={enCours === l.id_modelo}
                   className="text-xs px-3 py-2 rounded-lg bg-quai-navy text-white min-h-[2.75rem] disabled:opacity-40">
                   C'est bien cette personne
+                </button>
+                {/* Le registre désigne quelqu'un d'autre, mais ce contact a bien
+                    vendu ou acheté chez nous (même immeuble, homonyme). On la
+                    garde ; le nom du registre ne s'affichera pas sur sa fiche. */}
+                <button onClick={() => trancher(l, 'GARDEE')} disabled={enCours === l.id_modelo}
+                  className="text-xs px-3 py-2 rounded-lg border border-quai-navy text-quai-navy bg-white min-h-[2.75rem] disabled:opacity-40">
+                  Autre personne, mais un vrai client — garder
                 </button>
                 <button onClick={() => trancher(l, 'ECARTE')} disabled={enCours === l.id_modelo}
                   className="text-xs px-3 py-2 rounded-lg border border-red-200 text-red-700 bg-white min-h-[2.75rem] disabled:opacity-40">
@@ -493,8 +500,8 @@ function AVerifier() {
                 <ul className="mt-1.5 space-y-0.5 text-[11px] text-quai-muted">
                   {tranchees.map(l => (
                     <li key={l.id_modelo}>
-                      {l.prenom} {l.nom} — <b className={l.verifie === 'CONFIRME' ? 'text-emerald-700' : 'text-red-700'}>
-                        {l.verifie === 'CONFIRME' ? 'confirmée' : 'écartée'}</b>{l.verifie_par && ` par ${l.verifie_par}`}
+                      {l.prenom} {l.nom} — <b className={l.verifie === 'ECARTE' ? 'text-red-700' : 'text-emerald-700'}>
+                        {l.verifie === 'CONFIRME' ? 'confirmée' : l.verifie === 'GARDEE' ? 'gardée (autre personne au registre)' : 'écartée'}</b>{l.verifie_par && ` par ${l.verifie_par}`}
                     </li>
                   ))}
                 </ul>

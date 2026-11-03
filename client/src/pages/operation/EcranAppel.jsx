@@ -303,8 +303,52 @@ export default function EcranAppel({ contact: c, onEnregistre, onPasser, horsFil
           {/* Ce qu'il faut savoir avant de décrocher. */}
           <Carte titre="À avoir en tête">
             {c.bien_concerne && <Ligne label="Bien" valeur={c.bien_concerne} />}
-            {c.partie_au_registre && <Ligne label="Au registre" valeur={c.partie_au_registre} />}
+            {/* Fiche gardée malgré un registre qui désigne quelqu'un d'autre :
+                afficher ce nom-là ferait prononcer le mauvais. */}
+            {c.partie_au_registre && c.verifie !== 'GARDEE' && <Ligne label="Au registre" valeur={c.partie_au_registre} />}
             {c.commune && <Ligne label="Commune" valeur={c.commune} />}
+          </Carte>
+
+          {/* L'issue en premier : c'est la seule chose obligatoire, et c'est la
+              première chose que l'agent sait (répondeur, pas de réponse) —
+              avant de dérouler la fiche, qui ne se remplit que si la
+              conversation a lieu. Les touches 1 à 8 restent valables. */}
+          <Carte titre="Issue de l’appel" aide="Le seul champ obligatoire. Le reste se remplit si la conversation a lieu." ouverte>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-1.5">
+              {ISSUES.map(([v, l, teinte], i) => (
+                <button key={v} onClick={() => setIssue(v)} title={`Touche ${i + 1}`}
+                  className={`px-2.5 py-2.5 rounded-lg border text-xs font-medium transition-colors min-h-[3rem] ${
+                    issue === v
+                      ? teinte === 'red' ? 'bg-red-600 text-white border-red-600'
+                        : teinte === 'emerald' ? 'bg-emerald-600 text-white border-emerald-600'
+                        : 'bg-quai-navy text-white border-quai-navy'
+                      : 'border-quai-border text-quai-navy hover:border-quai-gold bg-white'}`}>
+                  <span className="opacity-40 mr-1">{i + 1}</span>{l}
+                </button>
+              ))}
+            </div>
+
+            {issue === 'A_RAPPELER' && (
+              <Saisie label="Rappeler le" type="datetime-local" value={rappelLe} onChange={setRappelLe} />
+            )}
+
+            {issue === 'REFUS_FERME' && (
+              <p className="text-[11px] text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1.5 leading-snug">
+                Retrait définitif, ici et sur les opérations suivantes. Horodaté, conservé trois ans.
+              </p>
+            )}
+
+            {issue === 'JOINT' && (
+              <Boutons label="Peut-on le rappeler à l’avenir ?" valeur={res.consentement_tel}
+                options={[[1, 'Oui'], [0, 'Non']]} onChange={v => champ('consentement_tel', v)} />
+            )}
+
+            <div>
+              <span className="text-[11px] text-quai-muted">Notes</span>
+              <textarea value={notes} onChange={ev => setNotes(ev.target.value)} rows={2}
+                className="w-full mt-0.5 px-2.5 py-2 text-sm rounded-lg border border-quai-border
+                           focus:outline-none focus:ring-2 focus:ring-quai-navy/30" />
+            </div>
           </Carte>
 
           {/* Quatrième objectif : la fiche à jour. Il ne se propose pas au
@@ -477,44 +521,6 @@ export default function EcranAppel({ contact: c, onEnregistre, onPasser, horsFil
                 options={[[1, 'Oui'], [0, 'Non']]} onChange={v => champ('courrier_renvoye', v)} />
             </Carte>
           )}
-
-          <Carte titre="Comment s’est terminé l’appel ?" aide="Obligatoire pour passer au suivant.">
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-1.5">
-              {ISSUES.map(([v, l, teinte], i) => (
-                <button key={v} onClick={() => setIssue(v)} title={`Touche ${i + 1}`}
-                  className={`px-2.5 py-2.5 rounded-lg border text-xs font-medium transition-colors min-h-[3rem] ${
-                    issue === v
-                      ? teinte === 'red' ? 'bg-red-600 text-white border-red-600'
-                        : teinte === 'emerald' ? 'bg-emerald-600 text-white border-emerald-600'
-                        : 'bg-quai-navy text-white border-quai-navy'
-                      : 'border-quai-border text-quai-navy hover:border-quai-gold bg-white'}`}>
-                  <span className="opacity-40 mr-1">{i + 1}</span>{l}
-                </button>
-              ))}
-            </div>
-
-            {issue === 'A_RAPPELER' && (
-              <Saisie label="Rappeler le" type="datetime-local" value={rappelLe} onChange={setRappelLe} />
-            )}
-
-            {issue === 'REFUS_FERME' && (
-              <p className="text-[11px] text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1.5 leading-snug">
-                Retrait définitif, ici et sur les opérations suivantes. Horodaté, conservé trois ans.
-              </p>
-            )}
-
-            {issue === 'JOINT' && (
-              <Boutons label="Peut-on le rappeler à l’avenir ?" valeur={res.consentement_tel}
-                options={[[1, 'Oui'], [0, 'Non']]} onChange={v => champ('consentement_tel', v)} />
-            )}
-
-            <div>
-              <span className="text-[11px] text-quai-muted">Notes</span>
-              <textarea value={notes} onChange={ev => setNotes(ev.target.value)} rows={2}
-                className="w-full mt-0.5 px-2.5 py-2 text-sm rounded-lg border border-quai-border
-                           focus:outline-none focus:ring-2 focus:ring-quai-navy/30" />
-            </div>
-          </Carte>
         </div>
       </div>
 

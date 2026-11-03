@@ -164,7 +164,7 @@ const RUBRIQUES = {
     {
       titre: 'Les fiches à vérifier',
       corps: [
-        'Elles ne sont pas dans votre liste : on n’est pas certain que ces personnes aient vendu chez nous. Un manager tranche avant qu’elles n’y entrent.',
+        'Elles ne sont pas dans votre liste : on n’est pas certain que ces personnes aient vendu chez nous. Un manager tranche avant qu’elles n’y entrent : c’est elle, ce n’est pas elle, ou c’est quelqu’un d’autre mais un vrai client (deux ventes dans le même immeuble) — gardée.',
       ],
     },
   ],

@@ -635,15 +635,20 @@ router.get('/a-verifier', pilotage, (req, res) => {
   });
 });
 
-// Trancher : « c'est bien la bonne personne » ou « ce n'est pas elle ».
+// Trancher : « c'est bien la bonne personne », « ce n'est pas elle », ou
+// « ce n'est pas celle du registre, mais c'est un vrai client, on la garde »
+// (deux appartements vendus dans le même immeuble, un homonyme qui a bien
+// vendu chez nous). GARDEE entre dans la file comme CONFIRME ; la seule
+// différence est que le nom du registre ne s'affiche plus sur sa fiche, il
+// désigne quelqu'un d'autre.
 router.post('/contacts/:id/verifier', pilotage, dansPerimetre, (req, res) => {
   const moi = identite(req);
   const c = getContact(req.params.id);
   if (!c) return res.status(404).json({ error: 'Contact introuvable' });
 
   const verdict = req.body?.verdict;
-  if (!['CONFIRME', 'ECARTE'].includes(verdict))
-    return res.status(400).json({ error: 'Verdict attendu : CONFIRME ou ECARTE' });
+  if (!['CONFIRME', 'ECARTE', 'GARDEE'].includes(verdict))
+    return res.status(400).json({ error: 'Verdict attendu : CONFIRME, GARDEE ou ECARTE' });
 
   db.transaction(() => {
     db.prepare(`UPDATE op_contacts SET verifie = ?, verifie_par = ?, updated_at = datetime('now')

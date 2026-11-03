@@ -39,16 +39,17 @@ const fiche = (id, extra = {}) => {
 };
 fiche('V-1', { a_verifier: 1, partie_au_registre: 'NV-1 Jean' });
 fiche('V-2', { a_verifier: 1, partie_au_registre: 'AUTRE NOM' });
+fiche('V-3', { a_verifier: 1, partie_au_registre: 'VOISIN DU DESSUS' });
 fiche('OK-1');
 
 (async () => {
   console.log('\navant toute décision');
   let f = await req('a@t.fr', 'GET', '/operation/file');
-  t('les deux fiches à vérifier sont hors de la file du conseiller', () => {
+  t('les fiches à vérifier sont hors de la file du conseiller', () => {
     eq(f.corps.file.length, 1); eq(f.corps.file[0].id_modelo, 'OK-1');
   });
   let l = await req('m@t.fr', 'GET', '/operation/a-verifier');
-  t('le manager les liste', () => { eq(l.statut, 200); eq(l.corps.lignes.length, 2); eq(l.corps.restantes, 2); });
+  t('le manager les liste', () => { eq(l.statut, 200); eq(l.corps.lignes.length, 3); eq(l.corps.restantes, 3); });
   t('avec de quoi trancher à l\'œil', () => vrai('partie_au_registre' in l.corps.lignes[0]));
   const c = await req('a@t.fr', 'GET', '/operation/a-verifier');
   t('un conseiller n\'y a pas accès', () => eq(c.statut, 403));
@@ -72,9 +73,24 @@ fiche('OK-1');
     eq(db.prepare("SELECT COUNT(*) n FROM op_journal_opposition WHERE id_modelo='V-2'").get().n, 1);
   });
   l = await req('m@t.fr', 'GET', '/operation/a-verifier');
-  t('plus rien à trancher, les deux restent listées avec leur verdict', () => {
-    eq(l.corps.restantes, 0); eq(l.corps.lignes.length, 2);
+  t('une reste à trancher, les deux tranchées restent listées avec leur verdict', () => {
+    eq(l.corps.restantes, 1); eq(l.corps.lignes.length, 3);
   });
+  console.log('\ngarder (autre personne au registre, mais vrai client)');
+  r = await req('m@t.fr', 'POST', '/operation/contacts/V-3/verifier', { verdict: 'GARDEE' });
+  t('gardée', () => eq(r.statut, 200, JSON.stringify(r.corps)));
+  f = await req('a@t.fr', 'GET', '/operation/file');
+  t('elle entre dans la file, sans opposition', () => {
+    vrai(f.corps.file.some(x => x.id_modelo === 'V-3'));
+    eq(db.prepare("SELECT stop_telephone, verifie FROM op_contacts WHERE id_modelo='V-3'").get().stop_telephone, 0);
+  });
+  t('le registre reste en base, le verdict est lisible sur la fiche', () => {
+    const v = f.corps.file.find(x => x.id_modelo === 'V-3');
+    eq(v.verifie, 'GARDEE'); eq(v.partie_au_registre, 'VOISIN DU DESSUS');
+  });
+  l = await req('m@t.fr', 'GET', '/operation/a-verifier');
+  t('rien ne reste à trancher', () => eq(l.corps.restantes, 0));
+
   r = await req('m@t.fr', 'POST', '/operation/contacts/V-2/verifier', { verdict: 'PEUT-ETRE' });
   t('un verdict inconnu est refusé', () => eq(r.statut, 400));
 
