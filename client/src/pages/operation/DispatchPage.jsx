@@ -19,6 +19,13 @@ const LIBELLES_BASE = {
   AUCUNE: 'Aucune suggestion',
 }
 
+// « 2016 Appartement, 8 Rue Paul Helbronner 38100 Grenoble » → sans la
+// référence Modelo de tête. À défaut, le type et la commune, ou la commune.
+function adresseBien(l) {
+  if (l.bien_concerne) return l.bien_concerne.replace(/^[A-Z0-9-]+\s+/, '')
+  return [l.bien_type, l.bien_commune].filter(Boolean).join(' · ') || l.commune
+}
+
 export default function DispatchPage() {
   const [data, setData] = useState(null)
   const [erreur, setErreur] = useState(false)
@@ -72,7 +79,7 @@ export default function DispatchPage() {
       if (commune && l.bien_commune !== commune) return false
       if (typeBien && l.bien_type !== typeBien) return false
       if (!q) return true
-      return [l.nom, l.prenom, l.commune, l.conseiller_precedent, l.suggestion_conseiller]
+      return [l.nom, l.prenom, l.commune, l.bien_concerne, l.conseiller_precedent, l.suggestion_conseiller]
         .some(x => (x || '').toLowerCase().includes(q))
     })
   }, [lignes, filtre, recherche, ancien, commune, typeBien])
@@ -330,8 +337,10 @@ function ListeFiches({ lignes, selection, onBasculer }) {
                 <span className="font-medium text-quai-navy text-sm">
                   {l.nom} {l.prenom}
                 </span>
+                {/* L'adresse du bien, pas seulement sa commune : c'est elle
+                    qui dit à quel conseiller de secteur la fiche revient. */}
                 <span className="text-[11px] text-quai-muted">
-                  {[l.bien_type, l.bien_commune].filter(Boolean).join(' · ') || l.commune}
+                  {adresseBien(l)}
                 </span>
                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-quai-light text-quai-muted">
                   script {l.script}
