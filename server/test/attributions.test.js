@@ -146,8 +146,24 @@ fiche('S-1', { conseiller: 'Alex Agent', a_dispatcher: 0, conseiller_precedent: 
       { le: '2026-11-02', lignes: [{ id_modelo: 'O-3', vers: 'Alex Agent' }, { id_modelo: 'ZZZ', vers: 'Alex Agent' }] });
     eq(r.statut, 200); eq(r.corps.inserees, 1); eq(r.corps.inconnues, 1);
     const l = db.prepare("SELECT * FROM op_attributions WHERE id_modelo = 'O-3'").get();
-    eq(l.reprise, 1); eq(l.source, 'REPRISE'); eq(l.le, '2026-11-02 12:00:00'); eq(l.par, 'Loïck Ferrucci');
+    eq(l.reprise, 1); eq(l.source, 'REPRISE'); eq(l.par, 'Loïck Ferrucci');
+    // Stockée en UTC : 12:00 locale (Europe/Paris, novembre) = 11:00 UTC.
+    eq(l.le, new Date('2026-11-02T12:00:00').toISOString().slice(0, 19).replace('T', ' '));
   });
+  await t('une reprise insérée après un mouvement du jour ne passe pas devant', async () => {
+    // O-1 a été attribuée aujourd'hui (lot puis correction vers Bea). Une
+    // reprise datée du 2 novembre, insérée maintenant, a un id plus grand
+    // mais une date plus ancienne : la fiche doit garder l'attribution du jour.
+    await req('l@t.fr', 'POST', '/operation/attributions/reprise',
+      { le: '2026-11-02', lignes: [{ id_modelo: 'O-1', vers: 'Alex Agent' }] });
+    const r = await req('l@t.fr', 'GET', '/operation/listing');
+    const o1 = r.corps.lignes.find(l => l.id_modelo === 'O-1');
+    eq(o1.attribuee_le?.slice(0, 10), new Date().toISOString().slice(0, 10));
+    eq(o1.attribuee_de, 'Alex Agent'); eq(o1.attribuee_par, 'Loïck Ferrucci');
+    const f = await req('b@t.fr', 'GET', '/operation/contacts/O-1');
+    eq(f.corps.contact.attribuee_le?.slice(0, 10), new Date().toISOString().slice(0, 10));
+  });
+
   await t('rejouer la reprise n’insère rien', async () => {
     const r = await req('l@t.fr', 'POST', '/operation/attributions/reprise',
       { le: '2026-11-02', lignes: [{ id_modelo: 'O-3', vers: 'Alex Agent' }] });
@@ -156,7 +172,7 @@ fiche('S-1', { conseiller: 'Alex Agent', a_dispatcher: 0, conseiller_precedent: 
   await t('la reprise apparaît dans la synthèse au 2 novembre', async () => {
     const r = await req('l@t.fr', 'GET', '/operation/attributions');
     const j = r.corps.jours.find(x => x.le === '2026-11-02');
-    vrai(j); eq(j.total, 1); eq(j.reprise, 1);
+    vrai(j); eq(j.total, 2); eq(j.reprise, 2);
   });
   await t('un manager ne peut pas lancer une reprise', async () => {
     eq((await req('g@t.fr', 'POST', '/operation/attributions/reprise', { le: '2026-11-02', lignes: [] })).statut, 403);

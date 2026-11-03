@@ -110,7 +110,7 @@ function journalAttribution(idModelo, de, vers, moi, source) {
 // Date de la dernière attribution effective (vers quelqu'un), pour la fiche
 // et le listing. Le conseiller voit la date ; l'auteur reste au pilotage.
 const SQL_ATTRIBUEE_LE = `(SELECT j.le FROM op_attributions j WHERE j.id_modelo = c.id_modelo
-        AND j.vers IS NOT NULL ORDER BY j.id DESC LIMIT 1)`;
+        AND j.vers IS NOT NULL ORDER BY j.le DESC, j.id DESC LIMIT 1)`;
 
 // Enrichit une fiche de ce qui se calcule : état d'appelabilité, compteur,
 // en-tête de script. Évite au client de refaire la règle — et de se tromper.
@@ -150,7 +150,7 @@ function enrichir(c, maintenant = new Date()) {
     dernier_appel_le: dernier?.horodatage || null,
     dernier_par: dernier?.conseiller || null,
     attribuee_le: db.prepare(`SELECT le FROM op_attributions WHERE id_modelo = ?
-      AND vers IS NOT NULL ORDER BY id DESC LIMIT 1`).get(c.id_modelo)?.le || null,
+      AND vers IS NOT NULL ORDER BY le DESC, id DESC LIMIT 1`).get(c.id_modelo)?.le || null,
     derniere_issue: dernier?.issue || null,
     derniere_note: note?.notes || null,
     entete: S.enTete(c),
@@ -998,13 +998,17 @@ router.post('/attributions/reprise', requireRole('admin'), (req, res) => {
   const fiche = db.prepare('SELECT conseiller FROM op_contacts WHERE id_modelo = ?');
   const ins = db.prepare(`INSERT INTO op_attributions (id_modelo, de, vers, par, user_id, source, reprise, le)
     VALUES (?,?,?,?,?,'REPRISE',1,?)`);
+  // La colonne `le` est en UTC (datetime('now')) : l'heure locale fournie est
+  // convertie, sinon une reprise saisie « 23:30 » tombait le lendemain.
+  const leUtc = new Date((le.length === 10 ? `${le} 12:00:00` : le).replace(' ', 'T'))
+    .toISOString().slice(0, 19).replace('T', ' ');
   let inserees = 0, deja = 0, inconnues = 0;
   db.transaction(() => {
     for (const l of lignes) {
       const id = String(l.id_modelo || '').trim(), vers = String(l.vers || '').trim();
       if (!id || !vers || !fiche.get(id)) { inconnues++; continue; }
       if (existe.get(id, vers)) { deja++; continue; }
-      ins.run(id, l.de ? String(l.de).trim() : null, vers, par, moi.id, le.length === 10 ? `${le} 12:00:00` : le);
+      ins.run(id, l.de ? String(l.de).trim() : null, vers, par, moi.id, leUtc);
       inserees++;
     }
   })();
@@ -1102,9 +1106,9 @@ router.get('/listing', pilotage, (req, res) => {
       -- par Y (avant : Z) » et filtrer « attribuées aujourd'hui ».
       ${SQL_ATTRIBUEE_LE} AS attribuee_le,
       (SELECT j.par FROM op_attributions j WHERE j.id_modelo = c.id_modelo
-        AND j.vers IS NOT NULL ORDER BY j.id DESC LIMIT 1)                     AS attribuee_par,
+        AND j.vers IS NOT NULL ORDER BY j.le DESC, j.id DESC LIMIT 1)                     AS attribuee_par,
       (SELECT j.de FROM op_attributions j WHERE j.id_modelo = c.id_modelo
-        AND j.vers IS NOT NULL ORDER BY j.id DESC LIMIT 1)                     AS attribuee_de
+        AND j.vers IS NOT NULL ORDER BY j.le DESC, j.id DESC LIMIT 1)                     AS attribuee_de
     FROM op_contacts c
     LEFT JOIN op_resultats r ON r.id_modelo = c.id_modelo
     WHERE ${where}
