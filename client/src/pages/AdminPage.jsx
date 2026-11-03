@@ -87,14 +87,14 @@ export default function AdminPage() {
   }
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 md:p-6 pb-24 md:pb-6 bg-quai-light">
+    <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 md:p-6 pb-24 md:pb-6 bg-quai-light">
       <div className="max-w-4xl mx-auto">
         <PageHeader title="Administration" />
 
-        <div className="flex border-b border-quai-border mb-6">
+        <div className="flex overflow-x-auto border-b border-quai-border mb-6">
           {[['users','Utilisateurs','users'],['params','Paramètres','settings'],['courtage','Suivi Marine','phone-call'],...(estAdmin ? [['imports','Imports courtage','file-up'],['donnees','Données','database']] : [])].map(([t, lbl, ic]) => (
             <button key={t} onClick={() => setTab(t)}
-              className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors inline-flex items-center gap-2 ${tab === t ? 'border-quai-gold text-quai-navy' : 'border-transparent text-quai-muted hover:text-quai-navy'}`}>
+              className={`shrink-0 whitespace-nowrap px-6 py-3 text-sm font-medium border-b-2 transition-colors inline-flex items-center gap-2 ${tab === t ? 'border-quai-gold text-quai-navy' : 'border-transparent text-quai-muted hover:text-quai-navy'}`}>
               <Icon name={ic} size="sm" /> {lbl}
             </button>
           ))}

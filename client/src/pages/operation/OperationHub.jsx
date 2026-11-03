@@ -41,10 +41,21 @@ export default function OperationHub({ onRetour }) {
 
   // Ouvrir une fiche en appel depuis un écran de pilotage : la fiche est mise
   // de côté, puis l'onglet bascule. L'agent arrive directement sur l'appel.
+  const [retour, setRetour] = useState(null)   // onglet d'origine de la fiche ouverte
   const ouvrirAppel = (fiche) => {
     setFicheAOuvrir(fiche)
+    setRetour(onglet)
     setOnglet('file')
   }
+  // Un pilote sans fiche à son nom n'a pas d'onglet « Mes appels ». Quand il
+  // ouvre une fiche depuis le suivi ou le listing, « Revenir » doit le ramener
+  // là d'où il vient : sinon il tombait sur la file de tout son périmètre,
+  // présentée comme la sienne (« Fiche 1 / 779 »).
+  const sansFile = estPilote && (acces?.fiches ?? 1) === 0
+  const LIBELLES = { pilotage: 'Revenir au suivi', listing: 'Revenir au listing', dispatch: 'Revenir à la répartition' }
+  const retourPilote = sansFile && retour
+    ? { label: LIBELLES[retour] || 'Revenir', aller: () => setOnglet(retour) }
+    : null
 
   const onglets = [
     { id: 'accueil', label: 'Repères', icon: 'file-text' },
@@ -119,7 +130,7 @@ export default function OperationHub({ onRetour }) {
         )}
         {onglet === 'file' && (
           <SessionOperation ficheAOuvrir={ficheAOuvrir}
-            onFicheOuverte={() => setFicheAOuvrir(null)} />
+            onFicheOuverte={() => setFicheAOuvrir(null)} retour={retourPilote} />
         )}
         {onglet === 'pilotage' && <PilotagePage onAppeler={ouvrirAppel} />}
         {onglet === 'dispatch' && <DispatchPage />}

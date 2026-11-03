@@ -12,7 +12,7 @@ const RecapSession = lazy(() => import('./RecapSession'))
 //
 // C'est ce qui fait la différence sur 149 appels : aucune décision à prendre
 // entre deux fiches, et personne n'est sauté.
-export default function SessionOperation({ ficheAOuvrir, onFicheOuverte }) {
+export default function SessionOperation({ ficheAOuvrir, onFicheOuverte, retour }) {
   const [file, setFile] = useState([])
   const [infos, setInfos] = useState(null)
   const [index, setIndex] = useState(0)
@@ -75,7 +75,7 @@ export default function SessionOperation({ ficheAOuvrir, onFicheOuverte }) {
     const id = ficheAOuvrir.id_modelo || ficheAOuvrir
     api.get(`/operation/contacts/${id}`)
       .then(r => { setOrigine('ouverte'); setHorsFile(r.data.contact) })
-      .catch(() => toast.error('Fiche inaccessible'))
+      .catch(() => { toast.error('Fiche inaccessible'); retour?.aller() })
       .finally(() => onFicheOuverte?.())
   }, [ficheAOuvrir, onFicheOuverte])
 
@@ -94,7 +94,7 @@ export default function SessionOperation({ ficheAOuvrir, onFicheOuverte }) {
     // Un rappel entrant ne fait pas avancer la file : on y revient où on en
     // était.
     chargerCumul()
-    if (horsFile) { setHorsFile(null); setRecherche(''); setResultats([]); return }
+    if (horsFile) { setHorsFile(null); setRecherche(''); setResultats([]); retour?.aller(); return }
     if (index + 1 >= file.length) setFini(true)
     else setIndex(i => i + 1)
   }
@@ -102,6 +102,7 @@ export default function SessionOperation({ ficheAOuvrir, onFicheOuverte }) {
   if (erreur) return <p className="p-6 text-quai-muted">Impossible de charger votre liste d’appels.</p>
   if (chargement) return <p className="p-6 text-quai-muted">Chargement…</p>
 
+  if (!horsFile && retour && ficheAOuvrir) return <p className="p-6 text-quai-muted">Chargement…</p>
   if (!horsFile && (fini || !file.length)) return (
     <>
       <Termine bilan={bilan} vide={!file.length} onRecharger={charger}
@@ -130,8 +131,9 @@ export default function SessionOperation({ ficheAOuvrir, onFicheOuverte }) {
         horsFile={!!horsFile}
         origine={origine}
         onEnregistre={suivant}
+        libelleRetour={retour?.label}
         onPasser={() => {
-          if (horsFile) { setHorsFile(null); return }
+          if (horsFile) { setHorsFile(null); retour?.aller(); return }
           if (index + 1 >= file.length) setFini(true); else setIndex(i => i + 1)
         }}
       />

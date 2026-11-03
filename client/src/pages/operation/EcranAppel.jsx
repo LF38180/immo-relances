@@ -21,7 +21,7 @@ const ISSUES = [
   ['REFUS_FERME', 'Refus — ne plus appeler', 'red'],
 ]
 
-export default function EcranAppel({ contact: c, onEnregistre, onPasser, horsFile, origine, demo }) {
+export default function EcranAppel({ contact: c, onEnregistre, onPasser, horsFile, origine, demo, libelleRetour }) {
   // Durée de l'appel, mesurée depuis l'ouverture de la fiche. Le manager s'en
   // sert comme signal : un appel qui passe de six minutes à quatre-vingt-dix
   // secondes, c'est quelqu'un qui expédie.
@@ -494,7 +494,7 @@ export default function EcranAppel({ contact: c, onEnregistre, onPasser, horsFil
         <div className="max-w-3xl mx-auto flex gap-2">
           <button onClick={onPasser}
             className="px-4 rounded-lg border border-quai-border text-quai-muted text-sm min-h-[3rem] whitespace-nowrap">
-            {horsFile ? 'Revenir à ma liste' : 'Passer'}
+            {horsFile ? (libelleRetour || 'Revenir à ma liste') : 'Passer'}
           </button>
           <button onClick={enregistrer} disabled={envoi || !issue}
             className="btn-primary flex-1 min-h-[3rem] inline-flex items-center justify-center gap-2 disabled:opacity-40">
