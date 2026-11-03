@@ -137,7 +137,8 @@ const req = async (methode, url, email, corps) => {
 
   t('la file renvoie le bon contexte pour une fiche NPAI', async () => {});
   // La file, ce sont ses propres fiches : on lui attribue T-3 pour la lire.
-  db.prepare("UPDATE op_contacts SET conseiller = 'Marie Manager' WHERE id_modelo = 'T-3'").run();
+  const nomManager = db.prepare("SELECT prenom || ' ' || nom AS n FROM users WHERE email = 'manager@lequai-immobilier.com'").get().n;
+  db.prepare("UPDATE op_contacts SET conseiller = ? WHERE id_modelo = 'T-3'").run(nomManager);
   const f = await req('GET', '/operation/file', 'manager@lequai-immobilier.com');
   t('/file : la fiche NPAI porte le contexte « revenu »', () => {
     const ligne = f.corps.file.find(l => l.id_modelo === 'T-3');
