@@ -55,6 +55,9 @@ const CONTACTS = [
     bien_concerne: 'DEMO-2 Maison, 4 Allée du Lac 38240 Meylan',
     bien_type: 'la maison', bien_voie: '4 Allée du Lac', bien_commune: 'Meylan',
     situation: "Pas de courrier envoyé : l'ouverture change",
+    // Une acquéreuse : la question « toujours propriétaire ? » n'apparaît que
+    // pour elle, et le panneau se propose sans réserve.
+    role: 'ACQUEREUR',
   },
   {
     id_modelo: 'DEMO-3', script: 3, courrier_etat: 'ENVOYE',

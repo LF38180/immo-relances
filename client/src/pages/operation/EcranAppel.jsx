@@ -21,6 +21,19 @@ const ISSUES = [
   ['REFUS_FERME', 'Refus — ne plus appeler', 'red'],
 ]
 
+// Ce qu'il a fait avec nous. C'est la première chose à savoir avant de
+// décrocher : les questions de la fiche n'ont pas le même sens pour quelqu'un
+// qui a acheté (il habite peut-être encore le bien) et pour quelqu'un qui a
+// vendu (il n'y est plus, par définition).
+const ROLE_LIBELLE = { ACQUEREUR: 'A acheté avec nous', VENDEUR: 'A vendu avec nous' }
+
+// Le bien, prononçable : « la maison à Meylan ». À défaut, le libellé Modelo
+// sans sa référence de tête (« JB-4402 Appartement, 6 Chemin… »).
+function bienCourt(c) {
+  if (c.bien_type && c.bien_commune) return `${c.bien_type} à ${c.bien_commune}`
+  return (c.bien_concerne || '').replace(/^[A-Z0-9-]+\s+/, '')
+}
+
 export default function EcranAppel({ contact: c, onEnregistre, onPasser, horsFile, origine, demo, libelleRetour }) {
   // Durée de l'appel, mesurée depuis l'ouverture de la fiche. Le manager s'en
   // sert comme signal : un appel qui passe de six minutes à quatre-vingt-dix
@@ -172,6 +185,16 @@ export default function EcranAppel({ contact: c, onEnregistre, onPasser, horsFil
               {c.civilite} {c.prenom} {c.nom}
             </h2>
 
+            {/* Acheté ou vendu, et quoi. C'était dans une carte repliée en bas
+                de l'écran : personne ne l'ouvrait, et l'agent déroulait les
+                mêmes questions à un vendeur qu'à un acquéreur. */}
+            <div className="text-sm mt-1">
+              <b className={c.role in ROLE_LIBELLE ? 'text-white' : 'text-amber-200'}>
+                {ROLE_LIBELLE[c.role] || 'Acheteur ou vendeur : non précisé'}
+              </b>
+              {bienCourt(c) && <span className="text-white/60"> · {bienCourt(c)}</span>}
+            </div>
+
             {/* Le prénom de l'ancien conseiller : la première phrase du script
                 3 ou 4 en dépend. Le nom complet suit, en retrait : on prononce
                 le prénom, mais si le client demande « Charlotte comment ? »,
@@ -279,7 +302,6 @@ export default function EcranAppel({ contact: c, onEnregistre, onPasser, horsFil
 
           {/* Ce qu'il faut savoir avant de décrocher. */}
           <Carte titre="À avoir en tête">
-            <Ligne label="Rôle" valeur={c.role === 'ACQUEREUR' ? 'Acquéreur' : c.role === 'VENDEUR' ? 'Vendeur' : 'Indéterminé'} />
             {c.bien_concerne && <Ligne label="Bien" valeur={c.bien_concerne} />}
             {c.partie_au_registre && <Ligne label="Au registre" valeur={c.partie_au_registre} />}
             {c.commune && <Ligne label="Commune" valeur={c.commune} />}
@@ -331,15 +353,20 @@ export default function EcranAppel({ contact: c, onEnregistre, onPasser, horsFil
                 <Saisie label="Commune" value={res.commune_maj || ''} onChange={v => champ('commune_maj', v)} />
               </div>
             </div>
-            <Boutons label="Toujours propriétaire du bien ?" valeur={res.toujours_proprietaire}
-              options={[[1, 'Oui'], [0, 'Non']]} onChange={v => champ('toujours_proprietaire', v)} />
-            {res.toujours_proprietaire === 0 && (
+            {/* Un vendeur n'est plus propriétaire du bien, par définition : la
+                question ne se pose qu'à un acquéreur (ou quand on ne sait pas). */}
+            {c.role !== 'VENDEUR' && (
+              <Boutons label={c.role === 'ACQUEREUR' ? 'Toujours propriétaire du bien acheté ?' : 'Toujours propriétaire du bien ?'}
+                valeur={res.toujours_proprietaire}
+                options={[[1, 'Oui'], [0, 'Non']]} onChange={v => champ('toujours_proprietaire', v)} />
+            )}
+            {c.role !== 'VENDEUR' && res.toujours_proprietaire === 0 && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <Saisie label="Revendu quand ?" value={res.revendu_quand || ''} onChange={v => champ('revendu_quand', v)} />
                 <Saisie label="Par quelle agence ?" value={res.revendu_par_qui || ''} onChange={v => champ('revendu_par_qui', v)} />
               </div>
             )}
-            <Boutons label="Aujourd'hui" valeur={res.statut_actuel}
+            <Boutons label={c.role === 'VENDEUR' ? 'Aujourd\'hui, depuis la vente' : 'Aujourd\'hui'} valeur={res.statut_actuel}
               options={[['PROPRIETAIRE', 'Propriétaire'], ['LOCATAIRE', 'Locataire'], ['HEBERGE', 'Hébergé']]}
               onChange={v => champ('statut_actuel', v)} />
             <Boutons label="Un projet ?" valeur={res.projet}
@@ -362,7 +389,12 @@ export default function EcranAppel({ contact: c, onEnregistre, onPasser, horsFil
             )}
             <Boutons label="2 · Soirée du 3 décembre" valeur={res.soiree}
               options={[[1, 'Oui'], [0, 'Non']]} onChange={v => champ('soiree', v)} />
-            <Boutons label="3 · Panneau « Vendu par Le Quai »" valeur={res.panneau}
+            {/* Le panneau se pose chez lui, sur un bien vendu par Le Quai : un
+                vendeur n'y habite plus. On ne cache pas la proposition (il a pu
+                racheter avec nous), on le dit. */}
+            <Boutons label={c.role === 'VENDEUR'
+                ? '3 · Panneau « Vendu par Le Quai » — il a vendu ce bien : seulement s\'il a racheté par Le Quai'
+                : '3 · Panneau « Vendu par Le Quai »'} valeur={res.panneau}
               options={[[1, 'Oui'], [0, 'Non']]} onChange={v => champ('panneau', v)} />
           </Carte>
 
