@@ -14,6 +14,22 @@
 // (aucun abonné ne peut l'obtenir). Un agent qui compose par réflexe ne
 // dérangera personne.
 
+// Dates relatives au jour de la démonstration, au format de la base
+// (UTC, 'AAAA-MM-JJ HH:MM:SS') pour que l'écran les affiche comme les vraies.
+const sqlDate = (d) => d.toISOString().slice(0, 19).replace('T', ' ');
+const hier = () => { const d = new Date(); d.setDate(d.getDate() - 1); d.setHours(10, 12, 0, 0); return sqlDate(d); };
+const aujourdhui = (hm) => {
+  const [h, m] = hm.split(':').map(Number);
+  const d = new Date(); d.setHours(h, m, 0, 0); return sqlDate(d);
+};
+
+// L'heure de rappel, elle, est stockée telle que l'écran l'envoie : heure
+// locale « AAAA-MM-JJTHH:MM » (champ datetime-local), sans fuseau.
+const rappelLocal = (hm) => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}T${hm}`;
+};
+
 const CONTACTS = [
   {
     id_modelo: 'DEMO-1', script: 1, courrier_etat: 'ENVOYE',
@@ -23,7 +39,12 @@ const CONTACTS = [
     email_valide: 1, conseiller_precedent: null, prenom_a_dire: null,
     bien_concerne: 'DEMO-1 Appartement, 12 Rue des Alpes 38000 Grenoble',
     bien_type: "l'appartement", bien_voie: '12 Rue des Alpes', bien_commune: 'Grenoble',
-    situation: 'Vendu en 2023, achat dans la foulée',
+    situation: 'Vendu en 2023, achat dans la foulée. Déjà appelé une fois : rappel convenu, l\'historique s\'affiche en tête.',
+    // Un appel déjà passé, un rappel convenu : l'agent voit l'historique et
+    // l'heure du rappel avant de décrocher.
+    appels_total: 1, appels_ce_mois: 1, derniere_issue: 'A_RAPPELER',
+    dernier_par: 'Collègue DÉMO', derniere_note: 'Préfère être rappelé en début d\'après-midi.',
+    dernier_appel_le: hier(), rappel_le: rappelLocal('15:00'),
   },
   {
     id_modelo: 'DEMO-2', script: 2, courrier_etat: 'NON_IMPRIME',
@@ -43,17 +64,18 @@ const CONTACTS = [
     email_valide: 1, conseiller_precedent: 'Charlotte SOLER', prenom_a_dire: 'Charlotte',
     bien_concerne: 'DEMO-3 Appartement, 27 Avenue de la Gare 38600 Fontaine',
     bien_type: "l'appartement", bien_voie: '27 Avenue de la Gare', bien_commune: 'Fontaine',
-    situation: 'Dossier repris : le prénom à dire apparaît en tête',
+    situation: 'Dossier repris : le prénom à dire apparaît en tête. Fiche reçue dans la file ce matin.',
+    attribuee_le: aujourdhui('08:30'),
   },
   {
     id_modelo: 'DEMO-4', script: 4, courrier_etat: 'A_APPELER',
     civilite: 'M. et Mme.', nom: 'MODELE', prenom: 'Jean & Lucie',
     adresse: '9 Chemin des Vignes', code_postal: '38700', commune: 'Corenc',
-    adresse_fiable: 0, tel_portable: '0639980004', email: 'jean.modele@example.com',
+    adresse_fiable: 0, npai: 1, tel_portable: '0639980004', email: 'jean.modele@example.com',
     email_valide: 1, conseiller_precedent: 'Corinne MARTIN', prenom_a_dire: 'Corinne',
     bien_concerne: 'DEMO-4 Maison, 9 Chemin des Vignes 38700 Corenc',
     bien_type: 'la maison', bien_voie: '9 Chemin des Vignes', bien_commune: 'Corenc',
-    situation: "Adresse fausse et dossier repris : le cas le plus difficile",
+    situation: "Courrier revenu (NPAI) et dossier repris : le cas le plus difficile — l'adresse est l'objectif de l'appel",
   },
 ];
 
@@ -67,11 +89,18 @@ const NEUTRE = {
   suggestion_base: null, objectif_principal: null, role: 'VENDEUR',
   appels_ce_mois: 0, appels_total: 0, dernier_appel_le: null,
   derniere_issue: null, rappel_le: null, dernier_par: null, derniere_note: null,
+  npai: 0, attribuee_le: null,
 };
 
 // Les quatre fiches, prêtes à servir comme une file d'appel ordinaire.
 function fichesDemo(conseiller, agence) {
-  return CONTACTS.map(c => ({ ...NEUTRE, ...c, conseiller, agence }));
+  // Les dates se recalculent à chaque appel : un serveur lancé la veille
+  // montrerait sinon un rappel « hier » au lieu d'« aujourd'hui ».
+  return CONTACTS.map(c => ({
+    ...NEUTRE, ...c, conseiller, agence,
+    ...(c.rappel_le ? { rappel_le: rappelLocal('15:00'), dernier_appel_le: hier() } : {}),
+    ...(c.attribuee_le ? { attribuee_le: aujourdhui('08:30') } : {}),
+  }));
 }
 
 module.exports = { fichesDemo, CONTACTS };
