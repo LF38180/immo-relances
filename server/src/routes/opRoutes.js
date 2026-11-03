@@ -19,7 +19,11 @@ const D = require('../utils/opDemo');
 const router = express.Router();
 router.use(requireAuth);
 
-const conseillerOuPlus = requireRole('conseiller', 'manager', 'admin', 'courtage');
+// 'agent' : le rôle historique des relances (Chrystelle). Un compte de ce rôle
+// qui a des fiches à son nom participe à l'opération comme un conseiller —
+// sans lui, elle arrivait sur l'accueil de l'opération et l'écran d'appel
+// répondait 403.
+const conseillerOuPlus = requireRole('conseiller', 'agent', 'manager', 'admin', 'courtage');
 const pilotage = requireRole('manager', 'admin');
 
 // --- Qui est l'utilisateur, et que voit-il ? -------------------------------
@@ -57,6 +61,12 @@ function perimetre(moi, prefixe = '') {
   // manager aveugle sur toutes ses fiches, sans erreur.
   if (moi.agence) return { where: `sans_casse(${p}agence) = sans_casse(?)`, params: [moi.agence] };
   return { where: '1=1', params: [] };
+}
+
+// Ce que la personne appelle elle-même, quel que soit son rôle.
+function maFile(moi, prefixe = '') {
+  const p = prefixe ? prefixe + '.' : '';
+  return { where: `sans_casse(${p}conseiller) = sans_casse(?)`, params: [moi.nom_complet] };
 }
 
 // Cette fiche est-elle dans le périmètre de cette personne ?
@@ -238,7 +248,11 @@ router.get('/mon-acces', (req, res) => {
 router.get('/file', conseillerOuPlus, (req, res) => {
   const moi = identite(req);
   if (!moi) return res.status(401).json({ error: 'Compte introuvable' });
-  const { where, params } = perimetre(moi, 'c');
+  // La file, c'est ce que la personne appelle elle-même : ses fiches, jamais
+  // son périmètre. Un manager d'agence voyait les 300 fiches de Saint-Égrève
+  // à la place de ses 67 ; un manager sans agence, les 779. Le périmètre
+  // reste celui du suivi, du listing et de la répartition.
+  const { where, params } = maFile(moi, 'c');
 
   const lignes = db.prepare(`
     SELECT c.*,
@@ -920,7 +934,16 @@ router.get('/dispatch', pilotage, (req, res) => {
     WHERE ${where} AND c.a_dispatcher = 1 AND c.suggestion_conseiller IS NOT NULL
     GROUP BY c.suggestion_conseiller`).all(...params);
 
+  // Tous les comptes qui peuvent recevoir des fiches, même sans fiche encore :
+  // un conseiller ajouté le premier jour n'apparaissait nulle part dans la
+  // liste des destinataires, et on ne pouvait rien lui répartir.
+  const comptes = db.prepare(`
+    SELECT TRIM(prenom || ' ' || nom) AS nom FROM users
+    WHERE actif = 1 AND role IN ('conseiller', 'agent', 'manager', 'admin')
+    ${moi.role === 'manager' && moi.agence ? 'AND (agence = ? OR agence IS NULL)' : ''}
+    ORDER BY prenom`).all(...(moi.role === 'manager' && moi.agence ? [moi.agence] : []));
   const parNom = {};
+  comptes.forEach(u => { parNom[u.nom] = { nom: u.nom, actuel: 0, suggere: 0 }; });
   charge.forEach(c => { parNom[c.nom] = { nom: c.nom, actuel: c.n, suggere: 0 }; });
   suggere.forEach(s => { (parNom[s.nom] = parNom[s.nom] || { nom: s.nom, actuel: 0, suggere: 0 }).suggere = s.n; });
   const compteur = Object.values(parNom)
@@ -1141,7 +1164,7 @@ router.get('/listing', pilotage, (req, res) => {
   // la liste comme il borne les fiches : on ne donne pas à l'autre agence.
   const conseillers = db.prepare(`
     SELECT TRIM(prenom || ' ' || nom) AS nom, agence FROM users
-    WHERE actif = 1 AND role IN ('conseiller', 'manager', 'admin')
+    WHERE actif = 1 AND role IN ('conseiller', 'agent', 'manager', 'admin')
     ${moi.role === 'manager' && moi.agence ? 'AND (agence = ? OR agence IS NULL)' : ''}
     ORDER BY prenom`).all(...(moi.role === 'manager' && moi.agence ? [moi.agence] : []));
 
