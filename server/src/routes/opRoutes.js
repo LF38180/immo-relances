@@ -320,7 +320,16 @@ router.get('/file', conseillerOuPlus, (req, res) => {
   // 20 octobre). Les fiches sans adresse valide n'ont aucune contrainte de
   // temps : les servir en premier faisait démarrer la journée par les appels
   // les plus difficiles, et donnait à croire que l'adresse était l'objectif.
-  const jamaisAppeles = reste.filter(l => !l.appels_total);
+  // Les fiches reçues aujourd'hui passent après celles qu'il avait déjà : il
+  // finit son lot, puis enchaîne sur les nouvelles — qu'il repère à la ligne
+  // « Fiche reçue dans votre file le… ». Avant, une fiche répartie à 14h se
+  // glissait à sa place alphabétique, derrière lui, invisible jusqu'au soir.
+  const jourLocal = (d) => d.toLocaleDateString('fr-CA');
+  const aujourdhui = jourLocal(maintenant);
+  const recueAujourdhui = (l) => !!l.attribuee_le
+    && jourLocal(new Date(l.attribuee_le.replace(' ', 'T') + 'Z')) === aujourdhui;
+  const neuves = reste.filter(l => !l.appels_total);
+  const jamaisAppeles = [...neuves.filter(l => !recueAujourdhui(l)), ...neuves.filter(recueAujourdhui)];
 
   // Relance : 48 h, et à une autre tranche horaire que la dernière tentative.
   const il48h = maintenant.getTime() - 48 * 3600 * 1000;
