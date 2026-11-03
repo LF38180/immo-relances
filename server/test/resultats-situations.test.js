@@ -56,10 +56,17 @@ const lire = () => db.prepare('SELECT * FROM op_resultats WHERE id_modelo = ?').
   r = await req('PUT', '/operation/contacts/S-1/resultat', { situations: 'PIRATE,LOCATAIRE', projet_type: 'INCONNU' });
   t('valeurs hors liste ignorées', () => { eq(lire().situations, 'LOCATAIRE'); eq(lire().projet_type, null); });
 
+  r = await req('PUT', '/operation/contacts/S-1/resultat', { situations: 'LOCATAIRE,AUTRE', situation_autre: 'en viager', projet_type: 'AUTRE', projet_autre: 'division du terrain' });
+  t('autre : champ libre porté, projet historique conservé (VENTE)', () => {
+    eq(lire().situations, 'LOCATAIRE,AUTRE'); eq(lire().situation_autre, 'en viager');
+    eq(lire().projet_type, 'AUTRE'); eq(lire().projet_autre, 'division du terrain'); eq(lire().projet, 'VENTE');
+  });
+  r = await req('PUT', '/operation/contacts/S-1/resultat', { situations: 'LOCATAIRE', projet_type: 'AUCUN' });
+
   const l = await req('GET', '/operation/listing', null, 'm@t.fr');
   t('le listing expose les trois champs', () => {
     const x = l.corps.lignes.find(y => y.id_modelo === 'S-1');
-    eq(x.situations, 'LOCATAIRE'); eq(x.investissement_locatif, 1); eq('projet_type' in x, true);
+    eq(x.situations, 'LOCATAIRE'); eq(x.investissement_locatif, 1); eq(x.projet_type, 'AUCUN'); eq(x.situation_autre, 'en viager');
   });
   const acc = await req('GET', '/operation/mon-acces');
   t('la fiche compte comme à jour', () => eq(acc.corps.bilan.fiches_a_jour, 1));

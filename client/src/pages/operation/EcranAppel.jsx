@@ -421,11 +421,17 @@ export default function EcranAppel({ contact: c, onEnregistre, onPasser, horsFil
                 bailleur d'un autre, c'est courant. */}
             <BoutonsMulti label={c.role === 'VENDEUR' ? 'Aujourd\'hui, depuis la vente (plusieurs possibles)' : 'Aujourd\'hui (plusieurs possibles)'}
               valeur={res.situations}
-              options={[['PROPRIETAIRE', 'Propriétaire'], ['LOCATAIRE', 'Locataire'], ['HEBERGE', 'Hébergé'], ['BAILLEUR', 'Bailleur']]}
+              options={[['PROPRIETAIRE', 'Propriétaire'], ['LOCATAIRE', 'Locataire'], ['HEBERGE', 'Hébergé'], ['BAILLEUR', 'Bailleur'], ['AUTRE', 'Autre']]}
               onChange={v => champ('situations', v)} />
+            {(res.situations || '').split(',').includes('AUTRE') && (
+              <Saisie label="Précisez sa situation" value={res.situation_autre || ''} onChange={v => champ('situation_autre', v)} />
+            )}
             <Boutons label="Un projet ?" valeur={res.projet_type}
-              options={[['VENTE', 'Vente'], ['ACHAT', 'Achat'], ['INVESTISSEMENT', 'Investissement'], ['MISE_EN_LOCATION', 'Mise en location'], ['AUCUN', 'Aucun']]}
+              options={[['VENTE', 'Vente'], ['ACHAT', 'Achat'], ['INVESTISSEMENT', 'Investissement'], ['MISE_EN_LOCATION', 'Mise en location'], ['AUTRE', 'Autre'], ['AUCUN', 'Aucun']]}
               onChange={v => champ('projet_type', v)} />
+            {res.projet_type === 'AUTRE' && (
+              <Saisie label="Précisez le projet" value={res.projet_autre || ''} onChange={v => champ('projet_autre', v)} />
+            )}
             {res.projet_type && res.projet_type !== 'AUCUN' && (
               <Saisie label="D'ici combien de mois ?" type="number" value={res.projet_echeance || ''}
                 onChange={v => champ('projet_echeance', v)} />

@@ -756,6 +756,9 @@ db.exec(`
   if (!cols.includes('situations')) db.exec("ALTER TABLE op_resultats ADD COLUMN situations TEXT");
   if (!cols.includes('projet_type')) db.exec("ALTER TABLE op_resultats ADD COLUMN projet_type TEXT");
   if (!cols.includes('investissement_locatif')) db.exec("ALTER TABLE op_resultats ADD COLUMN investissement_locatif INTEGER");
+  // « Autre », en toutes lettres : ce que les cases ne disent pas.
+  if (!cols.includes('situation_autre')) db.exec("ALTER TABLE op_resultats ADD COLUMN situation_autre TEXT");
+  if (!cols.includes('projet_autre')) db.exec("ALTER TABLE op_resultats ADD COLUMN projet_autre TEXT");
 }
 
 module.exports = { db, recalculerScore, DB_PATH };

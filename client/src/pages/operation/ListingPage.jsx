@@ -136,7 +136,7 @@ export default function ListingPage({ onAppeler }) {
       'actualisation', 'date_rdv', 'soiree', 'panneau',
       'adresse_maj', 'code_postal_maj', 'commune_maj', 'statut_actuel',
       'toujours_proprietaire', 'revendu_quand', 'projet', 'projet_echeance',
-      'situations', 'projet_type', 'investissement_locatif',
+      'situations', 'projet_type', 'investissement_locatif', 'situation_autre', 'projet_autre',
       'recommandation_nom', 'recommandation_tel', 'recommandation_motif',
       'fiche_confirmee', 'fiche_maj_le', 'derniere_note',
       'attribuee_le', 'attribuee_par', 'attribuee_de']
@@ -362,7 +362,8 @@ function Ligne({ l, ouverte, onBasculer, conseillers, onCorrige, onAppeler }) {
               )}
               {!l.adresse_maj && l.commune_maj && <Info label="Nouvelle commune" v={l.commune_maj} />}
               {(l.situations || l.statut_actuel) && (
-                <Info label="Situation" v={(l.situations || l.statut_actuel).toLowerCase().replace(/_/g, ' ').replace(/,/g, ', ')} />
+                <Info label="Situation" v={(l.situations || l.statut_actuel).toLowerCase().replace(/_/g, ' ').replace(/,/g, ', ')
+                  + (l.situation_autre ? ` : ${l.situation_autre}` : '')} />
               )}
               {l.investissement_locatif != null && (
                 <Info label="Investissement locatif" v={l.investissement_locatif === 1 ? 'oui' : 'non'} />
@@ -374,7 +375,7 @@ function Ligne({ l, ouverte, onBasculer, conseillers, onCorrige, onAppeler }) {
               {l.revendu_quand && <Info label="Revendu" v={l.revendu_quand} />}
               {(l.projet_type || l.projet) && (
                 <Info label="Projet"
-                  v={`${(l.projet_type || l.projet).toLowerCase().replace(/_/g, ' ')}${l.projet_echeance ? ` — ${l.projet_echeance} mois` : ''}`} />
+                  v={`${(l.projet_type || l.projet).toLowerCase().replace(/_/g, ' ')}${l.projet_autre ? ` : ${l.projet_autre}` : ''}${l.projet_echeance ? ` — ${l.projet_echeance} mois` : ''}`} />
               )}
               {l.recommandation_tel && (
                 <Info label="Recommandation"
