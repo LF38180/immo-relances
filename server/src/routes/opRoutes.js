@@ -96,6 +96,22 @@ const getContact = (id) => db.prepare('SELECT * FROM op_contacts WHERE id_modelo
 const normNom = (x) => (x || '').trim().toLowerCase();
 const estSien = (contact, moi) => normNom(contact.conseiller) === normNom(moi.nom_complet);
 
+// --- Journal des attributions ----------------------------------------------
+//
+// Une ligne par mouvement de fiche entre conseillers. On n'écrit que si le
+// conseiller change réellement : rejouer un lot ou resélectionner la même
+// personne ne doit pas fabriquer de faux mouvements.
+const insererAttribution = db.prepare(`INSERT INTO op_attributions
+  (id_modelo, de, vers, par, user_id, source) VALUES (?,?,?,?,?,?)`);
+function journalAttribution(idModelo, de, vers, moi, source) {
+  if (normNom(de) === normNom(vers)) return;
+  insererAttribution.run(idModelo, de || null, vers || null, moi?.nom_complet || null, moi?.id || null, source);
+}
+// Date de la dernière attribution effective (vers quelqu'un), pour la fiche
+// et le listing. Le conseiller voit la date ; l'auteur reste au pilotage.
+const SQL_ATTRIBUEE_LE = `(SELECT j.le FROM op_attributions j WHERE j.id_modelo = c.id_modelo
+        AND j.vers IS NOT NULL ORDER BY j.id DESC LIMIT 1)`;
+
 // Enrichit une fiche de ce qui se calcule : état d'appelabilité, compteur,
 // en-tête de script. Évite au client de refaire la règle — et de se tromper.
 function enrichir(c, maintenant = new Date()) {
@@ -133,6 +149,8 @@ function enrichir(c, maintenant = new Date()) {
       : null,
     dernier_appel_le: dernier?.horodatage || null,
     dernier_par: dernier?.conseiller || null,
+    attribuee_le: db.prepare(`SELECT le FROM op_attributions WHERE id_modelo = ?
+      AND vers IS NOT NULL ORDER BY id DESC LIMIT 1`).get(c.id_modelo)?.le || null,
     derniere_issue: dernier?.issue || null,
     derniere_note: note?.notes || null,
     entete: S.enTete(c),
@@ -224,6 +242,7 @@ router.get('/file', conseillerOuPlus, (req, res) => {
 
   const lignes = db.prepare(`
     SELECT c.*,
+      ${SQL_ATTRIBUEE_LE} AS attribuee_le,
       (SELECT COUNT(*) FROM op_appels a
         WHERE a.id_modelo = c.id_modelo
           AND strftime('%Y-%m', a.horodatage) = ?)                         AS appels_ce_mois,
@@ -738,8 +757,11 @@ router.put('/contacts/:id/attribution', pilotage, dansPerimetre, (req, res) => {
   const cles = Object.keys(champs);
   if (!cles.length) return res.status(400).json({ error: 'Rien à corriger' });
 
-  db.prepare(`UPDATE op_contacts SET ${cles.map(k => `${k} = @${k}`).join(', ')},
-    updated_at = datetime('now') WHERE id_modelo = @id`).run({ ...champs, id: c.id_modelo });
+  db.transaction(() => {
+    db.prepare(`UPDATE op_contacts SET ${cles.map(k => `${k} = @${k}`).join(', ')},
+      updated_at = datetime('now') WHERE id_modelo = @id`).run({ ...champs, id: c.id_modelo });
+    if (b.conseiller !== undefined) journalAttribution(c.id_modelo, c.conseiller, champs.conseiller, moi, 'CORRECTION');
+  })();
 
   res.json({ ok: true, avant: c, apres: getContact(c.id_modelo), champs: cles });
 });
@@ -903,6 +925,92 @@ router.get('/dispatch', pilotage, (req, res) => {
   res.json({ a_dispatcher: lignes.length, lignes, compteur });
 });
 
+// --- Journal des attributions : synthèse et détail --------------------------
+//
+// Sans `jour` : un bloc par jour (total, par conseiller, par auteur). Avec
+// `jour=AAAA-MM-JJ` : les mouvements nominatifs de ce jour. Le périmètre est
+// celui des fiches (agence actuelle) : un manager d'agence lit les mouvements
+// des fiches qui sont chez lui aujourd'hui.
+router.get('/attributions', pilotage, (req, res) => {
+  const moi = identite(req);
+  if (!moi) return res.status(401).json({ error: 'Compte introuvable' });
+  const { where, params } = perimetre(moi, 'c');
+  const base = `FROM op_attributions j JOIN op_contacts c ON c.id_modelo = j.id_modelo WHERE ${where}`;
+
+  const jour = String(req.query.jour || '').trim();
+  if (jour) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(jour)) return res.status(400).json({ error: 'Jour attendu AAAA-MM-JJ' });
+    const lignes = db.prepare(`
+      SELECT j.id, j.id_modelo, c.nom, c.prenom, c.commune, j.de, j.vers, j.par, j.source, j.reprise, j.le
+      ${base} AND date(j.le, 'localtime') = ?
+      ORDER BY j.vers, c.nom, c.prenom`).all(...params, jour);
+    return res.json({ jour, lignes });
+  }
+
+  // Un mouvement compte pour celui qui reçoit (attribuée, ou réattribuée si
+  // elle venait de quelqu'un par correction) et pour celui qui perd (retirée,
+  // corrections seulement : une répartition d'orpheline ne « retire » rien).
+  const lignes = db.prepare(`
+    SELECT date(j.le, 'localtime') AS le, j.de, j.vers, j.par, j.source, j.reprise
+    ${base} ORDER BY j.le DESC`).all(...params);
+  const jours = new Map();
+  for (const l of lignes) {
+    const j = jours.get(l.le) || { le: l.le, total: 0, reprise: 0, par_conseiller: new Map(), par_auteur: new Map() };
+    j.total++;
+    if (l.reprise) j.reprise++;
+    const cons = (nom) => {
+      const x = j.par_conseiller.get(nom) || { conseiller: nom, attribuees: 0, reattribuees: 0, retirees: 0 };
+      j.par_conseiller.set(nom, x); return x;
+    };
+    if (l.vers) {
+      if (l.source === 'CORRECTION' && l.de) cons(l.vers).reattribuees++;
+      else cons(l.vers).attribuees++;
+    }
+    if (l.de && l.source === 'CORRECTION') cons(l.de).retirees++;
+    const a = l.par || '—';
+    j.par_auteur.set(a, (j.par_auteur.get(a) || 0) + 1);
+    jours.set(l.le, j);
+  }
+  res.json({
+    jours: [...jours.values()].map(j => ({
+      ...j,
+      par_conseiller: [...j.par_conseiller.values()]
+        .sort((a, b) => (b.attribuees + b.reattribuees) - (a.attribuees + a.reattribuees)),
+      par_auteur: [...j.par_auteur].map(([par, n]) => ({ par, n })).sort((a, b) => b.n - a.n),
+    })),
+  });
+});
+
+// Reprise d'un lot passé (admin) : les mouvements faits avant le journal,
+// reconstitués par comparaison d'exports. Idempotent : une fiche qui a déjà
+// une ligne de reprise vers la même personne n'en reçoit pas une seconde.
+router.post('/attributions/reprise', requireRole('admin'), (req, res) => {
+  const moi = identite(req);
+  const b = req.body || {};
+  const le = String(b.le || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}( \d{2}:\d{2}(:\d{2})?)?$/.test(le)) return res.status(400).json({ error: 'Date attendue AAAA-MM-JJ [HH:MM]' });
+  const lignes = Array.isArray(b.lignes) ? b.lignes : [];
+  if (!lignes.length) return res.status(400).json({ error: 'Aucune ligne' });
+  const par = String(b.par || moi.nom_complet).trim();
+
+  const existe = db.prepare(`SELECT 1 FROM op_attributions WHERE id_modelo = ? AND reprise = 1
+    AND LOWER(TRIM(COALESCE(vers,''))) = LOWER(TRIM(?))`);
+  const fiche = db.prepare('SELECT conseiller FROM op_contacts WHERE id_modelo = ?');
+  const ins = db.prepare(`INSERT INTO op_attributions (id_modelo, de, vers, par, user_id, source, reprise, le)
+    VALUES (?,?,?,?,?,'REPRISE',1,?)`);
+  let inserees = 0, deja = 0, inconnues = 0;
+  db.transaction(() => {
+    for (const l of lignes) {
+      const id = String(l.id_modelo || '').trim(), vers = String(l.vers || '').trim();
+      if (!id || !vers || !fiche.get(id)) { inconnues++; continue; }
+      if (existe.get(id, vers)) { deja++; continue; }
+      ins.run(id, l.de ? String(l.de).trim() : null, vers, par, moi.id, le.length === 10 ? `${le} 12:00:00` : le);
+      inserees++;
+    }
+  })();
+  res.json({ ok: true, inserees, deja, inconnues });
+});
+
 // Attribution en lot : c'est elle qui fait gagner l'heure sur 340 fiches.
 router.post('/dispatch', pilotage, (req, res) => {
   const moi = identite(req);
@@ -936,8 +1044,16 @@ router.post('/dispatch', pilotage, (req, res) => {
          agence = COALESCE(?, agence),
          updated_at = datetime('now')
      WHERE id_modelo = ? AND a_dispatcher = 1 AND ${wp}`);
+  const avant = db.prepare('SELECT conseiller FROM op_contacts WHERE id_modelo = ?');
   let n = 0;
-  db.transaction(() => { for (const id of ids) n += maj.run(vers, agenceCible, id, ...pp).changes; })();
+  db.transaction(() => {
+    for (const id of ids) {
+      const de = avant.get(id)?.conseiller || null;
+      const changes = maj.run(vers, agenceCible, id, ...pp).changes;
+      n += changes;
+      if (changes) journalAttribution(id, de, vers, moi, 'REPARTITION');
+    }
+  })();
 
   const { where: w2, params: p2 } = perimetre(moi, 'c');
   const restantes = db.prepare(
@@ -981,7 +1097,14 @@ router.get('/listing', pilotage, (req, res) => {
       -- nombre ; ici il faut savoir quoi, sur quelle fiche, pour pouvoir
       -- reporter dans Modelo.
       r.code_postal_maj, r.commune_maj, r.statut_actuel, r.revendu_quand,
-      r.recommandation_tel, r.recommandation_motif, r.updated_at AS fiche_maj_le
+      r.recommandation_tel, r.recommandation_motif, r.updated_at AS fiche_maj_le,
+      -- La dernière attribution : pour lire sur la fiche « attribuée à X le …
+      -- par Y (avant : Z) » et filtrer « attribuées aujourd'hui ».
+      ${SQL_ATTRIBUEE_LE} AS attribuee_le,
+      (SELECT j.par FROM op_attributions j WHERE j.id_modelo = c.id_modelo
+        AND j.vers IS NOT NULL ORDER BY j.id DESC LIMIT 1)                     AS attribuee_par,
+      (SELECT j.de FROM op_attributions j WHERE j.id_modelo = c.id_modelo
+        AND j.vers IS NOT NULL ORDER BY j.id DESC LIMIT 1)                     AS attribuee_de
     FROM op_contacts c
     LEFT JOIN op_resultats r ON r.id_modelo = c.id_modelo
     WHERE ${where}

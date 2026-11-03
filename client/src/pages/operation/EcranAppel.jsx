@@ -246,6 +246,15 @@ export default function EcranAppel({ contact: c, onEnregistre, onPasser, horsFil
               </div>
             )}
 
+            {/* Un dossier frais : la fiche vient d'arriver dans sa file. La
+                date suffit ; qui l'a répartie regarde le pilotage. */}
+            {c.attribuee_le && (
+              <div className="text-[11px] text-white/60 mt-2">
+                Fiche reçue dans votre file le {new Date(c.attribuee_le.replace(' ', 'T') + 'Z')
+                  .toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}
+              </div>
+            )}
+
             {/* L'historique : « on m'a déjà appelé la semaine dernière » ne doit
                 pas prendre l'agent au dépourvu. */}
             {c.appels_total > 0 && (

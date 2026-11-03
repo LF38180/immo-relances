@@ -65,6 +65,8 @@ export default function ListingPage({ onAppeler }) {
   // Les fiches que les agents ont enrichies : c'est ce qui se reporte dans
   // Modelo à la fin de l'opération.
   const [majSeules, setMajSeules] = useState(false)
+  // Les fiches attribuées aujourd'hui : « à qui ai-je réparti ce matin ? ».
+  const [attribueesJour, setAttribueesJour] = useState(false)
 
   useEffect(() => {
     api.get('/operation/listing')
@@ -82,6 +84,10 @@ export default function ListingPage({ onAppeler }) {
 
   const nbNpai = useMemo(() => lignes.filter(l => l.npai === 1).length, [lignes])
   const nbMaj = useMemo(() => lignes.filter(l => majFiche(l).length).length, [lignes])
+  const aujourdhui = new Date().toLocaleDateString('fr-CA')
+  const attribueeAujourdhui = (l) => !!l.attribuee_le
+    && new Date(l.attribuee_le.replace(' ', 'T') + 'Z').toLocaleDateString('fr-CA') === aujourdhui
+  const nbAttribuees = useMemo(() => lignes.filter(attribueeAujourdhui).length, [lignes])
 
   const visibles = useMemo(() => {
     const q = recherche.trim().toLowerCase()
@@ -90,11 +96,12 @@ export default function ListingPage({ onAppeler }) {
       if (etat && l.etat !== etat) return false
       if (npaiSeuls && l.npai !== 1) return false
       if (majSeules && !majFiche(l).length) return false
+      if (attribueesJour && !attribueeAujourdhui(l)) return false
       if (!q) return true
       return [l.nom, l.prenom, l.commune, l.bien_commune, l.id_modelo]
         .some(x => String(x || '').toLowerCase().includes(q))
     })
-  }, [lignes, agent, etat, recherche, npaiSeuls, majSeules])
+  }, [lignes, agent, etat, recherche, npaiSeuls, majSeules, attribueesJour])
 
   // Les chiffres se recalculent sur ce qui est affiché : filtrer par agent
   // donne son propre bilan, sans changer d'écran.
@@ -129,7 +136,8 @@ export default function ListingPage({ onAppeler }) {
       'adresse_maj', 'code_postal_maj', 'commune_maj', 'statut_actuel',
       'toujours_proprietaire', 'revendu_quand', 'projet', 'projet_echeance',
       'recommandation_nom', 'recommandation_tel', 'recommandation_motif',
-      'fiche_confirmee', 'fiche_maj_le', 'derniere_note']
+      'fiche_confirmee', 'fiche_maj_le', 'derniere_note',
+      'attribuee_le', 'attribuee_par', 'attribuee_de']
     const ech = (v) => {
       const x = v == null ? '' : String(v)
       return /[";\n]/.test(x) ? '"' + x.replace(/"/g, '""') + '"' : x
@@ -211,6 +219,11 @@ export default function ListingPage({ onAppeler }) {
           {!!nbMaj && (
             <Pastille actif={majSeules} onClick={() => setMajSeules(v => !v)}>
               Infos mises à jour <span className="opacity-70">{nbMaj}</span>
+            </Pastille>
+          )}
+          {!!nbAttribuees && (
+            <Pastille actif={attribueesJour} onClick={() => setAttribueesJour(v => !v)}>
+              Attribuées aujourd’hui <span className="opacity-70">{nbAttribuees}</span>
             </Pastille>
           )}
         </div>
@@ -318,6 +331,13 @@ function Ligne({ l, ouverte, onBasculer, conseillers, onCorrige, onAppeler }) {
           {l.derniere_issue && (
             <Info label="Dernier appel"
               v={`${l.derniere_issue.toLowerCase().replace(/_/g, ' ')}${l.dernier_par ? ` — ${l.dernier_par}` : ''}`} />
+          )}
+          {l.attribuee_le && (
+            <Info label="Attribution"
+              v={`à ${l.conseiller || '—'} le ${new Date(l.attribuee_le.replace(' ', 'T') + 'Z')
+                .toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}${
+                l.attribuee_par ? ` par ${l.attribuee_par}` : ''}${
+                l.attribuee_de ? ` (avant : ${l.attribuee_de})` : ''}`} />
           )}
           {l.rappel_le && <Info label="Rappel prévu" v={new Date(l.rappel_le).toLocaleString('fr-FR')} />}
           {l.actualisation && <Info label="Estimation" v={`${l.actualisation.toLowerCase()}${l.date_rdv ? ` — ${l.date_rdv}` : ''}`} />}

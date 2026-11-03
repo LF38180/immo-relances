@@ -556,6 +556,24 @@ db.exec(`
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
+  -- Journal des attributions : qui a reçu quelle fiche, de qui, par qui, quand.
+  -- Sans lui, un lot de 51 fiches réparties un dimanche ne se retrouvait
+  -- qu'en comparant deux exports CSV à la main. Une ligne par mouvement ;
+  -- reprise = 1 pour les mouvements reconstitués après coup (date approchée).
+  CREATE TABLE IF NOT EXISTS op_attributions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id_modelo TEXT NOT NULL REFERENCES op_contacts(id_modelo) ON DELETE CASCADE,
+    de TEXT,
+    vers TEXT,
+    par TEXT,
+    user_id INTEGER REFERENCES users(id),
+    source TEXT NOT NULL DEFAULT 'REPARTITION' CHECK(source IN ('REPARTITION','CORRECTION','REPRISE')),
+    reprise INTEGER NOT NULL DEFAULT 0,
+    le TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_op_attributions_fiche ON op_attributions(id_modelo, id);
+  CREATE INDEX IF NOT EXISTS idx_op_attributions_le    ON op_attributions(le);
+
   CREATE TABLE IF NOT EXISTS op_imports (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER REFERENCES users(id),

@@ -140,6 +140,11 @@ export default function PilotagePage({ onAppeler }) {
             fiches. */}
         <SectionNpai npai={d.npai} onSaisir={() => setNpaiOuvert(true)} onAppeler={onAppeler} />
 
+        {/* Qui a reçu quoi, de qui, quand. Avant ce bloc, un lot de 51 fiches
+            réparties un dimanche ne se retrouvait qu'en comparant deux exports
+            à la main. */}
+        <SectionAttributions onAppeler={onAppeler} />
+
         {/* Le serveur comptait ces fiches depuis le début ; l'écran ne le
             montrait pas, et aucun écran ne permettait de les trancher. */}
         {d.a_verifier > 0 && (
@@ -306,6 +311,136 @@ function SectionNpai({ npai, onSaisir, onAppeler }) {
           )}
         </>
       )}
+    </div>
+  )
+}
+
+// Les mouvements de fiches entre conseillers, par jour. Chaque jour se déplie
+// en deux temps : le compte par conseiller (qui a reçu combien), puis la liste
+// nominative. Un jour marqué « reprise » a été reconstitué après coup : la
+// date est celle du lot, pas de la minute.
+const dateLocale = (x) => new Date(String(x).replace(' ', 'T') + 'Z')
+function SectionAttributions({ onAppeler }) {
+  const [jours, setJours] = useState(null)
+  const [ouvert, setOuvert] = useState(null)   // jour déplié
+  const [detail, setDetail] = useState({})     // jour → lignes
+
+  useEffect(() => {
+    api.get('/operation/attributions')
+      .then(r => setJours(r.data.jours || []))
+      .catch(() => setJours([]))
+  }, [])
+
+  const deplier = (le) => {
+    const prochain = ouvert === le ? null : le
+    setOuvert(prochain)
+    if (prochain && !detail[prochain]) {
+      api.get('/operation/attributions', { params: { jour: prochain } })
+        .then(r => setDetail(d => ({ ...d, [prochain]: r.data.lignes || [] })))
+        .catch(() => toast.error('Détail impossible à charger'))
+    }
+  }
+
+  if (!jours || !jours.length) return null
+
+  return (
+    <div className="bg-white border border-quai-border rounded-xl overflow-hidden">
+      <div className="p-3">
+        <div className="text-sm font-semibold text-quai-navy">Attributions</div>
+        <p className="text-[11px] text-quai-muted mt-0.5 leading-snug">
+          Qui a reçu quelles fiches, et de qui. Un jour se déplie pour la liste nominative.
+        </p>
+      </div>
+
+      <div className="border-t border-quai-border divide-y divide-quai-border/60">
+        {jours.map(j => {
+          const lignes = detail[j.le]
+          const jour = new Date(j.le + 'T12:00').toLocaleDateString('fr-FR',
+            { weekday: 'long', day: 'numeric', month: 'long' })
+          return (
+            <div key={j.le}>
+              <button onClick={() => deplier(j.le)}
+                className="w-full text-left px-3 py-2.5 hover:bg-quai-light flex items-start gap-2">
+                <div className="min-w-0 flex-1">
+                  <div className="text-xs font-medium text-quai-navy">
+                    {jour}
+                    <span className="ml-1.5 font-semibold">
+                      {j.total} mouvement{j.total > 1 ? 's' : ''}
+                    </span>
+                    {j.reprise > 0 && (
+                      <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded bg-quai-light text-quai-muted">
+                        reprise, date approchée
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-[11px] text-quai-muted">
+                    par {j.par_auteur.map(a => `${a.par} (${a.n})`).join(', ')}
+                  </div>
+                </div>
+                <Icon name={ouvert === j.le ? 'chevron-up' : 'chevron-down'} size="sm"
+                  className="text-quai-muted shrink-0 mt-0.5" />
+              </button>
+
+              {ouvert === j.le && (
+                <div className="px-3 pb-3 space-y-2">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="text-left text-[10px] text-quai-muted uppercase tracking-wide">
+                        <th className="font-medium pb-1">Conseiller</th>
+                        <th className="font-medium pb-1 text-right w-20">Reçues</th>
+                        <th className="font-medium pb-1 text-right w-24">Réattribuées</th>
+                        <th className="font-medium pb-1 text-right w-20">Retirées</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {j.par_conseiller.map(c => (
+                        <tr key={c.conseiller} className="border-t border-quai-border/60">
+                          <td className="py-1 text-quai-navy">{c.conseiller}</td>
+                          <td className="py-1 text-right font-semibold text-quai-navy tabular-nums">{c.attribuees || ''}</td>
+                          <td className="py-1 text-right text-quai-navy tabular-nums">{c.reattribuees || ''}</td>
+                          <td className="py-1 text-right text-quai-muted tabular-nums">{c.retirees || ''}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+
+                  {!lignes && <p className="text-[11px] text-quai-muted">Chargement de la liste…</p>}
+                  {lignes && (
+                    <div className="border border-quai-border rounded-lg divide-y divide-quai-border/60">
+                      {lignes.map(l => (
+                        <div key={l.id} className="px-2.5 py-1.5 flex items-start gap-2">
+                          <div className="min-w-0 flex-1">
+                            <div className="text-xs text-quai-navy">
+                              <span className="font-medium">{l.nom} {l.prenom}</span>
+                              {l.commune && <span className="text-quai-muted"> · {l.commune}</span>}
+                            </div>
+                            <div className="text-[11px] text-quai-muted">
+                              {l.vers
+                                ? <>→ <b className="text-quai-navy font-medium">{l.vers}</b>{l.de && <> (avant : {l.de})</>}</>
+                                : <>retirée à {l.de}, sans conseiller</>}
+                              {' · '}
+                              {l.reprise
+                                ? 'reprise'
+                                : dateLocale(l.le).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                            </div>
+                          </div>
+                          {onAppeler && l.vers && (
+                            <button onClick={() => onAppeler({ id_modelo: l.id_modelo, nom: l.nom, prenom: l.prenom })}
+                              className="text-[11px] px-2 py-1 rounded-lg border border-quai-border text-quai-navy
+                                         shrink-0 hover:border-quai-gold inline-flex items-center gap-1">
+                              <Icon name="phone" size="sm" /> Ouvrir
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }
