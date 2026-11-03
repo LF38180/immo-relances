@@ -743,4 +743,19 @@ db.exec(`
   if (!cols.includes('point_attention')) db.exec("ALTER TABLE op_contacts ADD COLUMN point_attention TEXT");
 }
 
+// Ce que le client dit de sa situation, en plusieurs mots. Les colonnes
+// statut_actuel et projet portent une contrainte CHECK figée à la création
+// (trois situations, quatre projets) : on ne la desserre pas en pleine
+// opération. Trois colonnes à côté, les anciennes restent lisibles telles
+// quelles.
+//   situations            : liste 'PROPRIETAIRE,BAILLEUR' (plusieurs possibles)
+//   projet_type           : VENTE, ACHAT, INVESTISSEMENT, MISE_EN_LOCATION, AUCUN
+//   investissement_locatif: 1/0, pour un acquéreur
+{
+  const cols = db.prepare("PRAGMA table_info(op_resultats)").all().map(c => c.name);
+  if (!cols.includes('situations')) db.exec("ALTER TABLE op_resultats ADD COLUMN situations TEXT");
+  if (!cols.includes('projet_type')) db.exec("ALTER TABLE op_resultats ADD COLUMN projet_type TEXT");
+  if (!cols.includes('investissement_locatif')) db.exec("ALTER TABLE op_resultats ADD COLUMN investissement_locatif INTEGER");
+}
+
 module.exports = { db, recalculerScore, DB_PATH };

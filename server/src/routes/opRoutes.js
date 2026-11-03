@@ -197,6 +197,7 @@ router.get('/mon-acces', (req, res) => {
       SUM(CASE WHEN r.panneau = 1 THEN 1 ELSE 0 END)                AS panneaux,
       SUM(CASE WHEN r.adresse_maj IS NOT NULL OR r.statut_actuel IS NOT NULL
                  OR r.projet IS NOT NULL OR r.toujours_proprietaire IS NOT NULL
+                 OR r.situations IS NOT NULL OR r.projet_type IS NOT NULL OR r.investissement_locatif IS NOT NULL
                  OR r.fiche_confirmee = 1
                THEN 1 ELSE 0 END)                                   AS fiches_a_jour
     FROM op_resultats r JOIN op_contacts c ON c.id_modelo = r.id_modelo
@@ -465,6 +466,23 @@ function ecrireResultat(contact, corps, moi, appelId = null) {
     const v = corps[k] === '' ? null : corps[k];
     valeurs[k] = (v == null && BOOLEENS_NON_NULS.includes(k)) ? 0 : v;
   }
+  // Situations à plusieurs, projet élargi : les colonnes historiques sont
+  // recopiées quand la valeur y est admise, laissées telles quelles sinon —
+  // un export qui lit encore statut_actuel et projet reste juste.
+  const SITUATIONS = ['PROPRIETAIRE', 'LOCATAIRE', 'HEBERGE', 'BAILLEUR'];
+  const PROJETS = ['VENTE', 'ACHAT', 'INVESTISSEMENT', 'MISE_EN_LOCATION', 'AUCUN'];
+  if ('situations' in valeurs && valeurs.situations != null) {
+    const liste = String(valeurs.situations).split(',').map(s => s.trim()).filter(s => SITUATIONS.includes(s));
+    valeurs.situations = liste.length ? liste.join(',') : null;
+    const ancienne = liste.find(s => ['PROPRIETAIRE', 'LOCATAIRE', 'HEBERGE'].includes(s));
+    if (ancienne) valeurs.statut_actuel = ancienne;
+  }
+  if ('projet_type' in valeurs && valeurs.projet_type != null) {
+    if (!PROJETS.includes(valeurs.projet_type)) valeurs.projet_type = null;
+    else if (valeurs.projet_type !== 'MISE_EN_LOCATION') valeurs.projet = valeurs.projet_type;
+  }
+  if ('investissement_locatif' in valeurs && valeurs.investissement_locatif != null)
+    valeurs.investissement_locatif = valeurs.investissement_locatif ? 1 : 0;
   // Le consentement est daté automatiquement : c'est la date qui lui donne sa
   // valeur, et un agent ne doit pas avoir à y penser.
   if (valeurs.consentement_tel != null && !valeurs.date_consentement)
@@ -583,6 +601,7 @@ const CHAMPS_RESULTAT = [
   'adresse_maj', 'complement_maj', 'code_postal_maj', 'commune_maj', 'email_maj',
   'courrier_renvoye', 'date_renvoi', 'npai', 'fiche_confirmee', 'toujours_proprietaire', 'revendu_quand',
   'revendu_par_qui', 'statut_actuel', 'projet', 'projet_echeance',
+  'situations', 'projet_type', 'investissement_locatif',
   'actualisation', 'date_rdv', 'soiree', 'panneau',
   'recommandation_nom', 'recommandation_tel', 'recommandation_email',
   'recommandation_motif', 'recommandation_mode', 'consentement_tel', 'date_consentement',
@@ -894,7 +913,8 @@ router.get('/recap', conseillerOuPlus, (req, res) => {
       r.adresse_maj, r.code_postal_maj, r.commune_maj, r.actualisation, r.date_rdv,
       r.soiree, r.panneau, r.projet, r.projet_echeance,
       r.recommandation_nom, r.recommandation_tel, r.recommandation_motif,
-      r.courrier_renvoye, r.toujours_proprietaire
+      r.courrier_renvoye, r.toujours_proprietaire,
+      r.situations, r.projet_type, r.investissement_locatif
     FROM op_appels a
     JOIN op_contacts c ON c.id_modelo = a.id_modelo
     LEFT JOIN op_resultats r ON r.id_modelo = a.id_modelo
@@ -1129,6 +1149,7 @@ router.get('/listing', pilotage, (req, res) => {
       -- nombre ; ici il faut savoir quoi, sur quelle fiche, pour pouvoir
       -- reporter dans Modelo.
       r.code_postal_maj, r.commune_maj, r.statut_actuel, r.revendu_quand,
+      r.situations, r.projet_type, r.investissement_locatif,
       r.recommandation_tel, r.recommandation_motif, r.updated_at AS fiche_maj_le,
       -- La dernière attribution : pour lire sur la fiche « attribuée à X le …
       -- par Y (avant : Z) » et filtrer « attribuées aujourd'hui ».
@@ -1302,6 +1323,7 @@ router.get('/pilotage', pilotage, (req, res) => {
         SUM(CASE WHEN r.panneau = 1 THEN 1 ELSE 0 END)                AS panneau,
         SUM(CASE WHEN r.adresse_maj IS NOT NULL OR r.statut_actuel IS NOT NULL
                    OR r.projet IS NOT NULL OR r.toujours_proprietaire IS NOT NULL
+                 OR r.situations IS NOT NULL OR r.projet_type IS NOT NULL OR r.investissement_locatif IS NOT NULL
                    OR r.fiche_confirmee = 1
                  THEN 1 ELSE 0 END)                                   AS fiches_a_jour,
         SUM(CASE WHEN r.adresse_maj IS NOT NULL THEN 1 ELSE 0 END)    AS adresses_maj,

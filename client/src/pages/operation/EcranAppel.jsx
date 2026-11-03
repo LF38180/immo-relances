@@ -135,6 +135,7 @@ export default function EcranAppel({ contact: c, onEnregistre, onPasser, horsFil
         // de durable — c'est le quatrième objectif, au même rang que les trois
         // propositions.
         fiche: aSaisi && !!(res.adresse_maj || res.statut_actuel || res.projet
+          || res.situations || res.projet_type || res.investissement_locatif != null
           || res.toujours_proprietaire != null || res.fiche_confirmee === 1),
       })
     } catch (err) {
@@ -410,13 +411,22 @@ export default function EcranAppel({ contact: c, onEnregistre, onPasser, horsFil
                 <Saisie label="Par quelle agence ?" value={res.revendu_par_qui || ''} onChange={v => champ('revendu_par_qui', v)} />
               </div>
             )}
-            <Boutons label={c.role === 'VENDEUR' ? 'Aujourd\'hui, depuis la vente' : 'Aujourd\'hui'} valeur={res.statut_actuel}
-              options={[['PROPRIETAIRE', 'Propriétaire'], ['LOCATAIRE', 'Locataire'], ['HEBERGE', 'Hébergé']]}
-              onChange={v => champ('statut_actuel', v)} />
-            <Boutons label="Un projet ?" valeur={res.projet}
-              options={[['VENTE', 'Vente'], ['ACHAT', 'Achat'], ['INVESTISSEMENT', 'Investissement'], ['AUCUN', 'Aucun']]}
-              onChange={v => champ('projet', v)} />
-            {res.projet && res.projet !== 'AUCUN' && (
+            {/* Un achat pour y vivre ou pour louer : ce n'est pas le même
+                client, ni le même projet à venir. */}
+            {c.role === 'ACQUEREUR' && (
+              <Boutons label="Était-ce un investissement locatif ?" valeur={res.investissement_locatif}
+                options={[[1, 'Oui'], [0, 'Non']]} onChange={v => champ('investissement_locatif', v)} />
+            )}
+            {/* Plusieurs réponses possibles : propriétaire de son logement et
+                bailleur d'un autre, c'est courant. */}
+            <BoutonsMulti label={c.role === 'VENDEUR' ? 'Aujourd\'hui, depuis la vente (plusieurs possibles)' : 'Aujourd\'hui (plusieurs possibles)'}
+              valeur={res.situations}
+              options={[['PROPRIETAIRE', 'Propriétaire'], ['LOCATAIRE', 'Locataire'], ['HEBERGE', 'Hébergé'], ['BAILLEUR', 'Bailleur']]}
+              onChange={v => champ('situations', v)} />
+            <Boutons label="Un projet ?" valeur={res.projet_type}
+              options={[['VENTE', 'Vente'], ['ACHAT', 'Achat'], ['INVESTISSEMENT', 'Investissement'], ['MISE_EN_LOCATION', 'Mise en location'], ['AUCUN', 'Aucun']]}
+              onChange={v => champ('projet_type', v)} />
+            {res.projet_type && res.projet_type !== 'AUCUN' && (
               <Saisie label="D'ici combien de mois ?" type="number" value={res.projet_echeance || ''}
                 onChange={v => champ('projet_echeance', v)} />
             )}
@@ -592,6 +602,31 @@ function Saisie({ label, value, onChange, type = 'text' }) {
         className="w-full mt-0.5 px-2.5 py-2 text-sm rounded-lg border border-quai-border
                    min-h-[2.75rem] md:min-h-0 focus:outline-none focus:ring-2 focus:ring-quai-navy/30" />
     </label>
+  )
+}
+
+// Même allure que Boutons, mais plusieurs choix : la valeur est une liste
+// 'A,B' (ce que la base stocke), vide = null.
+function BoutonsMulti({ label, valeur, options, onChange }) {
+  const choisis = (valeur || '').split(',').filter(Boolean)
+  const basculer = (v) => {
+    const suite = choisis.includes(v) ? choisis.filter(x => x !== v) : [...choisis, v]
+    onChange(suite.length ? suite.join(',') : null)
+  }
+  return (
+    <div>
+      {label && <span className="text-[11px] text-quai-muted">{label}</span>}
+      <div className="flex flex-wrap gap-1.5 mt-1">
+        {options.map(([v, l]) => (
+          <button key={v} onClick={() => basculer(v)}
+            className={`text-xs px-3 py-2 rounded-lg border transition-colors min-h-[2.75rem] ${
+              choisis.includes(v) ? 'bg-quai-navy text-white border-quai-navy'
+                                  : 'border-quai-border text-quai-muted hover:border-quai-gold'}`}>
+            {l}
+          </button>
+        ))}
+      </div>
+    </div>
   )
 }
 

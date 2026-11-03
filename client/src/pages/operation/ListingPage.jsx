@@ -113,7 +113,8 @@ export default function ListingPage({ onAppeler }) {
       if (l.actualisation === 'ACCEPTEE') b.rdv++
       if (l.soiree === 1) b.soiree++
       if (l.panneau === 1) b.panneau++
-      if (l.adresse_maj || l.fiche_confirmee === 1 || l.projet || l.toujours_proprietaire != null) b.fiches++
+      if (l.adresse_maj || l.fiche_confirmee === 1 || l.projet || l.projet_type || l.situations
+          || l.investissement_locatif != null || l.toujours_proprietaire != null) b.fiches++
     })
     return b
   }, [visibles])
@@ -135,6 +136,7 @@ export default function ListingPage({ onAppeler }) {
       'actualisation', 'date_rdv', 'soiree', 'panneau',
       'adresse_maj', 'code_postal_maj', 'commune_maj', 'statut_actuel',
       'toujours_proprietaire', 'revendu_quand', 'projet', 'projet_echeance',
+      'situations', 'projet_type', 'investissement_locatif',
       'recommandation_nom', 'recommandation_tel', 'recommandation_motif',
       'fiche_confirmee', 'fiche_maj_le', 'derniere_note',
       'attribuee_le', 'attribuee_par', 'attribuee_de']
@@ -359,15 +361,20 @@ function Ligne({ l, ouverte, onBasculer, conseillers, onCorrige, onAppeler }) {
                   v={[l.adresse_maj, l.code_postal_maj, l.commune_maj].filter(Boolean).join(' ')} />
               )}
               {!l.adresse_maj && l.commune_maj && <Info label="Nouvelle commune" v={l.commune_maj} />}
-              {l.statut_actuel && <Info label="Situation" v={l.statut_actuel} />}
+              {(l.situations || l.statut_actuel) && (
+                <Info label="Situation" v={(l.situations || l.statut_actuel).toLowerCase().replace(/_/g, ' ').replace(/,/g, ', ')} />
+              )}
+              {l.investissement_locatif != null && (
+                <Info label="Investissement locatif" v={l.investissement_locatif === 1 ? 'oui' : 'non'} />
+              )}
               {l.toujours_proprietaire != null && (
                 <Info label="Toujours propriétaire"
                   v={l.toujours_proprietaire === 1 ? 'oui' : 'non'} />
               )}
               {l.revendu_quand && <Info label="Revendu" v={l.revendu_quand} />}
-              {l.projet && (
+              {(l.projet_type || l.projet) && (
                 <Info label="Projet"
-                  v={`${l.projet.toLowerCase()}${l.projet_echeance ? ` — ${l.projet_echeance} mois` : ''}`} />
+                  v={`${(l.projet_type || l.projet).toLowerCase().replace(/_/g, ' ')}${l.projet_echeance ? ` — ${l.projet_echeance} mois` : ''}`} />
               )}
               {l.recommandation_tel && (
                 <Info label="Recommandation"
