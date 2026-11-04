@@ -780,4 +780,24 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_op_journal_auteur ON op_journal(auteur, le DESC);
 `);
 
+// Report vers Modelo : quand une fiche y a été reportée pour la dernière
+// fois (sur op_contacts), et l'historique des passages (une ligne par fiche
+// et par passage, reporté ou échec avec son motif).
+{
+  const cols = db.prepare("PRAGMA table_info(op_contacts)").all().map(c => c.name);
+  if (!cols.includes('modelo_reporte_le')) db.exec("ALTER TABLE op_contacts ADD COLUMN modelo_reporte_le TEXT");
+}
+db.exec(`
+  CREATE TABLE IF NOT EXISTS op_modelo_reports (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id_modelo TEXT NOT NULL,
+    le TEXT NOT NULL DEFAULT (datetime('now')),
+    statut TEXT NOT NULL,
+    motif TEXT,
+    champs TEXT,
+    par TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_op_modelo_reports_fiche ON op_modelo_reports(id_modelo, le DESC);
+`);
+
 module.exports = { db, recalculerScore, DB_PATH };

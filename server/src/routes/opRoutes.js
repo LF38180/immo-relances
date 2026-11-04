@@ -16,6 +16,7 @@ const S = require('../utils/opScripts');
 const I = require('../utils/opImport');
 const D = require('../utils/opDemo');
 const { journaliser } = require('../utils/journal');
+const M = require('../utils/opModelo');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -1168,6 +1169,10 @@ router.get('/listing', pilotage, (req, res) => {
       -- reporter dans Modelo.
       r.code_postal_maj, r.commune_maj, r.statut_actuel, r.revendu_quand,
       r.situations, r.projet_type, r.investissement_locatif, r.situation_autre, r.projet_autre,
+      -- Report Modelo : date du dernier report, et dernier appel avec contact.
+      c.modelo_reporte_le,
+      (SELECT MAX(a.horodatage) FROM op_appels a WHERE a.id_modelo = c.id_modelo
+        AND a.issue NOT IN ('REPONDEUR', 'PAS_DE_REPONSE'))                        AS dernier_contact_le,
       r.recommandation_tel, r.recommandation_motif, r.updated_at AS fiche_maj_le,
       -- La dernière attribution : pour lire sur la fiche « attribuée à X le …
       -- par Y (avant : Z) » et filtrer « attribuées aujourd'hui ».
@@ -1272,6 +1277,42 @@ router.post('/import', requireRole('admin'), (req, res) => {
   if (!r.ok) return res.status(400).json(r);
   if (!simulation) journaliser(identite(req), 'IMPORT', { details: { fichier: b.fichier || null, ...Object.fromEntries(Object.entries(r).filter(([k, v]) => typeof v === 'number')) } });
   res.json(r);
+});
+
+// --- Report vers Modelo -----------------------------------------------------
+//
+// Ce qui a du nouveau depuis le dernier report, au format convenu avec la
+// conversation qui saisit dans Modelo ; puis le retour de cette saisie, qui
+// marque les fiches reportées. Admin seulement : le report se fait avec le
+// compte Modelo de Loïck.
+router.get('/modelo/a-reporter', requireRole('admin'), (req, res) => {
+  res.json(M.fichesAReporter());
+});
+
+router.post('/modelo/retour', requireRole('admin'), (req, res) => {
+  const moi = identite(req);
+  const lignes = Array.isArray(req.body?.lignes) ? req.body.lignes : null;
+  if (!lignes) return res.status(400).json({ error: 'lignes attendues' });
+  const existe = db.prepare('SELECT id_modelo FROM op_contacts WHERE id_modelo = ?');
+  const inserer = db.prepare(`INSERT INTO op_modelo_reports (id_modelo, le, statut, motif, champs, par) VALUES (?, ?, ?, ?, ?, ?)`);
+  const marquer = db.prepare(`UPDATE op_contacts SET modelo_reporte_le = ? WHERE id_modelo = ?`);
+  let reportees = 0, echecs = 0; const inconnues = [];
+  db.transaction(() => {
+    for (const l of lignes) {
+      const id = String(l.id_modelo || '').trim();
+      if (!id || !existe.get(id)) { inconnues.push(id); continue; }
+      const statut = /^report/i.test(String(l.statut || '')) ? 'REPORTE' : 'ECHEC';
+      // L'horodatage du retour est celui de la saisie Modelo (local) ; à
+      // défaut, maintenant. Le marquage utilise la date « jusqu_a » de l'export
+      // si elle est fournie : tout ce qui est arrivé après reste à reporter.
+      const le = String(l.horodatage || '').trim() || new Date().toISOString().slice(0, 19).replace('T', ' ');
+      inserer.run(id, le, statut, String(l.motif_echec || '').trim() || null, String(l.champs_modifies || '').trim() || null, moi?.nom_complet || null);
+      if (statut === 'REPORTE') { marquer.run(String(l.jusqu_a || '').trim() || new Date().toISOString().slice(0, 19).replace('T', ' '), id); reportees++; }
+      else echecs++;
+    }
+  })();
+  journaliser(moi, 'MODELO_RETOUR', { details: { reportees, echecs, inconnues: inconnues.length } });
+  res.json({ ok: true, reportees, echecs, inconnues });
 });
 
 // --- Pilotage ---------------------------------------------------------------

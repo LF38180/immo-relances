@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import api from '../../utils/api'
 import toast from 'react-hot-toast'
 import Icon from '../../components/ui/Icon'
+import { useAuth } from '../../hooks/useAuth'
 
 // La vue d'ensemble : toutes les fiches, leur état, ce qu'elles ont donné.
 //
@@ -67,12 +68,18 @@ export default function ListingPage({ onAppeler }) {
   const [majSeules, setMajSeules] = useState(false)
   // Les fiches attribuées aujourd'hui : « à qui ai-je réparti ce matin ? ».
   const [attribueesJour, setAttribueesJour] = useState(false)
+  // Ce qui reste à reporter dans Modelo : un appel avec contact ou une saisie
+  // postérieurs au dernier report.
+  const [aReporter, setAReporter] = useState(false)
+  const { user } = useAuth()
+  const estAdmin = user?.role === 'admin'
 
-  useEffect(() => {
+  const charger = () => {
     api.get('/operation/listing')
       .then(r => setData(r.data))
       .catch(() => { setErreur(true); toast.error('Chargement impossible') })
-  }, [])
+  }
+  useEffect(() => { charger() }, [])
 
   const lignes = data?.lignes || []
 
@@ -97,11 +104,13 @@ export default function ListingPage({ onAppeler }) {
       if (npaiSeuls && l.npai !== 1) return false
       if (majSeules && !majFiche(l).length) return false
       if (attribueesJour && !attribueeAujourdhui(l)) return false
+      if (aReporter && !resteAReporter(l)) return false
       if (!q) return true
       return [l.nom, l.prenom, l.commune, l.bien_commune, l.id_modelo]
         .some(x => String(x || '').toLowerCase().includes(q))
     })
-  }, [lignes, agent, etat, recherche, npaiSeuls, majSeules, attribueesJour])
+  }, [lignes, agent, etat, recherche, npaiSeuls, majSeules, attribueesJour, aReporter])
+  const nbAReporter = useMemo(() => lignes.filter(resteAReporter).length, [lignes])
 
   // Les chiffres se recalculent sur ce qui est affiché : filtrer par agent
   // donne son propre bilan, sans changer d'écran.
@@ -228,7 +237,14 @@ export default function ListingPage({ onAppeler }) {
               Attribuées aujourd’hui <span className="opacity-70">{nbAttribuees}</span>
             </Pastille>
           )}
+          {estAdmin && !!nbAReporter && (
+            <Pastille actif={aReporter} onClick={() => setAReporter(v => !v)}>
+              À reporter dans Modelo <span className="opacity-70">{nbAReporter}</span>
+            </Pastille>
+          )}
         </div>
+
+        {estAdmin && <ReportModelo nb={nbAReporter} onRetour={charger} />}
 
         <div className="bg-white border border-quai-border rounded-xl divide-y divide-quai-border/60">
           {!visibles.length && (
@@ -259,6 +275,105 @@ function Chiffre({ v, l, couleur = 'text-quai-navy' }) {
     <div className="bg-white border border-quai-border rounded-lg px-2.5 py-2">
       <div className={`text-lg font-bold tabular-nums leading-none ${couleur}`}>{v}</div>
       <div className="text-[10px] text-quai-muted leading-tight mt-0.5">{l}</div>
+    </div>
+  )
+}
+
+// Une fiche reste à reporter si quelque chose de reportable est arrivé après
+// le dernier report : un appel avec contact, ou une saisie sur la fiche.
+function resteAReporter(l) {
+  const depuis = l.modelo_reporte_le || ''
+  return (!!l.dernier_contact_le && l.dernier_contact_le > depuis) || (!!l.fiche_maj_le && l.fiche_maj_le > depuis)
+}
+
+// Le pont vers Modelo : deux exports au format convenu avec la conversation
+// qui saisit dans Modelo (une note de suivi par fiche, les champs avec leur
+// valeur « avant »), et l'import de son retour, qui marque les fiches
+// reportées. Le report lui-même se fait dans le navigateur de Loïck.
+const COLS_REPORT = ['id_modelo', 'nom', 'prenom', 'agent', 'date_note', 'commentaire', 'stop_tel', 'stop_mail',
+  'email_avant', 'email_apres', 'tel_port_avant', 'tel_port_apres', 'tel_fixe_avant', 'tel_fixe_apres',
+  'adresse_avant', 'adresse_apres', 'cp_avant', 'cp_apres', 'commune_avant', 'commune_apres', 'a_proposer_a_loick', 'jusqu_a']
+const COLS_RECO = ['id_modelo', 'client', 'agent', 'nom', 'tel', 'email', 'motif', 'qui_fait_le_lien']
+const echCsv = (v) => { const x = v == null ? '' : String(v); return /[";\n]/.test(x) ? '"' + x.replace(/"/g, '""') + '"' : x }
+function telechargerCsv(nom, cols, lignes) {
+  const csv = [cols.join(';'), ...lignes.map(l => cols.map(c => echCsv(l[c])).join(';'))].join('\n')
+  const url = URL.createObjectURL(new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' }))
+  const a = document.createElement('a'); a.href = url; a.download = nom; a.click(); URL.revokeObjectURL(url)
+}
+// CSV « ; » avec guillemets, en objets. Suffit pour le fichier de retour.
+function lireCsv(texte) {
+  const lignes = []; let cur = '', champ = [], guillemets = false
+  const t = texte.replace(/^\ufeff/, '').replace(/\r\n/g, '\n')
+  for (let i = 0; i < t.length; i++) {
+    const ch = t[i]
+    if (ch === '"') { if (guillemets && t[i + 1] === '"') { cur += '"'; i++ } else guillemets = !guillemets }
+    else if (ch === ';' && !guillemets) { champ.push(cur); cur = '' }
+    else if (ch === '\n' && !guillemets) { champ.push(cur); lignes.push(champ); champ = []; cur = '' }
+    else cur += ch
+  }
+  if (cur || champ.length) { champ.push(cur); lignes.push(champ) }
+  const [entete, ...corps] = lignes.filter(l => l.some(x => x.trim()))
+  const cles = entete.map(h => h.trim().toLowerCase())
+  return corps.map(l => Object.fromEntries(cles.map((k, i) => [k, (l[i] || '').trim()])))
+}
+
+function ReportModelo({ nb, onRetour }) {
+  const [envoi, setEnvoi] = useState(false)
+  const jour = new Date().toISOString().slice(0, 10)
+
+  const exporter = async (quoi) => {
+    try {
+      const r = await api.get('/operation/modelo/a-reporter')
+      if (quoi === 'fiches') {
+        if (!r.data.fiches.length) return toast('Rien à reporter')
+        telechargerCsv(`modelo-a-reporter-${jour}.csv`, COLS_REPORT, r.data.fiches)
+      } else {
+        if (!r.data.recommandations.length) return toast('Aucune recommandation')
+        telechargerCsv(`modelo-recommandations-${jour}.csv`, COLS_RECO, r.data.recommandations)
+      }
+    } catch { toast.error('Export impossible') }
+  }
+
+  const importerRetour = (ev) => {
+    const f = ev.target.files?.[0]; ev.target.value = ''
+    if (!f) return
+    const lecteur = new FileReader()
+    lecteur.onload = async () => {
+      try {
+        const lignes = lireCsv(String(lecteur.result))
+        if (!lignes.length || !('id_modelo' in lignes[0]) || !('statut' in lignes[0]))
+          return toast.error('Colonnes attendues : id_modelo ; statut ; motif_echec ; champs_modifies ; horodatage')
+        setEnvoi(true)
+        const r = await api.post('/operation/modelo/retour', { lignes })
+        toast.success(`${r.data.reportees} reportée${r.data.reportees > 1 ? 's' : ''}, ${r.data.echecs} en échec${r.data.inconnues.length ? `, ${r.data.inconnues.length} inconnue(s)` : ''}`, { duration: 6000 })
+        onRetour?.()
+      } catch (e) { toast.error(e.messageLisible || 'Import impossible') }
+      finally { setEnvoi(false) }
+    }
+    lecteur.readAsText(f, 'utf-8')
+  }
+
+  return (
+    <div className="bg-white border border-quai-border rounded-xl p-3 flex flex-wrap items-center gap-2">
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-semibold text-quai-navy">Report dans Modelo</div>
+        <div className="text-[11px] text-quai-muted leading-snug">
+          {nb ? `${nb} fiche${nb > 1 ? 's' : ''} avec du nouveau depuis le dernier report.` : 'Tout est reporté.'}
+          {' '}Export, saisie dans Modelo, puis import du fichier de retour pour marquer les fiches.
+        </div>
+      </div>
+      <button onClick={() => exporter('fiches')} disabled={!nb}
+        className="text-xs px-3 py-2 rounded-lg bg-quai-navy text-white inline-flex items-center gap-1.5 disabled:opacity-40">
+        <Icon name="file-down" size="sm" /> À reporter
+      </button>
+      <button onClick={() => exporter('recommandations')}
+        className="text-xs px-3 py-2 rounded-lg border border-quai-border text-quai-navy inline-flex items-center gap-1.5">
+        <Icon name="file-down" size="sm" /> Recommandations
+      </button>
+      <label className={`text-xs px-3 py-2 rounded-lg border border-quai-border text-quai-navy inline-flex items-center gap-1.5 cursor-pointer ${envoi ? 'opacity-40' : ''}`}>
+        <Icon name="file-up" size="sm" /> Importer le retour
+        <input type="file" accept=".csv,.txt" className="hidden" onChange={importerRetour} disabled={envoi} />
+      </label>
     </div>
   )
 }
