@@ -191,7 +191,7 @@ const t = (n, fn) => { try { fn(); console.log('  OK  ' + n) } catch (e) { conso
   // Le plafond : on écrit 4 appels directement en base, puis on tente le 5e.
   const cible = fileTara[fileTara.length - 1];
   const ins = db.prepare(`INSERT INTO op_appels (id_modelo, conseiller, issue, horodatage)
-    VALUES (?,?, 'PAS_DE_REPONSE', datetime('now'))`);
+    VALUES (?,?, 'PAS_DE_REPONSE', datetime('now', '-1 hour'))`);
   for (let i = 0; i < 4; i++) ins.run(cible.id_modelo, 'Tara ZOPPAS');
 
   // Un rappel convenu déjà échu : la fiche est due, donc proposée malgré le
