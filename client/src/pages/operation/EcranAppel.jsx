@@ -281,6 +281,13 @@ export default function EcranAppel({ contact: c, onEnregistre, onPasser, horsFil
               </div>
             )}
 
+            {c.modelo_reporte_le && (
+              <div className="text-[11px] text-white/60 mt-1">
+                Mise à jour Modelo faite le {new Date(c.modelo_reporte_le.replace(' ', 'T') + 'Z')
+                  .toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}
+              </div>
+            )}
+
             {/* L'historique : « on m'a déjà appelé la semaine dernière » ne doit
                 pas prendre l'agent au dépourvu. */}
             {c.appels_total > 0 && (

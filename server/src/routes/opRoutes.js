@@ -1173,6 +1173,8 @@ router.get('/listing', pilotage, (req, res) => {
       r.tel_portable_maj, r.tel_fixe_maj,
       -- Report Modelo : date du dernier report, et dernier appel avec contact.
       c.modelo_reporte_le,
+      (SELECT m.statut || COALESCE(' : ' || m.motif, '') FROM op_modelo_reports m
+        WHERE m.id_modelo = c.id_modelo ORDER BY m.le DESC, m.id DESC LIMIT 1)       AS modelo_dernier_statut,
       (SELECT MAX(a.horodatage) FROM op_appels a WHERE a.id_modelo = c.id_modelo
         AND a.issue NOT IN ('REPONDEUR', 'PAS_DE_REPONSE'))                        AS dernier_contact_le,
       r.recommandation_tel, r.recommandation_motif, r.updated_at AS fiche_maj_le,
@@ -1393,6 +1395,15 @@ router.get('/pilotage', pilotage, (req, res) => {
         SUM(CASE WHEN r.courrier_renvoye = 1 THEN 1 ELSE 0 END)       AS courriers_renvoyes
       FROM op_resultats r JOIN op_contacts c ON c.id_modelo = r.id_modelo
       WHERE ${where}`).get(...params),
+
+    // Le pont Modelo : combien de fiches ont été reportées, combien attendent.
+    // Admin seulement (le report se fait avec son compte) ; pour un manager,
+    // les deux compteurs restent à zéro.
+    modelo: moi.role === 'admin' ? {
+      reportees: db.prepare('SELECT COUNT(*) n FROM op_contacts WHERE modelo_reporte_le IS NOT NULL').get().n,
+      a_reporter: M.fichesAReporter().fiches.length,
+      dernier_passage: db.prepare("SELECT MAX(le) le FROM op_modelo_reports WHERE statut = 'REPORTE'").get().le,
+    } : null,
 
     rappels_du_jour: joint(`
       SELECT c.id_modelo, c.nom, c.prenom, c.conseiller, a.rappel_le

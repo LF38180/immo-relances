@@ -62,6 +62,14 @@ export default function PilotagePage({ onAppeler }) {
           <Tuile valeur={r.panneau || 0} libelle="panneaux acceptés" />
         </div>
 
+        {/* Le pont Modelo, pour l'admin : ce qui est reporté, ce qui attend. */}
+        {d.modelo && (
+          <div className="grid grid-cols-2 gap-2">
+            <Tuile valeur={d.modelo.reportees} libelle={`fiches reportées dans Modelo${d.modelo.dernier_passage ? ` · dernier passage le ${dateLocale(d.modelo.dernier_passage)}` : ''}`} />
+            <Tuile valeur={d.modelo.a_reporter} libelle="fiches à reporter dans Modelo (Listing → Report)" />
+          </div>
+        )}
+
         <Section titre="Avancement" aide={`${totalAppeles} contacts appelés sur ${totalPortefeuille}`}>
           <table className="w-full text-xs">
             <thead>

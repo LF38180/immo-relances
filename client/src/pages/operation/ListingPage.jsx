@@ -146,7 +146,7 @@ export default function ListingPage({ onAppeler }) {
       'adresse_maj', 'code_postal_maj', 'commune_maj', 'statut_actuel',
       'toujours_proprietaire', 'revendu_quand', 'projet', 'projet_echeance',
       'situations', 'projet_type', 'investissement_locatif', 'situation_autre', 'projet_autre',
-      'tel_portable_maj', 'tel_fixe_maj',
+      'tel_portable_maj', 'tel_fixe_maj', 'modelo_reporte_le', 'modelo_dernier_statut',
       'recommandation_nom', 'recommandation_tel', 'recommandation_motif',
       'fiche_confirmee', 'fiche_maj_le', 'derniere_note',
       'attribuee_le', 'attribuee_par', 'attribuee_de']
@@ -458,6 +458,13 @@ function Ligne({ l, ouverte, onBasculer, conseillers, onCorrige, onAppeler }) {
                 l.attribuee_de ? ` (avant : ${l.attribuee_de})` : ''}`} />
           )}
           {l.rappel_le && <Info label="Rappel prévu" v={new Date(l.rappel_le).toLocaleString('fr-FR')} />}
+          {(l.modelo_reporte_le || l.modelo_dernier_statut) && (
+            <Info label="Modelo"
+              v={`${l.modelo_reporte_le ? `mise à jour faite le ${new Date(l.modelo_reporte_le.replace(' ', 'T') + 'Z')
+                .toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}` : 'jamais reportée'}${
+                l.modelo_dernier_statut && /^ECHEC/.test(l.modelo_dernier_statut) ? ` · dernier passage en échec${l.modelo_dernier_statut.includes(':') ? ' (' + l.modelo_dernier_statut.split(':').slice(1).join(':').trim() + ')' : ''}` : ''}${
+                resteAReporter(l) ? ' · du nouveau à reporter' : ''}`} />
+          )}
           {l.actualisation && <Info label="Estimation" v={`${l.actualisation.toLowerCase()}${l.date_rdv ? ` — ${l.date_rdv}` : ''}`} />}
           {/* Ce que l'agent a rapporté de l'appel, regroupé : c'est ce bloc
               qu'on recopie dans Modelo. */}
