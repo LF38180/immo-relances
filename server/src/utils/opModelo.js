@@ -43,6 +43,10 @@ function fichesAReporter() {
            r.recommandation_nom, r.recommandation_tel, r.recommandation_email, r.recommandation_motif, r.recommandation_mode
     FROM op_contacts c LEFT JOIN op_resultats r ON r.id_modelo = c.id_modelo`).all();
   const appelsDe = db.prepare(`SELECT * FROM op_appels WHERE id_modelo = ? AND horodatage > ? ORDER BY horodatage ASC, id ASC`);
+  // Qui a signalé le courrier revenu : le journal (depuis le 04/11), à défaut
+  // la personne qui a saisi les premiers retours avant le journal.
+  const auteurNpai = db.prepare(`SELECT auteur FROM op_journal WHERE id_modelo = ? AND action = 'NPAI' ORDER BY le DESC LIMIT 1`);
+  const SAISIE_NPAI_AVANT_JOURNAL = 'Loïck FERRUCCI';
 
   const fiches = []; const recommandations = [];
   for (const c of contacts) {
@@ -54,9 +58,11 @@ function fichesAReporter() {
     if (!avecContact.length && !resultatNouveau) continue;
 
     const dernier = avecContact[avecContact.length - 1] || null;
-    // Sans appel (un NPAI saisi par un manager, par exemple) : le conseiller
-    // de la fiche, à défaut l'agence.
-    const agent = dernier?.conseiller || c.conseiller || 'Le Quai de l’Immobilier';
+    // Sans appel : le conseiller de la fiche ; sans conseiller (fiche à
+    // répartir), la personne qui a signalé le courrier revenu. Jamais un nom
+    // générique : Modelo réattribue la fiche à qui agit dessus.
+    const agent = dernier?.conseiller || c.conseiller
+      || auteurNpai.get(c.id_modelo)?.auteur || SAISIE_NPAI_AVANT_JOURNAL;
     const dateNote = dernier?.horodatage || c.resultat_le;
 
     const parts = [];
@@ -95,6 +101,11 @@ function fichesAReporter() {
     // Rien à dire : une ligne de résultat vide (un essai d'avant l'opération)
     // ou une saisie sans contenu. Pas de note vide dans Modelo.
     if (!parts.length) continue;
+    // Pas de conversation, mais des informations saisies : le dire en tête,
+    // pour que la note ne se lise pas comme un appel abouti.
+    if (!dernier && !(c.r_npai === 1 || c.npai === 1)) {
+      parts.unshift(tentatives.length ? 'Non joint. Infos connues de l’agent :' : 'Sans appel. Infos saisies par l’agent :');
+    }
 
     const refus = dernier?.issue === 'REFUS_FERME' || c.stop_telephone === 1 && avecContact.some(a => a.issue === 'REFUS_FERME');
     const proposer = [];

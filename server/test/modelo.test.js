@@ -70,6 +70,13 @@ fiche('M-1', 'DURAND'); fiche('M-2', 'MARTIN'); fiche('M-3', 'REFUS'); fiche('M-
     eq(m1.stop_tel, 0); eq(m1.stop_mail, 0); eq(m1.agent, 'Lilas FERKOUS'); vrai(/^\d\d-\d\d-\d{4}$/.test(m1.date_note), m1.date_note);
     vrai(m1.a_proposer_a_loick.includes('Recommandation'));
   });
+  t('non joint mais fiche remplie : la note le dit', () => {
+    db.prepare("INSERT INTO op_contacts (id_modelo, nom, prenom, conseiller, agence, script, courrier_etat, a_dispatcher, tel_portable) VALUES ('M-5','NONJOINT','P','Lilas FERKOUS','LE QUAI',1,'ENVOYE',0,'0639980009')").run();
+    db.prepare("INSERT INTO op_appels (id_modelo, conseiller, issue, horodatage) VALUES ('M-5','Lilas FERKOUS','PAS_DE_REPONSE', datetime('now'))").run();
+    db.prepare("INSERT INTO op_resultats (id_modelo, projet_type, projet_echeance) VALUES ('M-5','ACHAT',6)").run();
+    const x = require('../src/utils/opModelo.js').fichesAReporter().fiches.find(f => f.id_modelo === 'M-5');
+    vrai(x && x.commentaire.includes('Non joint. Infos connues de l’agent : Projet : achat d\'ici 6 mois.'), x && x.commentaire);
+  });
   t('refus ferme : stop tel et stop mail à 1, note de refus', () => {
     const m3 = e.corps.fiches.find(f => f.id_modelo === 'M-3');
     eq(m3.stop_tel, 1); eq(m3.stop_mail, 1); vrai(m3.commentaire.includes('Refus de démarchage'));
@@ -89,7 +96,7 @@ fiche('M-1', 'DURAND'); fiche('M-2', 'MARTIN'); fiche('M-3', 'REFUS'); fiche('M-
     eq(db.prepare("SELECT COUNT(*) n FROM op_modelo_reports").get().n, 2);
   });
   e = await req('adm@t.fr', 'GET', '/operation/modelo/a-reporter');
-  t('M-1 reportée sort de l\'export, M-3 en échec y reste', () => eq(e.corps.fiches.map(f => f.id_modelo).join(','), 'M-3'));
+  t('M-1 reportée sort de l\'export, M-3 en échec y reste', () => eq(e.corps.fiches.map(f => f.id_modelo).filter(x => x !== 'M-5').join(','), 'M-3'));
 
   await new Promise(res => setTimeout(res, 1100));
   r = await req('a@t.fr', 'POST', '/operation/contacts/M-1/appel', { issue: 'A_RAPPELER', rappel_le: '2026-11-10T15:00' });
