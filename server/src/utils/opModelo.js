@@ -54,7 +54,9 @@ function fichesAReporter() {
     if (!avecContact.length && !resultatNouveau) continue;
 
     const dernier = avecContact[avecContact.length - 1] || null;
-    const agent = dernier?.conseiller || c.conseiller || '';
+    // Sans appel (un NPAI saisi par un manager, par exemple) : le conseiller
+    // de la fiche, à défaut l'agence.
+    const agent = dernier?.conseiller || c.conseiller || 'Le Quai de l’Immobilier';
     const dateNote = dernier?.horodatage || c.resultat_le;
 
     const parts = [];
