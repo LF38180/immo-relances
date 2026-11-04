@@ -82,6 +82,16 @@ export default function EcranAppel({ contact: c, onEnregistre, onPasser, horsFil
   const enregistrer = async () => {
     if (!issue) return toast.error('Indiquez comment s’est terminé l’appel')
     if (issue === 'A_RAPPELER' && !rappelLe) return toast.error('Précisez quand rappeler')
+    // Une fiche remplie (situation, projet, propositions…) avec « Répondeur »
+    // ou « Pas de réponse » : presque toujours un mauvais bouton. Premier
+    // jour : une fiche détaillée classée « pas de réponse », reportée telle
+    // quelle dans Modelo. On demande, on n'interdit pas.
+    const conversation = ['situations', 'statut_actuel', 'projet_type', 'projet', 'actualisation',
+      'toujours_proprietaire', 'investissement_locatif', 'recommandation_nom', 'fiche_confirmee', 'adresse_maj']
+      .some(k => res[k] != null && res[k] !== '' && res[k] !== 0)
+    if (['REPONDEUR', 'PAS_DE_REPONSE'].includes(issue) && conversation
+      && !window.confirm('Vous avez rempli la fiche comme après une conversation, mais l’issue est « ' +
+        (issue === 'REPONDEUR' ? 'Répondeur' : 'Pas de réponse') + ' ». Enregistrer quand même ?')) return
     setEnvoi(true)
 
     // En démonstration, rien ne part : l'écran se comporte exactement comme en
