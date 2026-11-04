@@ -194,7 +194,12 @@ const t = (n, fn) => { try { fn(); console.log('  OK  ' + n) } catch (e) { conso
     VALUES (?,?, 'PAS_DE_REPONSE', datetime('now'))`);
   for (let i = 0; i < 4; i++) ins.run(cible.id_modelo, 'Tara ZOPPAS');
 
-  r = await call('POST', `/operation/contacts/${cible.id_modelo}/appel`, tTara, { issue: 'JOINT' });
+  // Un rappel convenu déjà échu : la fiche est due, donc proposée malgré le
+  // plafond. (Un joint, lui, ne revient plus dans la file : la conversation a
+  // eu lieu.)
+  const echu = new Date(Date.now() - 3600000);
+  const rappelEchu = `${echu.getFullYear()}-${String(echu.getMonth() + 1).padStart(2, '0')}-${String(echu.getDate()).padStart(2, '0')}T${String(echu.getHours()).padStart(2, '0')}:${String(echu.getMinutes()).padStart(2, '0')}`;
+  r = await call('POST', `/operation/contacts/${cible.id_modelo}/appel`, tTara, { issue: 'A_RAPPELER', rappel_le: rappelEchu });
   t('le 5e appel du mois passe, et porte la trace du plafond', () => {
     assert.strictEqual(r.status, 201, 'statut ' + r.status);
     assert.ok(/PLAFOND/.test(r.body.hors_cadre || ''), 'trace : ' + r.body.hors_cadre);

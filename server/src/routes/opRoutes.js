@@ -344,12 +344,15 @@ router.get('/file', conseillerOuPlus, (req, res) => {
   // mais on ne les met pas non plus sous la main en premier.
   const ordonnee = [...rappelsDus, ...jamaisAppeles, ...aRelancer];
   const signalee = (l) => l.stop_telephone || l.appels_ce_mois >= R.PLAFOND_MENSUEL;
-  // Filet : toute fiche encore ouverte qu'aucun groupe n'a reprise. Un contact
-  // joint mais sans suite, un faux numéro à revoir — sans ce filet, ils
-  // disparaîtraient de l'écran sans que personne ne s'en aperçoive.
+  // Ce qui ne revient pas de lui-même : un joint (la conversation a eu lieu),
+  // un faux numéro ou une erreur d'identité (fiche à corriger, pas à
+  // rappeler). Un répondeur ou un sans-réponse d'hier n'est pas encore à
+  // relancer : il reviendra à 48 h. Un rappel convenu attend son heure.
+  // Le premier matin, un « filet » remettait tout cela en fin de file : les
+  // agents retrouvaient leurs appels de la veille dans « À faire ».
   const deja = new Set(ordonnee.map(l => l.id_modelo));
   const autres = ouverts.filter(l => !deja.has(l.id_modelo));
-  const complete = [...ordonnee, ...autres];
+  const complete = ordonnee;
 
   const file = [...complete.filter(l => !signalee(l)), ...complete.filter(signalee)]
     .map(l => ({
