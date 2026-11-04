@@ -177,18 +177,16 @@ function Progression({ index, total, bilan, cumul, plage, horsFile, recherche, s
                 {' '}<b className="text-quai-navy">{cumul.fiches_a_jour}</b> fiches
               </span>
             )}
-            {bilan.faits > 0 && (
-              <button onClick={onRecap} className="text-quai-muted hover:text-quai-navy underline">
-                {bilan.faits} aujourd’hui
-              </button>
-            )}
-            <button onClick={onRecap} className="text-quai-muted hover:text-quai-navy p-1"
-              aria-label="Récapitulatif des appels">
-              <Icon name="history" size="sm" />
+            {/* Deux boutons nommés plutôt que deux icônes : « où j'en suis »
+                se lit sans deviner. À faire = ce qui reste dans la file ;
+                effectués = les appels du jour, corrigeables. */}
+            <button onClick={onListe}
+              className="inline-flex items-center gap-1 px-2 py-1 rounded-full border border-quai-border text-quai-navy hover:border-quai-gold">
+              <Icon name="table" size="sm" /> À faire <b>{Math.max(total - index, 0)}</b>
             </button>
-            <button onClick={onListe} className="text-quai-muted hover:text-quai-navy p-1"
-              aria-label="Voir la liste">
-              <Icon name="table" size="sm" />
+            <button onClick={onRecap}
+              className="inline-flex items-center gap-1 px-2 py-1 rounded-full border border-quai-border text-quai-navy hover:border-quai-gold">
+              <Icon name="history" size="sm" /> Effectués <b>{bilan.faits}</b>
             </button>
           </div>
         </div>

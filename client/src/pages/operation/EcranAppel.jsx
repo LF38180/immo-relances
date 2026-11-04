@@ -3,6 +3,7 @@ import api from '../../utils/api'
 import toast from 'react-hot-toast'
 import Icon from '../../components/ui/Icon'
 import SaisieAdresse from '../../components/SaisieAdresse'
+import { useAuth } from '../../hooks/useAuth'
 
 // Un contact, plein écran. L'agent appelle, note, enregistre : le suivant
 // s'affiche tout seul. Pas de retour à une liste entre deux appels.
@@ -35,6 +36,7 @@ function bienCourt(c) {
 }
 
 export default function EcranAppel({ contact: c, onEnregistre, onPasser, horsFile, origine, demo, libelleRetour }) {
+  const { user } = useAuth()
   // Durée de l'appel, mesurée depuis l'ouverture de la fiche. Le manager s'en
   // sert comme signal : un appel qui passe de six minutes à quatre-vingt-dix
   // secondes, c'est quelqu'un qui expédie.
@@ -333,6 +335,20 @@ export default function EcranAppel({ contact: c, onEnregistre, onPasser, horsFil
               <Saisie label="Rappeler le" type="datetime-local" value={rappelLe} onChange={setRappelLe} />
             )}
 
+            {/* Le message à laisser, sous les yeux au moment de le dire :
+                37 % des appels du premier jour sont tombés sur un répondeur,
+                et la phrase vivait dans l'aide. On ne parle du courrier que
+                s'il est parti et n'est pas revenu. */}
+            {issue === 'REPONDEUR' && (
+              <blockquote className="text-[13px] text-quai-navy bg-quai-gold/10 border-l-2 border-quai-gold pl-2.5 py-1.5 leading-snug italic">
+                « Bonjour, {user?.prenom || '[votre prénom]'} du Quai de l’Immobilier.
+                {c.courrier_etat === 'ENVOYE' && c.npai !== 1
+                  ? ' Vous avez reçu le courrier de notre président — je voulais prendre de vos nouvelles et vous parler d’une soirée le 3 décembre.'
+                  : ' Je voulais prendre de vos nouvelles et vous parler d’une soirée le 3 décembre.'}
+                {' '}Je vous rappelle dans les prochains jours. »
+              </blockquote>
+            )}
+
             {issue === 'REFUS_FERME' && (
               <p className="text-[11px] text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1.5 leading-snug">
                 Retrait définitif, ici et sur les opérations suivantes. Horodaté, conservé trois ans.
@@ -461,7 +477,9 @@ export default function EcranAppel({ contact: c, onEnregistre, onPasser, horsFil
           {/* Tous scripts confondus. Les champs sont visibles d'emblée : repliés
               derrière la saisie d'un nom, l'agent ne savait pas qu'on attendait
               aussi un numéro et un motif — et un nom seul ne se rappelle pas. */}
-          <Carte titre="Une personne à contacter ?"
+          {/* Ouverte d'office : repliée, elle n'a produit aucune
+              recommandation sur 74 clients joints le premier jour. */}
+          <Carte titre="Une personne à contacter ?" ouverte
             aide="Un ancien client satisfait en connaît souvent. Sans numéro ni motif, la recommandation reste lettre morte.">
             <Saisie label="Nom" value={res.recommandation_nom || ''}
               onChange={v => champ('recommandation_nom', v)} />

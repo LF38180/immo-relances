@@ -85,7 +85,7 @@ export default function OperationHub({ onRetour }) {
         style={{ paddingTop: 'max(0.5rem, env(safe-area-inset-top))' }}>
         <img src="/operation/sceau-badge.png" alt="" className="w-8 h-8 rounded shrink-0" />
         <div className="min-w-0 flex-1">
-          <div className="font-display font-semibold text-sm leading-tight">Anciens clients</div>
+          <div className="font-display font-semibold text-sm leading-tight whitespace-nowrap truncate">Anciens clients</div>
           <div className="text-[11px] text-white/60 truncate">{user?.prenom} {user?.nom}</div>
         </div>
         {/* L'aide suit l'écran : pendant un appel ce sont les objections,
