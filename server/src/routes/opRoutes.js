@@ -230,6 +230,8 @@ router.get('/mon-acces', (req, res) => {
     pilote: moi.global,
     agence: moi.agence,
     sans_courrier: sansCourrier,
+    // Le pont Modelo, sur l'accueil de l'admin : ce qui attend un report.
+    modelo_a_reporter: moi.role === 'admin' ? M.fichesAReporter().fiches.length : null,
     bilan: {
       total: bilan.total || 0,
       restants: bilan.restants || 0,

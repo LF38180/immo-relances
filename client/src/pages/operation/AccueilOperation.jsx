@@ -83,6 +83,17 @@ export default function AccueilOperation({ acces, bilan, onCommencer, estPilote 
           </div>
         </div>
 
+        {/* L'admin voit d'un coup d'œil ce qui attend un report dans Modelo.
+            Le report se fait depuis Listing → Report dans Modelo. */}
+        {acces?.modelo_a_reporter != null && (
+          <div className={`rounded-xl border px-3 py-2.5 text-sm ${acces.modelo_a_reporter
+            ? 'border-amber-300 bg-amber-50 text-quai-navy' : 'border-quai-border bg-white text-quai-muted'}`}>
+            {acces.modelo_a_reporter
+              ? <><b>{acces.modelo_a_reporter}</b> fiche{acces.modelo_a_reporter > 1 ? 's' : ''} avec du nouveau à reporter dans Modelo <span className="text-quai-muted">· Listing → Report dans Modelo</span></>
+              : 'Modelo à jour : rien à reporter.'}
+          </div>
+        )}
+
         <p className="text-[11px] text-quai-muted text-center">
           Du 3 au 14 novembre. La soirée est le 3 décembre.
         </p>
