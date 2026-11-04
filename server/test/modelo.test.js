@@ -48,6 +48,8 @@ fiche('M-1', 'DURAND'); fiche('M-2', 'MARTIN'); fiche('M-3', 'REFUS'); fiche('M-
   // M-3 : refus ferme.
   r = await req('a@t.fr', 'POST', '/operation/contacts/M-3/appel', { issue: 'REFUS_FERME' });
 
+  // M-4 : une ligne de résultat vide, sans appel (essai d'avant l'opération).
+  db.prepare("INSERT INTO op_resultats (id_modelo) VALUES ('M-4')").run();
   let e = await req('adm@t.fr', 'GET', '/operation/modelo/a-reporter');
   t('deux fiches à reporter, pas le répondeur seul ni la fiche vide', () => {
     eq(e.statut, 200); eq(e.corps.fiches.map(f => f.id_modelo).sort().join(','), 'M-1,M-3');

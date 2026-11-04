@@ -92,6 +92,10 @@ function fichesAReporter() {
     if (dernier?.notes) parts.push(`Note : « ${dernier.notes.trim()} »`);
     if (tentatives.length) parts.push('Tentatives : ' + tentatives.map(a => `${jjmm(a.horodatage)} ${a.issue === 'REPONDEUR' ? 'répondeur' : 'pas de réponse'}`).join(', ') + '.');
 
+    // Rien à dire : une ligne de résultat vide (un essai d'avant l'opération)
+    // ou une saisie sans contenu. Pas de note vide dans Modelo.
+    if (!parts.length) continue;
+
     const refus = dernier?.issue === 'REFUS_FERME' || c.stop_telephone === 1 && avecContact.some(a => a.issue === 'REFUS_FERME');
     const proposer = [];
     if (dernier?.issue === 'DECEDE') proposer.push('Archiver la fiche (décédé)');
