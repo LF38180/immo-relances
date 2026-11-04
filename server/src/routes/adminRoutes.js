@@ -2,6 +2,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const { db } = require('../database');
 const { requireAuth, requireRole } = require('../auth');
+const { journaliser } = require('../utils/journal');
 
 // 'conseiller' manquait : on ne pouvait ni en créer un, ni modifier le rôle
 // de l'un des quinze créés par l'import de l'opération.
@@ -56,6 +57,7 @@ router.post('/users', requireRole('admin'), (req, res) => {
     const result = db.prepare(`INSERT INTO users (nom, prenom, email, password, role, agence, must_change_password)
       VALUES (?, ?, ?, ?, ?, ?, 1)`)
       .run(nom.trim(), prenom.trim(), email.toLowerCase().trim(), bcrypt.hashSync(String(password).trim(), 10), role, agence || null);
+    journaliser(req.user, 'COMPTE_CREE', { details: { compte: `${prenom.trim()} ${nom.trim()}`, email: email.toLowerCase().trim(), role, agence: agence || null } });
     res.status(201).json({ id: result.lastInsertRowid });
   } catch {
     res.status(400).json({ error: 'Email déjà utilisé' });
@@ -85,7 +87,71 @@ router.put('/users/:id', requireRole('admin'), (req, res) => {
   db.prepare(`UPDATE users SET nom = COALESCE(?, nom), prenom = COALESCE(?, prenom),
     email = COALESCE(?, email), role = COALESCE(?, role), actif = COALESCE(?, actif) WHERE id = ?`)
     .run(nom, prenom, emailNorm, role, actif, req.params.id);
+  {
+    const cible = db.prepare('SELECT prenom, nom FROM users WHERE id = ?').get(req.params.id);
+    const champs = {};
+    if (nom != null) champs.nom = nom; if (prenom != null) champs.prenom = prenom;
+    if (emailNorm != null) champs.email = emailNorm; if (role != null) champs.role = role;
+    if (actif != null) champs.actif = actif; if (agence !== undefined) champs.agence = agence;
+    if (password) champs.mot_de_passe = 'réinitialisé';
+    if (must_change_password !== undefined) champs.changement_impose = !!must_change_password;
+    journaliser(req.user, 'COMPTE_MODIFIE', { details: { compte: cible ? `${cible.prenom} ${cible.nom}` : `#${req.params.id}`, ...champs } });
+  }
   res.json({ ok: true });
+});
+
+// Activité — admin seulement.
+//
+// Tout ce qui s'est passé, par qui, quand : le journal (connexions, comptes,
+// NPAI, exclusions, vérifications, agence, appels effacés, imports) réuni en
+// lecture aux tables qui existaient déjà (appels, mises à jour de fiche,
+// attributions, oppositions). Filtres : période, personne, type. Les dates
+// sont en UTC comme partout ; l'écran les affiche en heure française.
+router.get('/activite', requireRole('admin'), (req, res) => {
+  const depuis = /^\d{4}-\d{2}-\d{2}$/.test(req.query.depuis || '') ? req.query.depuis : null;
+  const jusqua = /^\d{4}-\d{2}-\d{2}$/.test(req.query.jusqua || '') ? req.query.jusqua : null;
+  const personne = String(req.query.personne || '').trim();
+  const type = String(req.query.type || '').trim();
+  const limite = Math.min(parseInt(req.query.limite, 10) || 2000, 10000);
+
+  const union = `
+    SELECT j.le AS le, j.auteur AS auteur, j.action AS type, j.id_modelo AS id_modelo, j.details AS details
+      FROM op_journal j
+    UNION ALL
+    SELECT a.horodatage, a.conseiller, 'APPEL', a.id_modelo,
+           json_object('issue', a.issue, 'rappel_le', a.rappel_le, 'duree_sec', a.duree_sec, 'hors_cadre', a.hors_cadre)
+      FROM op_appels a
+    UNION ALL
+    SELECT r.horodatage, r.auteur, 'MAJ_FICHE', r.id_modelo, r.champs
+      FROM op_resultats_journal r
+    UNION ALL
+    SELECT t.le, t.par, 'ATTRIBUTION', t.id_modelo,
+           json_object('de', t.de, 'vers', t.vers, 'source', t.source, 'reprise', t.reprise)
+      FROM op_attributions t
+    UNION ALL
+    SELECT o.horodatage, o.agent, 'OPPOSITION', o.id_modelo,
+           json_object('canal', o.canal, 'origine', o.origine)
+      FROM op_journal_opposition o`;
+
+  const conditions = []; const params = [];
+  if (depuis) { conditions.push("date(e.le, 'localtime') >= ?"); params.push(depuis); }
+  if (jusqua) { conditions.push("date(e.le, 'localtime') <= ?"); params.push(jusqua); }
+  if (personne) { conditions.push('sans_casse(e.auteur) = sans_casse(?)'); params.push(personne); }
+  if (type) { conditions.push('e.type = ?'); params.push(type); }
+  const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
+
+  const lignes = db.prepare(`
+    SELECT e.le, e.auteur, e.type, e.id_modelo, e.details, c.nom, c.prenom, c.conseiller
+    FROM (${union}) e
+    LEFT JOIN op_contacts c ON c.id_modelo = e.id_modelo
+    ${where}
+    ORDER BY e.le DESC
+    LIMIT ?`).all(...params, limite);
+
+  const personnes = db.prepare(`SELECT DISTINCT auteur FROM (${union}) WHERE auteur IS NOT NULL ORDER BY auteur`).all().map(r => r.auteur);
+  const types = db.prepare(`SELECT type, COUNT(*) n FROM (${union}) GROUP BY type ORDER BY type`).all();
+
+  res.json({ lignes, total: lignes.length, personnes, types });
 });
 
 // Paramètres

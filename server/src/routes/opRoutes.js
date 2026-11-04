@@ -15,6 +15,7 @@ const R = require('../utils/opRegles');
 const S = require('../utils/opScripts');
 const I = require('../utils/opImport');
 const D = require('../utils/opDemo');
+const { journaliser } = require('../utils/journal');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -651,6 +652,7 @@ router.post('/contacts/:id/agence', pilotage, dansPerimetre, (req, res) => {
 
   db.prepare("UPDATE op_contacts SET agence = ?, updated_at = datetime('now') WHERE id_modelo = ?")
     .run(agence, c.id_modelo);
+  journaliser(identite(req), 'AGENCE', { id_modelo: c.id_modelo, details: { avant: c.agence, apres: agence } });
   res.json({ ok: true, avant: c.agence, apres: agence });
 });
 
@@ -706,6 +708,7 @@ router.post('/contacts/:id/verifier', pilotage, dansPerimetre, (req, res) => {
     }
   })();
 
+  journaliser(moi, 'VERIFICATION', { id_modelo: c.id_modelo, details: { verdict, registre: c.partie_au_registre } });
   res.json({ ok: true, verdict });
 });
 
@@ -743,6 +746,7 @@ router.delete('/appels/:id', requireRole('admin'), (req, res) => {
     db.prepare('DELETE FROM op_appels WHERE id = ?').run(req.params.id);
   })();
 
+  journaliser(moi, 'APPEL_EFFACE', { id_modelo: appel.id_modelo, details: { appel_id: appel.id, issue: appel.issue, conseiller: appel.conseiller, le: appel.horodatage } });
   res.json({ ok: true, efface: appel.id, contact: appel.id_modelo });
 });
 
@@ -829,6 +833,7 @@ router.post('/contacts/:id/exclure', pilotage, dansPerimetre, (req, res) => {
     db.prepare('DELETE FROM op_contacts WHERE id_modelo = ?').run(c.id_modelo);
   })();
 
+  journaliser(moi, 'EXCLUSION', { id_modelo: c.id_modelo, details: { motif, nom: c.nom, prenom: c.prenom, conseiller: c.conseiller } });
   res.json({ ok: true, exclu: c.id_modelo, motif });
 });
 
@@ -872,6 +877,7 @@ router.post('/contacts/:id/npai', pilotage, dansPerimetre, (req, res) => {
     }
   })();
 
+  journaliser(identite(req), 'NPAI', { id_modelo: c.id_modelo, details: { npai } });
   res.json({ ok: true, contact: enrichir(getContact(c.id_modelo)) });
 });
 
@@ -1244,6 +1250,7 @@ router.post('/import-exclus', requireRole('admin'), (req, res) => {
     return res.status(400).json({ error: 'Aucun contenu à importer' });
   const r = I.importerExclus(csv);
   if (!r.ok) return res.status(400).json(r);
+  journaliser(identite(req), 'IMPORT_EXCLUS', { details: { resultat: r } });
   res.json(r);
 });
 
@@ -1260,6 +1267,7 @@ router.post('/import', requireRole('admin'), (req, res) => {
     fichier: b.fichier || null,
   });
   if (!r.ok) return res.status(400).json(r);
+  if (!simulation) journaliser(identite(req), 'IMPORT', { details: { fichier: b.fichier || null, ...Object.fromEntries(Object.entries(r).filter(([k, v]) => typeof v === 'number')) } });
   res.json(r);
 });
 

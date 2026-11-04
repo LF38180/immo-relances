@@ -761,4 +761,23 @@ db.exec(`
   if (!cols.includes('projet_autre')) db.exec("ALTER TABLE op_resultats ADD COLUMN projet_autre TEXT");
 }
 
+// Journal d'activité : qui a fait quoi, quand. Connexions, comptes, NPAI,
+// exclusions, vérifications, agence, appels effacés, imports. Les appels, les
+// mises à jour de fiche, les attributions et les oppositions ont déjà leur
+// table : l'onglet Activité les réunit en lecture. Ce journal ne couvre que
+// ce qui suit sa mise en ligne (04/11/2026).
+db.exec(`
+  CREATE TABLE IF NOT EXISTS op_journal (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    le TEXT NOT NULL DEFAULT (datetime('now')),
+    auteur TEXT,
+    user_id INTEGER,
+    action TEXT NOT NULL,
+    id_modelo TEXT,
+    details TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_op_journal_le ON op_journal(le DESC);
+  CREATE INDEX IF NOT EXISTS idx_op_journal_auteur ON op_journal(auteur, le DESC);
+`);
+
 module.exports = { db, recalculerScore, DB_PATH };

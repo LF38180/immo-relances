@@ -92,7 +92,7 @@ export default function AdminPage() {
         <PageHeader title="Administration" />
 
         <div className="flex overflow-x-auto border-b border-quai-border mb-6">
-          {[['users','Utilisateurs','users'],['params','Paramètres','settings'],['courtage','Suivi Marine','phone-call'],...(estAdmin ? [['imports','Imports courtage','file-up'],['donnees','Données','database']] : [])].map(([t, lbl, ic]) => (
+          {[['users','Utilisateurs','users'],['params','Paramètres','settings'],['courtage','Suivi Marine','phone-call'],...(estAdmin ? [['imports','Imports courtage','file-up'],['donnees','Données','database'],['activite','Activité','history']] : [])].map(([t, lbl, ic]) => (
             <button key={t} onClick={() => setTab(t)}
               className={`shrink-0 whitespace-nowrap px-6 py-3 text-sm font-medium border-b-2 transition-colors inline-flex items-center gap-2 ${tab === t ? 'border-quai-gold text-quai-navy' : 'border-transparent text-quai-muted hover:text-quai-navy'}`}>
               <Icon name={ic} size="sm" /> {lbl}
@@ -264,6 +264,8 @@ export default function AdminPage() {
 
         {tab === 'imports' && estAdmin && <ImportsCourtage />}
 
+        {tab === 'activite' && estAdmin && <Activite />}
+
         {tab === 'donnees' && estAdmin && (
           <div>
             <h2 className="font-semibold text-quai-navy mb-4">Données</h2>
@@ -295,6 +297,123 @@ export default function AdminPage() {
 }
 
 // Imports du cahier des messages : lancement + journal des 20 derniers imports.
+// Qui a fait quoi, quand. Journal serveur réuni aux appels, mises à jour,
+// attributions et oppositions. Le journal lui-même ne commence qu'à sa mise
+// en ligne ; les appels et attributions remontent au début de l'opération.
+const TYPES_ACTIVITE = {
+  CONNEXION: 'Connexion', MOT_DE_PASSE: 'Mot de passe changé', COMPTE_CREE: 'Compte créé',
+  COMPTE_MODIFIE: 'Compte modifié', APPEL: 'Appel', MAJ_FICHE: 'Fiche mise à jour',
+  ATTRIBUTION: 'Attribution', OPPOSITION: 'Opposition', NPAI: 'Courrier revenu',
+  EXCLUSION: 'Fiche exclue', VERIFICATION: 'Identité tranchée', AGENCE: 'Agence changée',
+  APPEL_EFFACE: 'Appel effacé', IMPORT: 'Import', IMPORT_EXCLUS: 'Import des exclus',
+}
+const ISSUES_LIBELLES = {
+  JOINT: 'joint', REPONDEUR: 'répondeur', PAS_DE_REPONSE: 'pas de réponse', FAUX_NUMERO: 'faux numéro',
+  A_RAPPELER: 'à rappeler', REFUS_FERME: 'refus ferme', ERREUR_IDENTITE: 'pas la bonne personne', DECEDE: 'décédé',
+}
+function detailActivite(l) {
+  let d = {}
+  try { d = l.details ? JSON.parse(l.details) : {} } catch { return l.details || '' }
+  switch (l.type) {
+    case 'APPEL': return [ISSUES_LIBELLES[d.issue] || d.issue, d.rappel_le && `rappel ${d.rappel_le.replace('T', ' ')}`, d.hors_cadre && 'hors cadre'].filter(Boolean).join(' · ')
+    case 'MAJ_FICHE': {
+      if (d.efface) return `appel ${d.efface.id} effacé (${ISSUES_LIBELLES[d.efface.issue] || d.efface.issue})`
+      const cles = Object.keys(d).filter(k => !['id_modelo', 'appel_id'].includes(k))
+      return cles.map(k => { const v = d[k]; const apres = v && typeof v === 'object' && 'apres' in v ? v.apres : v; return `${k} → ${apres == null || apres === '' ? '∅' : apres}` }).join(' · ')
+    }
+    case 'ATTRIBUTION': return `${d.de || 'pot commun'} → ${d.vers || 'pot commun'}${d.source === 'CORRECTION' ? ' (correction)' : d.reprise ? ' (reprise)' : ''}`
+    case 'OPPOSITION': return `${d.canal === 'MAIL' ? 'mail' : 'téléphone'} · ${String(d.origine || '').toLowerCase().replace(/_/g, ' ')}`
+    case 'NPAI': return d.npai ? 'courrier revenu signalé' : 'signalement retiré'
+    case 'EXCLUSION': return `${d.prenom || ''} ${d.nom || ''} — ${d.motif || ''}`.trim()
+    case 'VERIFICATION': return d.verdict === 'CONFIRME' ? 'confirmée' : d.verdict === 'GARDEE' ? 'gardée (autre personne au registre)' : 'écartée'
+    case 'AGENCE': return `${d.avant || '∅'} → ${d.apres || '∅'}`
+    case 'APPEL_EFFACE': return `appel du ${d.le} par ${d.conseiller} (${ISSUES_LIBELLES[d.issue] || d.issue})`
+    case 'CONNEXION': return d.role || ''
+    case 'MOT_DE_PASSE': return d.provisoire_leve ? 'mot de passe provisoire remplacé' : ''
+    case 'COMPTE_CREE': return `${d.compte} · ${d.email} · ${d.role}${d.agence ? ' · ' + d.agence : ''}`
+    case 'COMPTE_MODIFIE': return `${d.compte} : ` + Object.entries(d).filter(([k]) => k !== 'compte').map(([k, v]) => `${k} = ${v}`).join(', ')
+    default: return Object.entries(d).map(([k, v]) => `${k} = ${typeof v === 'object' ? JSON.stringify(v) : v}`).join(' · ')
+  }
+}
+function dateActivite(le) {
+  if (!le) return ''
+  return new Date(le.replace(' ', 'T') + 'Z').toLocaleString('fr-FR', { timeZone: 'Europe/Paris', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+}
+
+function Activite() {
+  const aujourdhui = new Date().toLocaleDateString('fr-CA')
+  const ilYa7 = new Date(Date.now() - 6 * 86400000).toLocaleDateString('fr-CA')
+  const [depuis, setDepuis] = useState(ilYa7)
+  const [jusqua, setJusqua] = useState(aujourdhui)
+  const [personne, setPersonne] = useState('')
+  const [type, setType] = useState('')
+  const [data, setData] = useState(null)
+  const [chargement, setChargement] = useState(false)
+
+  const charger = () => {
+    setChargement(true)
+    api.get('/admin/activite', { params: { depuis, jusqua, personne, type } })
+      .then(r => setData(r.data))
+      .catch(() => toast.error('Impossible de charger l’activité'))
+      .finally(() => setChargement(false))
+  }
+  useEffect(charger, [depuis, jusqua, personne, type])
+
+  const exporter = () => {
+    if (!data) return
+    const ech = (v) => { const x = v == null ? '' : String(v); return /[";\n]/.test(x) ? '"' + x.replace(/"/g, '""') + '"' : x }
+    const lignes = data.lignes.map(l => [dateActivite(l.le), l.le, l.auteur, TYPES_ACTIVITE[l.type] || l.type, l.id_modelo, [l.prenom, l.nom].filter(Boolean).join(' '), detailActivite(l)])
+    const csv = [['date', 'utc', 'qui', 'action', 'id_modelo', 'fiche', 'detail'].join(';'), ...lignes.map(l => l.map(ech).join(';'))].join('\n')
+    const url = URL.createObjectURL(new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' }))
+    const a = document.createElement('a'); a.href = url; a.download = `activite-${depuis}-${jusqua}.csv`; a.click(); URL.revokeObjectURL(url)
+  }
+
+  return (
+    <div>
+      <div className="flex flex-wrap items-end gap-3 mb-4">
+        <div><label className="block text-xs font-medium text-quai-muted mb-1">Du</label>
+          <input type="date" className="input" value={depuis} onChange={e => setDepuis(e.target.value)} /></div>
+        <div><label className="block text-xs font-medium text-quai-muted mb-1">Au</label>
+          <input type="date" className="input" value={jusqua} onChange={e => setJusqua(e.target.value)} /></div>
+        <div><label className="block text-xs font-medium text-quai-muted mb-1">Qui</label>
+          <select className="input" value={personne} onChange={e => setPersonne(e.target.value)}>
+            <option value="">Tout le monde</option>
+            {(data?.personnes || []).map(p => <option key={p} value={p}>{p}</option>)}
+          </select></div>
+        <div><label className="block text-xs font-medium text-quai-muted mb-1">Action</label>
+          <select className="input" value={type} onChange={e => setType(e.target.value)}>
+            <option value="">Toutes</option>
+            {(data?.types || []).map(t => <option key={t.type} value={t.type}>{TYPES_ACTIVITE[t.type] || t.type} ({t.n})</option>)}
+          </select></div>
+        <button onClick={exporter} disabled={!data?.lignes?.length} className="btn-secondary btn-sm inline-flex items-center gap-1.5">
+          <Icon name="download" size="sm" /> Exporter en CSV
+        </button>
+        <span className="text-xs text-quai-muted">{chargement ? 'Chargement…' : data ? `${data.total} ligne${data.total > 1 ? 's' : ''}${data.total >= 2000 ? ' (limité à 2 000, resserrez la période)' : ''}` : ''}</span>
+      </div>
+      <p className="text-xs text-quai-muted mb-3">Appels, mises à jour de fiche, attributions et oppositions depuis le début de l’opération. Connexions, comptes, courriers revenus, exclusions, vérifications et imports depuis le 4 novembre 2026.</p>
+      <div className="card overflow-x-auto p-0">
+        <table className="w-full text-sm">
+          <thead><tr className="bg-quai-light text-left text-xs text-quai-muted">
+            <th className="px-3 py-2">Quand</th><th className="px-3 py-2">Qui</th><th className="px-3 py-2">Action</th><th className="px-3 py-2">Fiche</th><th className="px-3 py-2">Détail</th>
+          </tr></thead>
+          <tbody>
+            {(data?.lignes || []).map((l, i) => (
+              <tr key={i} className="border-t border-quai-border/60 align-top">
+                <td className="px-3 py-1.5 whitespace-nowrap tabular-nums text-quai-muted">{dateActivite(l.le)}</td>
+                <td className="px-3 py-1.5 whitespace-nowrap text-quai-navy">{l.auteur || '—'}</td>
+                <td className="px-3 py-1.5 whitespace-nowrap">{TYPES_ACTIVITE[l.type] || l.type}</td>
+                <td className="px-3 py-1.5 whitespace-nowrap">{l.nom ? `${l.prenom || ''} ${l.nom}`.trim() : l.id_modelo || ''}</td>
+                <td className="px-3 py-1.5 text-quai-text">{detailActivite(l)}</td>
+              </tr>
+            ))}
+            {data && !data.lignes.length && <tr><td colSpan={5} className="px-3 py-6 text-center text-quai-muted">Rien sur cette période.</td></tr>}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
 function ImportsCourtage() {
   const [imports, setImports] = useState([])
   const [loading, setLoading] = useState(true)

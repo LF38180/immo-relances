@@ -2,6 +2,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const { db } = require('../database');
 const { signToken, requireAuth } = require('../auth');
+const { journaliser } = require('../utils/journal');
 
 const router = express.Router();
 
@@ -19,6 +20,7 @@ router.post('/login', (req, res) => {
   }
 
   db.prepare('UPDATE users SET last_login = ? WHERE id = ?').run(new Date().toISOString(), user.id);
+  journaliser(user, 'CONNEXION', { details: { role: user.role } });
   const token = signToken(user);
   res.json({
     token,
@@ -56,6 +58,7 @@ router.put('/password', requireAuth, (req, res) => {
     db.prepare('UPDATE users SET password = ?, must_change_password = 0 WHERE id = ?')
       .run(bcrypt.hashSync(nouveau, 10), req.user.id);
   })();
+  journaliser(user, 'MOT_DE_PASSE', { details: { provisoire_leve: !!user.must_change_password } });
   res.json({ ok: true });
 });
 
