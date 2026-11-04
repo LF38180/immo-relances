@@ -146,6 +146,7 @@ export default function ListingPage({ onAppeler }) {
       'adresse_maj', 'code_postal_maj', 'commune_maj', 'statut_actuel',
       'toujours_proprietaire', 'revendu_quand', 'projet', 'projet_echeance',
       'situations', 'projet_type', 'investissement_locatif', 'situation_autre', 'projet_autre',
+      'tel_portable_maj', 'tel_fixe_maj',
       'recommandation_nom', 'recommandation_tel', 'recommandation_motif',
       'fiche_confirmee', 'fiche_maj_le', 'derniere_note',
       'attribuee_le', 'attribuee_par', 'attribuee_de']
@@ -476,6 +477,8 @@ function Ligne({ l, ouverte, onBasculer, conseillers, onCorrige, onAppeler }) {
                   v={[l.adresse_maj, l.code_postal_maj, l.commune_maj].filter(Boolean).join(' ')} />
               )}
               {!l.adresse_maj && l.commune_maj && <Info label="Nouvelle commune" v={l.commune_maj} />}
+              {l.tel_portable_maj && <Info label="Nouveau portable" v={l.tel_portable_maj} />}
+              {l.tel_fixe_maj && <Info label="Nouveau fixe" v={l.tel_fixe_maj} />}
               {(l.situations || l.statut_actuel) && (
                 <Info label="Situation" v={(l.situations || l.statut_actuel).toLowerCase().replace(/_/g, ' ').replace(/,/g, ', ')
                   + (l.situation_autre ? ` : ${l.situation_autre}` : '')} />

@@ -37,7 +37,7 @@ const diff = (avant, apres) => {
 function fichesAReporter() {
   const contacts = db.prepare(`
     SELECT c.*, r.updated_at AS resultat_le, r.adresse_maj, r.complement_maj, r.code_postal_maj, r.commune_maj,
-           r.email_maj, r.toujours_proprietaire, r.revendu_quand, r.revendu_par_qui, r.statut_actuel, r.situations,
+           r.email_maj, r.tel_portable_maj, r.tel_fixe_maj, r.toujours_proprietaire, r.revendu_quand, r.revendu_par_qui, r.statut_actuel, r.situations,
            r.situation_autre, r.investissement_locatif, r.projet, r.projet_type, r.projet_autre, r.projet_echeance,
            r.actualisation, r.date_rdv, r.soiree, r.panneau, r.fiche_confirmee, r.npai AS r_npai,
            r.recommandation_nom, r.recommandation_tel, r.recommandation_email, r.recommandation_motif, r.recommandation_mode
@@ -86,6 +86,8 @@ function fichesAReporter() {
     if (c.fiche_confirmee === 1 && !c.adresse_maj) parts.push('Coordonnées confirmées.');
     if (c.adresse_maj) parts.push(`Nouvelle adresse : ${[c.adresse_maj, c.complement_maj, c.code_postal_maj, c.commune_maj].filter(Boolean).join(', ')}.`);
     if (diff(c.email, c.email_maj)) parts.push(`Nouvel e-mail : ${c.email_maj}.`);
+    if (diff(c.tel_portable, c.tel_portable_maj)) parts.push(`Nouveau portable : ${c.tel_portable_maj}.`);
+    if (diff(c.tel_fixe, c.tel_fixe_maj)) parts.push(`Nouveau fixe : ${c.tel_fixe_maj}.`);
     if (c.recommandation_nom) parts.push(`Recommandation : ${c.recommandation_nom} (voir fichier des recommandations).`);
     if (dernier?.notes) parts.push(`Note : « ${dernier.notes.trim()} »`);
     if (tentatives.length) parts.push('Tentatives : ' + tentatives.map(a => `${jjmm(a.horodatage)} ${a.issue === 'REPONDEUR' ? 'répondeur' : 'pas de réponse'}`).join(', ') + '.');
@@ -104,8 +106,8 @@ function fichesAReporter() {
       stop_tel: (c.stop_telephone === 1 || refus) ? 1 : 0,
       stop_mail: (c.stop_mail === 1 || refus) ? 1 : 0,
       email_avant: c.email || '', email_apres: diff(c.email, c.email_maj),
-      tel_port_avant: c.tel_portable || '', tel_port_apres: '',
-      tel_fixe_avant: c.tel_fixe || '', tel_fixe_apres: '',
+      tel_port_avant: c.tel_portable || '', tel_port_apres: diff(c.tel_portable, c.tel_portable_maj),
+      tel_fixe_avant: c.tel_fixe || '', tel_fixe_apres: diff(c.tel_fixe, c.tel_fixe_maj),
       adresse_avant: c.adresse || '', adresse_apres: diff(c.adresse, c.adresse_maj),
       cp_avant: c.code_postal || '', cp_apres: c.adresse_maj ? diff(c.code_postal, c.code_postal_maj) : '',
       commune_avant: c.commune || '', commune_apres: c.adresse_maj ? diff(c.commune, c.commune_maj) : '',

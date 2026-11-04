@@ -616,6 +616,7 @@ const CHAMPS_RESULTAT = [
   'courrier_renvoye', 'date_renvoi', 'npai', 'fiche_confirmee', 'toujours_proprietaire', 'revendu_quand',
   'revendu_par_qui', 'statut_actuel', 'projet', 'projet_echeance',
   'situations', 'projet_type', 'investissement_locatif', 'situation_autre', 'projet_autre',
+  'tel_portable_maj', 'tel_fixe_maj',
   'actualisation', 'date_rdv', 'soiree', 'panneau',
   'recommandation_nom', 'recommandation_tel', 'recommandation_email',
   'recommandation_motif', 'recommandation_mode', 'consentement_tel', 'date_consentement',
@@ -1169,6 +1170,7 @@ router.get('/listing', pilotage, (req, res) => {
       -- reporter dans Modelo.
       r.code_postal_maj, r.commune_maj, r.statut_actuel, r.revendu_quand,
       r.situations, r.projet_type, r.investissement_locatif, r.situation_autre, r.projet_autre,
+      r.tel_portable_maj, r.tel_fixe_maj,
       -- Report Modelo : date du dernier report, et dernier appel avec contact.
       c.modelo_reporte_le,
       (SELECT MAX(a.horodatage) FROM op_appels a WHERE a.id_modelo = c.id_modelo

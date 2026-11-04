@@ -41,7 +41,7 @@ fiche('M-1', 'DURAND'); fiche('M-2', 'MARTIN'); fiche('M-3', 'REFUS'); fiche('M-
   let r = await req('a@t.fr', 'POST', '/operation/contacts/M-1/appel', { issue: 'JOINT', notes: 'Très content', resultat: {
     situations: 'PROPRIETAIRE,BAILLEUR', projet_type: 'VENTE', projet_echeance: 6, actualisation: 'ACCEPTEE', date_rdv: '2026-11-07',
     soiree: 1, adresse_maj: '5 rue B', code_postal_maj: '38100', commune_maj: 'Grenoble', email_maj: 'nouveau@ex.fr',
-    recommandation_nom: 'Sophie LEROY', recommandation_tel: '0600000000', recommandation_motif: 'vend sa maison', investissement_locatif: 1 } });
+    recommandation_nom: 'Sophie LEROY', recommandation_tel: '0600000000', recommandation_motif: 'vend sa maison', investissement_locatif: 1, tel_portable_maj: '0611111111' } });
   eq(r.statut, 201);
   // M-2 : seulement un répondeur → pas de note.
   db.prepare("INSERT INTO op_appels (id_modelo, conseiller, issue, horodatage) VALUES ('M-2','Lilas FERKOUS','REPONDEUR', datetime('now'))").run();
@@ -63,6 +63,7 @@ fiche('M-1', 'DURAND'); fiche('M-2', 'MARTIN'); fiche('M-3', 'REFUS'); fiche('M-
   });
   t('champs avant / après', () => {
     eq(m1.email_avant, 'paul@ex.fr'); eq(m1.email_apres, 'nouveau@ex.fr');
+    eq(m1.tel_port_avant, '0639980001'); eq(m1.tel_port_apres, '0611111111'); eq(m1.tel_fixe_apres, ''); vrai(m1.commentaire.includes('Nouveau portable : 0611111111.'));
     eq(m1.adresse_avant, '1 rue A'); eq(m1.adresse_apres, '5 rue B'); eq(m1.cp_apres, '38100'); eq(m1.commune_apres, '');
     eq(m1.stop_tel, 0); eq(m1.stop_mail, 0); eq(m1.agent, 'Lilas FERKOUS'); vrai(/^\d\d-\d\d-\d{4}$/.test(m1.date_note), m1.date_note);
     vrai(m1.a_proposer_a_loick.includes('Recommandation'));

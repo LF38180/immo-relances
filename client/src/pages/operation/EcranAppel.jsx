@@ -136,7 +136,7 @@ export default function EcranAppel({ contact: c, onEnregistre, onPasser, horsFil
         // La fiche compte comme mise à jour dès qu'on a recueilli quelque chose
         // de durable — c'est le quatrième objectif, au même rang que les trois
         // propositions.
-        fiche: aSaisi && !!(res.adresse_maj || res.statut_actuel || res.projet
+        fiche: aSaisi && !!(res.adresse_maj || res.statut_actuel || res.projet || res.tel_portable_maj || res.tel_fixe_maj
           || res.situations || res.projet_type || res.investissement_locatif != null
           || res.toujours_proprietaire != null || res.fiche_confirmee === 1),
       })
@@ -413,6 +413,14 @@ export default function EcranAppel({ contact: c, onEnregistre, onPasser, horsFil
               <div className="col-span-2">
                 <Saisie label="Commune" value={res.commune_maj || ''} onChange={v => champ('commune_maj', v)} />
               </div>
+            </div>
+            {/* Un autre numéro : dans un champ, pas dans les notes, pour que
+                Modelo le reçoive dans le bon champ. */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <Saisie label={`Nouveau portable${c.tel_portable ? ` (actuel : ${c.tel_portable})` : ''}`} type="tel"
+                value={res.tel_portable_maj || ''} onChange={v => champ('tel_portable_maj', v)} />
+              <Saisie label={`Nouveau fixe${c.tel_fixe ? ` (actuel : ${c.tel_fixe})` : ''}`} type="tel"
+                value={res.tel_fixe_maj || ''} onChange={v => champ('tel_fixe_maj', v)} />
             </div>
             {/* Un vendeur n'est plus propriétaire du bien, par définition : la
                 question ne se pose qu'à un acquéreur (ou quand on ne sait pas). */}

@@ -759,6 +759,10 @@ db.exec(`
   // « Autre », en toutes lettres : ce que les cases ne disent pas.
   if (!cols.includes('situation_autre')) db.exec("ALTER TABLE op_resultats ADD COLUMN situation_autre TEXT");
   if (!cols.includes('projet_autre')) db.exec("ALTER TABLE op_resultats ADD COLUMN projet_autre TEXT");
+  // Un nouveau numéro donné par le client : dans un champ, pour que le report
+  // vers Modelo le mette dans le champ téléphone et pas seulement en note.
+  if (!cols.includes('tel_portable_maj')) db.exec("ALTER TABLE op_resultats ADD COLUMN tel_portable_maj TEXT");
+  if (!cols.includes('tel_fixe_maj')) db.exec("ALTER TABLE op_resultats ADD COLUMN tel_fixe_maj TEXT");
 }
 
 // Journal d'activité : qui a fait quoi, quand. Connexions, comptes, NPAI,
