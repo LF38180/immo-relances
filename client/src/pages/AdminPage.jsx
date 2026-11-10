@@ -76,7 +76,9 @@ export default function AdminPage() {
     try {
       await api.put(`/admin/users/${u.id}`, { password: mdp, must_change_password: 1 })
       toast.success(`Mot de passe provisoire posé pour ${u.prenom}. Il le changera à sa prochaine connexion.`, { duration: 6000 })
-      chargerUsers()
+      // Recharger la liste, sans que son échec passe pour un échec du mot de
+      // passe : le mot de passe est déjà posé quand on arrive ici.
+      api.get('/admin/users').then(r => setUsers(r.data)).catch(() => {})
     } catch (e) { toast.error(e.messageLisible || 'Échec') }
   }
 
