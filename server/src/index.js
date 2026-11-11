@@ -60,6 +60,22 @@ app.get('/api/health', (_, res) => {
       fichiers: db.prepare('SELECT COUNT(*) n FROM blocs WHERE actif = 1').get().n,
       corbeille: db.prepare('SELECT COUNT(*) n FROM contacts WHERE supprime_le IS NOT NULL').get().n,
       personnes_dans_plusieurs_fichiers: require('./blocs').doublonsEntreFichiers().length,
+      // Le cœur (table contacts) et l'opération anciens clients (table op_contacts)
+      // ne se mélangent pas. Ces trois chiffres disent si les mêmes personnes
+      // figurent des deux côtés, et si des fiches sont entrées dans le cœur
+      // depuis le début de l'opération. Lecture seule.
+      coeur: (() => {
+        const { cleTel } = require('./blocs');
+        const op = new Set();
+        for (const o of db.prepare('SELECT tel_portable, tel_fixe FROM op_contacts').all())
+          for (const t of [cleTel(o.tel_portable), cleTel(o.tel_fixe)]) if (t) op.add(t);
+        const fiches = db.prepare('SELECT telephone, telephone2, created_at FROM contacts WHERE supprime_le IS NULL').all();
+        return {
+          fiches: fiches.length,
+          aussi_dans_anciens_clients: fiches.filter(c => op.has(cleTel(c.telephone)) || op.has(cleTel(c.telephone2))).length,
+          creees_depuis_le_3_novembre: fiches.filter(c => (c.created_at || '') >= '2026-11-03').length,
+        };
+      })(),
       conseillers_sans_fiche: db.prepare(`SELECT COUNT(*) n FROM users u
         WHERE u.actif = 1 AND u.role = 'conseiller'
           AND NOT EXISTS (SELECT 1 FROM op_contacts c
