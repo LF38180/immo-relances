@@ -60,3 +60,12 @@
 /* Masque la scrollbar tout en gardant le défilement (barre d'onglets mobile) */
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 .no-scrollbar::-webkit-scrollbar { display: none; }
+
+/* Espace agence, sur téléphone seulement. Rien ne change sur ordinateur, ni dans
+   le courtage, ni dans l'opération anciens clients (ils n'ont pas cette classe).
+   16 px : en dessous, l'iPhone zoome dès qu'on touche un champ.
+   44 px : la taille qu'un doigt atteint sans viser. */
+@media (max-width: 767px) {
+  .espace-agence .input { font-size: 16px; }
+  .espace-agence .btn-sm { min-height: 44px; }
+}

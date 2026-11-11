@@ -20,7 +20,7 @@ export default function SessionHub() {
 
   useEffect(() => {
     if (!peutObserver) return
-    api.get('/admin/users')
+    api.get('/admin/agents?courtage=1')
       .then(r => setUtilisateurs(r.data.filter(u => u.actif && u.id !== user.id)))
       .catch(() => {})
   }, [peutObserver, user?.id])

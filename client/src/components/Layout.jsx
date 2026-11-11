@@ -39,7 +39,7 @@ export default function Layout({ page, onNavigate, children }) {
   const visibleNav = NAV_ITEMS.filter(n => n.roles.includes(user?.role))
 
   return (
-    <div className="flex h-screen bg-quai-light overflow-hidden">
+    <div className="espace-agence flex h-ecran bg-quai-light overflow-hidden">
       {/* Sidebar */}
       <aside className={`${collapsed ? 'w-16' : 'w-60'} hidden md:flex flex-shrink-0 bg-quai-navy flex-col transition-all duration-200`}>
 

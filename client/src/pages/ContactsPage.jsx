@@ -59,7 +59,7 @@ export default function ContactsPage() {
   }, [menuTri])
 
   useEffect(() => {
-    api.get('/admin/users').then(r => setUsers(r.data)).catch(() => {})
+    api.get('/contacts/conseillers').then(r => setUsers(r.data)).catch(() => {})
     api.get('/contacts/filtres').then(r => setFiltreOpts(r.data)).catch(() => {})
   }, [])
 
@@ -207,6 +207,11 @@ export default function ContactsPage() {
               ))}
             </tbody>
           </table>
+          {!loading && contacts.length === 0 && (
+            <div className="text-center text-sm text-quai-muted py-10 px-4">
+              Aucun contact ne correspond. Videz la recherche ou les filtres pour tout revoir.
+            </div>
+          )}
           </div>
         )}
       </div>

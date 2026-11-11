@@ -36,7 +36,7 @@ export default function ContactModal({ contact, onClose, onSaved, onNoteAjoutee 
   }, [contact?.id])
 
   useEffect(() => {
-    api.get('/admin/users').then(r => setUsers(r.data)).catch(() => setUsers([]))
+    api.get('/contacts/conseillers').then(r => setUsers(r.data)).catch(() => setUsers([]))
   }, [])
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
@@ -164,6 +164,9 @@ export default function ContactModal({ contact, onClose, onSaved, onNoteAjoutee 
               <label className="block text-xs font-medium text-quai-muted mb-1">Conseiller en charge</label>
               <select className="input" value={form.assigned_to || ''} onChange={e => set('assigned_to', e.target.value || null)}>
                 <option value="">— Non attribué —</option>
+                {form.assigned_to && users.length > 0 && !users.some(u => String(u.id) === String(form.assigned_to)) && (
+                  <option value={form.assigned_to}>Attribué (compte inactif ou d'un autre espace)</option>
+                )}
                 {users.map(u => <option key={u.id} value={u.id}>{u.prenom} {u.nom}</option>)}
               </select>
             </div>

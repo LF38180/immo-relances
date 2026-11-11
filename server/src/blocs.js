@@ -70,4 +70,50 @@ function journaliser(user, contactId, blocId, type, avant, apres) {
   } catch (e) { console.error('[journal contacts]', e.message); }   // ne bloque jamais l'action
 }
 
-module.exports = { BLOC_HISTORIQUE, blocsVisibles, blocsDeLaDemande, clauseBlocs, blocParDefaut, contactVisible, delaiDuBloc, journaliser };
+// La même personne dans plusieurs fichiers (même téléphone ou même e-mail).
+// Rien n'est fusionné ni bloqué : c'est à la direction de dire à qui est le
+// contact. On compare les chiffres seuls du téléphone (06 12… == 0612… == +33612…).
+const cleTel = (t) => {
+  let n = String(t || '').replace(/\D/g, '');
+  if (n.startsWith('0033')) n = '0' + n.slice(4);
+  else if (n.startsWith('33') && n.length === 11) n = '0' + n.slice(2);
+  return n.length >= 8 ? n : '';
+};
+function doublonsEntreFichiers() {
+  if (db.prepare('SELECT COUNT(*) n FROM blocs WHERE actif = 1').get().n < 2) return [];   // un seul fichier : rien à comparer
+  const lignes = db.prepare(`SELECT c.id, c.nom, c.prenom, c.telephone, c.telephone2, c.email, c.bloc_id, c.assigned_to,
+      c.statut, c.created_at, b.libelle AS fichier, b.proprietaire_id
+    FROM contacts c JOIN blocs b ON b.id = c.bloc_id AND b.actif = 1
+    WHERE c.supprime_le IS NULL`).all();
+  // Regroupement par clés partagées (union-find) : A et B ont le même mobile,
+  // B et C le même e-mail → une seule personne.
+  const parent = new Map();
+  const racine = (x) => { while (parent.get(x) !== x) { parent.set(x, parent.get(parent.get(x))); x = parent.get(x); } return x; };
+  const parCle = new Map();
+  for (const l of lignes) {
+    parent.set(l.id, l.id);
+    const cles = [cleTel(l.telephone), cleTel(l.telephone2)].filter(Boolean).map(t => 't:' + t);
+    const mail = aPlat(l.email); if (mail) cles.push('m:' + mail);
+    for (const k of cles) {
+      if (parCle.has(k)) parent.set(racine(l.id), racine(parCle.get(k)));
+      else parCle.set(k, l.id);
+    }
+  }
+  const groupes = new Map();
+  for (const l of lignes) { const r = racine(l.id); if (!groupes.has(r)) groupes.set(r, []); groupes.get(r).push(l); }
+  const noms = new Map(db.prepare('SELECT id, prenom, nom FROM users').all().map(u => [u.id, `${u.prenom || ''} ${u.nom || ''}`.trim()]));
+  return [...groupes.values()]
+    .filter(g => new Set(g.map(l => l.bloc_id)).size > 1)
+    .map(g => ({
+      personne: `${g[0].prenom || ''} ${g[0].nom || ''}`.trim(),
+      telephone: g.map(l => l.telephone).find(Boolean) || '',
+      fiches: g.sort((a, b) => a.bloc_id - b.bloc_id || a.id - b.id).map(l => ({
+        id: l.id, nom: `${l.prenom || ''} ${l.nom || ''}`.trim(), bloc_id: l.bloc_id, fichier: l.fichier,
+        proprietaire: noms.get(l.proprietaire_id) || null, suivi_par: noms.get(l.assigned_to) || null,
+        statut: l.statut, cree_le: l.created_at,
+      })),
+    }))
+    .sort((a, b) => a.personne.localeCompare(b.personne, 'fr'));
+}
+
+module.exports = { doublonsEntreFichiers, cleTel, BLOC_HISTORIQUE, blocsVisibles, blocsDeLaDemande, clauseBlocs, blocParDefaut, contactVisible, delaiDuBloc, journaliser };

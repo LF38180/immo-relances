@@ -78,9 +78,54 @@ export default function FichiersAdmin() {
         </div>
       )}
 
+      <DansPlusieursFichiers />
+
       <div className="space-y-3">
         {data.blocs.map(b => <Fichier key={b.id} b={b} agents={data.agents} proprietaire={nomDe(b.proprietaire_id)} occupe={occupe} onEnregistrer={enregistrer} />)}
       </div>
+    </div>
+  )
+}
+
+// La même personne dans plusieurs fichiers (même téléphone ou même e-mail).
+// L'application ne tranche pas et ne fusionne rien : elle le signale ici.
+function DansPlusieursFichiers() {
+  const [liste, setListe] = useState(null)
+  const [ouvert, setOuvert] = useState(false)
+  useEffect(() => { api.get('/admin/doublons-fichiers').then(r => setListe(r.data)).catch(() => setListe(null)) }, [])
+  if (!liste || liste.length === 0) return null
+  return (
+    <div className="card mb-4 border-2 border-quai-gold/60">
+      <button onClick={() => setOuvert(o => !o)} aria-expanded={ouvert}
+        className="w-full flex items-center justify-between gap-3 text-left min-h-[44px]">
+        <span className="font-semibold text-quai-navy">
+          {liste.length} personne{liste.length > 1 ? 's' : ''} présente{liste.length > 1 ? 's' : ''} dans plusieurs fichiers
+        </span>
+        <span className="text-sm text-quai-muted underline">{ouvert ? 'Masquer' : 'Voir'}</span>
+      </button>
+      <p className="text-sm text-quai-muted mt-1">
+        Même téléphone ou même e-mail. Rien n'est fusionné ni bloqué : à vous de dire qui garde le contact,
+        puis de supprimer la fiche en trop (elle part à la corbeille).
+      </p>
+      {ouvert && (
+        <div className="mt-3 divide-y divide-quai-border">
+          {liste.map((g, i) => (
+            <div key={i} className="py-2.5">
+              <div className="text-sm font-medium text-quai-navy">{g.personne || 'Sans nom'}{g.telephone ? ` · ${g.telephone}` : ''}</div>
+              <ul className="mt-1 space-y-0.5">
+                {g.fiches.map(f => (
+                  <li key={f.id} className="text-sm text-quai-text">
+                    {f.fichier}{f.proprietaire ? ` (base de ${f.proprietaire})` : ''}
+                    <span className="text-quai-muted">
+                      {f.suivi_par ? ` · suivi par ${f.suivi_par}` : ''}{f.cree_le ? ` · fiche du ${f.cree_le.slice(8, 10)}/${f.cree_le.slice(5, 7)}/${f.cree_le.slice(0, 4)}` : ''}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

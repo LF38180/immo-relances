@@ -68,7 +68,7 @@ export default function ImportModal({ onClose, onImported }) {
 
   useEffect(() => {
     if (user && (user.role === 'manager' || user.role === 'admin')) {
-      api.get('/admin/users').then(r => { setUsers(r.data); setAssigneA(String(user.id)) }).catch(() => {})
+      api.get('/admin/agents').then(r => { setUsers(r.data); setAssigneA(String(user.id)) }).catch(() => {})
     }
   }, [])
 
@@ -284,6 +284,11 @@ export default function ImportModal({ onClose, onImported }) {
               <div className="text-xs text-quai-muted">Erreurs</div>
             </div>
           </div>
+          {result.dans_autre_fichier > 0 && (
+            <div className="text-sm text-quai-navy mb-2 font-medium">
+              {result.dans_autre_fichier} personne(s) déjà présente(s) dans un autre fichier. La liste est dans Administration › Fichiers.
+            </div>
+          )}
           {result.fusionnes > 0 && (
             <div className="text-sm text-quai-navy mb-2">{result.fusionnes} contact(s) déjà existant(s) — complété(s) / bien(s) cumulé(s).</div>
           )}

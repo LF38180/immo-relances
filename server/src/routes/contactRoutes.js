@@ -115,6 +115,13 @@ router.get('/filtres', (req, res) => {
   res.json({ sources, villes });
 });
 
+// Les personnes à qui une fiche peut être attribuée. La liste des comptes
+// (/admin/users) est réservée à l'admin : sans cette route, une agente voyait
+// « Non attribué » sur une fiche pourtant attribuée.
+router.get('/conseillers', (req, res) => {
+  res.json(db.prepare("SELECT id, nom, prenom FROM users WHERE actif = 1 AND role IN ('agent','manager','admin') ORDER BY nom, prenom").all());
+});
+
 // Les fichiers ouverts à la personne connectée (pour un sélecteur, quand elle en
 // a plusieurs). Avec un seul, les écrans n'affichent rien de plus.
 router.get('/blocs', (req, res) => {
@@ -435,7 +442,11 @@ router.post('/import', (req, res) => {
   if (!Array.isArray(contacts) || contacts.length === 0) return res.status(400).json({ error: 'Données invalides' });
   const blocId = blocDEcriture(req, res); if (!blocId) return;
   const users = db.prepare('SELECT id, nom, prenom, email FROM users WHERE actif = 1').all();
-  res.json({ ...importerContacts(contacts, users, req.user, assigned_to, blocId), bloc_id: blocId });
+  const avant = req.user.role === 'admin' ? B.doublonsEntreFichiers().length : null;
+  const bilan = importerContacts(contacts, users, req.user, assigned_to, blocId);
+  // Signalé à l'admin seulement : un agent n'a pas à savoir ce que contient le fichier d'un autre.
+  const dans_autre_fichier = avant === null ? undefined : Math.max(0, B.doublonsEntreFichiers().length - avant);
+  res.json({ ...bilan, bloc_id: blocId, dans_autre_fichier });
 });
 
 const ISSUE_LABEL_EXPORT = {

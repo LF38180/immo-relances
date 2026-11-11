@@ -98,9 +98,13 @@ export default function AdminPage() {
   }
 
   const toggleUser = async (u) => {
-    await api.put(`/admin/users/${u.id}`, { actif: u.actif ? 0 : 1 })
-    toast.success(u.actif ? 'Utilisateur désactivé' : 'Utilisateur activé')
-    api.get('/admin/users').then(r => setUsers(r.data))
+    // Désactiver coupe l'accès de la personne sur-le-champ : on demande avant.
+    if (u.actif && !window.confirm(`Désactiver le compte de ${u.prenom} ${u.nom} ? La personne ne pourra plus se connecter. Rien n'est effacé, et vous pourrez le réactiver.`)) return
+    try {
+      await api.put(`/admin/users/${u.id}`, { actif: u.actif ? 0 : 1 })
+      toast.success(u.actif ? 'Compte désactivé' : 'Compte réactivé')
+      api.get('/admin/users').then(r => setUsers(r.data)).catch(() => {})
+    } catch (e) { toast.error(e.messageLisible || 'Modification impossible') }
   }
 
   return (

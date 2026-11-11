@@ -59,6 +59,7 @@ app.get('/api/health', (_, res) => {
           AND NOT EXISTS (SELECT 1 FROM blocs b WHERE b.proprietaire_id = u.id AND b.actif = 1)`).get().n,
       fichiers: db.prepare('SELECT COUNT(*) n FROM blocs WHERE actif = 1').get().n,
       corbeille: db.prepare('SELECT COUNT(*) n FROM contacts WHERE supprime_le IS NOT NULL').get().n,
+      personnes_dans_plusieurs_fichiers: require('./blocs').doublonsEntreFichiers().length,
       conseillers_sans_fiche: db.prepare(`SELECT COUNT(*) n FROM users u
         WHERE u.actif = 1 AND u.role = 'conseiller'
           AND NOT EXISTS (SELECT 1 FROM op_contacts c

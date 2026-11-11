@@ -159,7 +159,9 @@ router.get('/activite', requireRole('admin'), (req, res) => {
 // réservée à l'admin : faute de cette route, l'écran Supervision d'un manager
 // restait bloqué sur « Chargement… ».
 router.get('/agents', (req, res) => {
-  res.json(db.prepare("SELECT id, nom, prenom, role, agence FROM users WHERE actif = 1 AND role IN ('agent','manager','admin') ORDER BY nom, prenom").all());
+  // `?courtage=1` : le sélecteur « Vue » de la session propose aussi le courtage.
+  const roles = req.query.courtage === '1' ? "'agent','manager','admin','courtage'" : "'agent','manager','admin'";
+  res.json(db.prepare(`SELECT id, nom, prenom, role, agence, actif FROM users WHERE actif = 1 AND role IN (${roles}) ORDER BY nom, prenom`).all());
 });
 
 // --- Fichiers (« blocs ») : qui travaille sur quoi -------------------------
@@ -187,6 +189,12 @@ function champsDuBloc(body) {
     : undefined;
   return { d1, d2, champs };
 }
+
+// La même personne présente dans plusieurs fichiers : à signaler à la direction,
+// qui tranche. Lecture seule, rien n'est modifié.
+router.get('/doublons-fichiers', requireRole('admin'), (req, res) => {
+  res.json(B.doublonsEntreFichiers());
+});
 
 router.post('/blocs', requireRole('admin'), (req, res) => {
   const libelle = String(req.body?.libelle || '').trim();
