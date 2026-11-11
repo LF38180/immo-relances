@@ -51,7 +51,14 @@ export default function ContactModal({ contact, onClose, onSaved, onNoteAjoutee 
         prochain_contact: form.prochain_contact || null,
       }
       if (isNew) { await api.post('/contacts', payload); toast.success('Contact créé') }
-      else { await api.put(`/contacts/${contact.id}`, payload); toast.success('Contact mis à jour') }
+      else {
+        const r = await api.put(`/contacts/${contact.id}`, payload)
+        // La fiche avait changé depuis son ouverture (un appel enregistré entre-temps) :
+        // coordonnées et notes sont prises, statut et rappel restent ceux de l'appel.
+        if (r.data?.statut_conserve && (payload.statut !== contact.statut || (payload.prochain_contact || null) !== (contact.prochain_contact?.slice(0, 10) || null))) {
+          toast('Coordonnées enregistrées. Statut et rappel non modifiés : la fiche avait changé entre-temps. Rouvrez-la pour les corriger.', { duration: 8000 })
+        } else toast.success('Contact mis à jour')
+      }
       onSaved()
     } catch { toast.error('Erreur lors de la sauvegarde') }
     finally { setSaving(false) }

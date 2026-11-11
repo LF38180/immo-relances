@@ -52,6 +52,13 @@ app.get('/api/health', (_, res) => {
     controles = {
       fuseau_ok: Intl.DateTimeFormat().resolvedOptions().timeZone === 'Europe/Paris',
       sauvegarde: { nombre: sauvegardes.length, derniere_le: sauvegardes[0]?.le || null },
+      // Un agent actif qui ne voit aucun fichier a une file vide : zéro attendu
+      // tant que seule l'équipe en place travaille dans le cœur.
+      agents_sans_fichier: db.prepare(`SELECT COUNT(*) n FROM users u WHERE u.actif = 1 AND u.role = 'agent'
+          AND NOT EXISTS (SELECT 1 FROM bloc_acces a JOIN blocs b ON b.id = a.bloc_id AND b.actif = 1 WHERE a.user_id = u.id)
+          AND NOT EXISTS (SELECT 1 FROM blocs b WHERE b.proprietaire_id = u.id AND b.actif = 1)`).get().n,
+      fichiers: db.prepare('SELECT COUNT(*) n FROM blocs WHERE actif = 1').get().n,
+      corbeille: db.prepare('SELECT COUNT(*) n FROM contacts WHERE supprime_le IS NOT NULL').get().n,
       conseillers_sans_fiche: db.prepare(`SELECT COUNT(*) n FROM users u
         WHERE u.actif = 1 AND u.role = 'conseiller'
           AND NOT EXISTS (SELECT 1 FROM op_contacts c

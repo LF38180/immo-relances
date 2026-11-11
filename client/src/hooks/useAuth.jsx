@@ -11,6 +11,7 @@ export function AuthProvider({ children }) {
 
   const login = async (email, password) => {
     const { data } = await api.post('/auth/login', { email, password })
+    try { sessionStorage.removeItem('bloc-courant') } catch { /* rien */ }
     localStorage.setItem('token', data.token)
     localStorage.setItem('user', JSON.stringify(data.user))
     setUser(data.user)
@@ -18,6 +19,7 @@ export function AuthProvider({ children }) {
   }
 
   const logout = () => {
+    try { sessionStorage.removeItem('bloc-courant') } catch { /* rien */ }
     localStorage.removeItem('token')
     localStorage.removeItem('user')
     setUser(null)

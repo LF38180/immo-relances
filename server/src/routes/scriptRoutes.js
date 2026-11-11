@@ -3,7 +3,8 @@ const { db } = require('../database');
 const { requireAuth, requireRole } = require('../auth');
 
 const router = express.Router();
-router.use(requireAuth);
+// Même garde que le reste du cœur : agents, managers, admin.
+router.use(requireAuth, requireRole('agent', 'manager', 'admin'));
 
 router.get('/', (req, res) => {
   const { categorie } = req.query;

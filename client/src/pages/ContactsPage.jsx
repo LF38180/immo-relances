@@ -212,7 +212,7 @@ export default function ContactsPage() {
       </div>
 
       {pages > 1 && (
-        <div className="bg-white border-t border-quai-border px-4 py-3 flex items-center justify-between">
+        <div className="bg-white border-t border-quai-border px-4 py-3 flex items-center justify-center gap-4">
           <button disabled={page <= 1} onClick={() => setPage(p => p - 1)} className="btn-secondary btn-sm inline-flex items-center gap-1.5"><Icon name="arrow-left" size="sm" /> Précédent</button>
           <span className="text-sm text-quai-muted">Page {page} / {pages}</span>
           <button disabled={page >= pages} onClick={() => setPage(p => p + 1)} className="btn-secondary btn-sm inline-flex items-center gap-1.5">Suivant <Icon name="arrow-right" size="sm" /></button>

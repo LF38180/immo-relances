@@ -5,6 +5,7 @@ import Icon from '../components/ui/Icon'
 import PageHeader from '../components/ui/PageHeader'
 import ImportCahierModal from '../components/ImportCahierModal'
 import { useAuth } from '../hooks/useAuth'
+import FichiersAdmin, { Corbeille } from './FichiersAdmin'
 
 // Date UTC ISO -> "il y a 2 h — 30/06/2026 19:02" (heure française, été/hiver auto).
 function formatConnexion(iso) {
@@ -30,26 +31,40 @@ export default function AdminPage() {
   const [showNewUser, setShowNewUser] = useState(false)
   const [confirmEffacer, setConfirmEffacer] = useState('')
   const [effacement, setEffacement] = useState(false)
+  const [corbeilleVue, setCorbeilleVue] = useState(0)
+  // Les réglages tels que chargés : à l'enregistrement, seuls ceux qui ont changé partent.
+  const [paramsCharges, setParamsCharges] = useState({})
 
   const effacerTousContacts = async () => {
     if (confirmEffacer !== 'EFFACER' || effacement) return
     setEffacement(true)
     try {
-      const r = await api.delete('/contacts/all')
-      toast.success(`${r.data.supprimes} contact(s) effacé(s)`)
+      // La confirmation est maintenant exigée par le serveur, qui écrit une sauvegarde
+      // avant et envoie les fiches à la corbeille au lieu de les détruire.
+      const r = await api.delete('/contacts/all', { data: { confirmation: 'EFFACER' }, timeout: 120000 })
+      toast.success(`${r.data.supprimes} contact(s) envoyé(s) à la corbeille. Sauvegarde ${r.data.sauvegarde} écrite avant.`, { duration: 8000 })
+      setCorbeilleVue(v => v + 1)
       setConfirmEffacer('')
-    } catch { toast.error('Erreur (réservé admin)') }
+    } catch (err) { toast.error(err.messageLisible || 'Erreur (réservé admin)') }
     finally { setEffacement(false) }
   }
 
   useEffect(() => {
     api.get('/admin/users').then(r => setUsers(r.data))
-    api.get('/admin/parametres').then(r => setParams(r.data))
+    api.get('/admin/parametres').then(r => { setParams(r.data); setParamsCharges(r.data) })
   }, [])
 
+  // L'écran renvoyait TOUS les réglages tels qu'il les avait chargés : resté ouvert
+  // une heure, il réécrivait par exemple le modèle de mail de Marine avec son
+  // ancienne version. Il n'envoie plus que ce qui a réellement été modifié ici.
   const saveParams = async () => {
-    await api.put('/admin/parametres', params)
-    toast.success('Paramètres sauvegardés')
+    const modifies = Object.fromEntries(Object.entries(params).filter(([k, v]) => String(v) !== String(paramsCharges[k] ?? '')))
+    if (!Object.keys(modifies).length) { toast('Aucun réglage modifié'); return }
+    try {
+      await api.put('/admin/parametres', modifies)
+      setParamsCharges(p => ({ ...p, ...modifies }))
+      toast.success('Paramètres sauvegardés')
+    } catch (err) { toast.error(err.messageLisible || 'Enregistrement impossible') }
   }
 
   const createUser = async () => {
@@ -94,9 +109,9 @@ export default function AdminPage() {
         <PageHeader title="Administration" />
 
         <div className="flex overflow-x-auto border-b border-quai-border mb-6">
-          {[['users','Utilisateurs','users'],['params','Paramètres','settings'],['courtage','Suivi Marine','phone-call'],...(estAdmin ? [['imports','Imports courtage','file-up'],['donnees','Données','database'],['activite','Activité','history']] : [])].map(([t, lbl, ic]) => (
+          {[['users','Utilisateurs','users'],['params','Paramètres','settings'],['courtage','Suivi Marine','phone-call'],...(estAdmin ? [['fichiers','Fichiers','table'],['imports','Imports courtage','file-up'],['donnees','Données','database'],['activite','Activité','history']] : [])].map(([t, lbl, ic]) => (
             <button key={t} onClick={() => setTab(t)}
-              className={`shrink-0 whitespace-nowrap px-6 py-3 text-sm font-medium border-b-2 transition-colors inline-flex items-center gap-2 ${tab === t ? 'border-quai-gold text-quai-navy' : 'border-transparent text-quai-muted hover:text-quai-navy'}`}>
+              className={`shrink-0 whitespace-nowrap px-4 py-3 text-sm font-medium border-b-2 transition-colors inline-flex items-center gap-2 ${tab === t ? 'border-quai-gold text-quai-navy' : 'border-transparent text-quai-muted hover:text-quai-navy'}`}>
               <Icon name={ic} size="sm" /> {lbl}
             </button>
           ))}
@@ -268,19 +283,23 @@ export default function AdminPage() {
 
         {tab === 'activite' && estAdmin && <Activite />}
 
+        {tab === 'fichiers' && estAdmin && <FichiersAdmin />}
+
         {tab === 'donnees' && estAdmin && (
           <div>
             <h2 className="font-semibold text-quai-navy mb-4">Données</h2>
             {/* La sauvegarde d'abord, l'effacement ensuite : on ne met pas un
                 bouton irréversible seul sur un écran. */}
             <Sauvegardes />
+            <Corbeille key={corbeilleVue} />
             <div className="card border-2 border-red-200">
               <div className="flex items-start gap-3 mb-3">
                 <Icon name="alert-triangle" size="md" className="text-red-600 flex-shrink-0 mt-0.5" />
                 <div>
                   <h3 className="font-medium text-quai-navy">Effacer tous les contacts du module relances</h3>
-                  <p className="text-sm text-quai-muted">Supprime définitivement la totalité des contacts d’Immo Relances et leur historique. Action irréversible. Utile avant un ré-import propre.
-                    Les fiches de l’opération anciens clients ne sont <b>pas</b> concernées. Téléchargez une sauvegarde avant.</p>
+                  <p className="text-sm text-quai-muted">Envoie à la corbeille la totalité des contacts d’Immo Relances, tous fichiers confondus. Utile avant un ré-import propre.
+                    Une sauvegarde est écrite juste avant, et les fiches restent récupérables depuis la corbeille ci-dessus, avec leurs appels.
+                    Les fiches de l’opération anciens clients ne sont <b>pas</b> concernées.</p>
                 </div>
               </div>
               <label className="block text-xs font-medium text-quai-muted mb-1">Tapez <span className="font-mono font-bold">EFFACER</span> pour confirmer</label>

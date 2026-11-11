@@ -164,12 +164,15 @@ export default function ImportModal({ onClose, onImported }) {
     try {
       const payload = { contacts }
       if ((user?.role === 'manager' || user?.role === 'admin') && assigneA) payload.assigned_to = assigneA
-      const r = await api.post('/contacts/import', payload)
+      // Deux minutes : un gros fichier dépassait les 15 s par défaut, l'écran
+      // annonçait une erreur alors que l'import aboutissait, et le relancer
+      // doublait les lignes sans téléphone ni email.
+      const r = await api.post('/contacts/import', payload, { timeout: 120000 })
       setResult(r.data)
       setStep(3)
       toast.success(`${r.data.importes} contacts importés`)
-    } catch {
-      toast.error('Erreur lors de l\'import')
+    } catch (err) {
+      toast.error(err.messageLisible || 'Erreur lors de l\'import')
     } finally {
       setImporting(false)
     }

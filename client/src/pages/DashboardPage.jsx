@@ -2,33 +2,45 @@ import { useState, useEffect } from 'react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts'
 import api from '../utils/api'
 import { CATEGORIES, STATUTS } from '../utils/constants'
-import { format, subDays } from 'date-fns'
+import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
 import Icon from '../components/ui/Icon'
 import PageHeader from '../components/ui/PageHeader'
+import ChoixPeriode, { enParametres, periodeEnClair } from '../components/ChoixPeriode'
 
 const PIE_COLORS = ['#0D0D2B','#C9A96E','#2d2d6b','#e8c98a','#1a1a4e','#94a3b8']
 
 export default function DashboardPage({ onNavigate }) {
   const [stats, setStats] = useState(null)
-  const [periode, setPeriode] = useState(7)
+  // La période n'est plus plafonnée à 90 jours : 6 mois, 12 mois, depuis le
+  // début, ou deux dates au choix.
+  const [periode, setPeriode] = useState({ jours: 7 })
   const [loading, setLoading] = useState(true)
+  const [erreur, setErreur] = useState(null)
 
-  useEffect(() => {
-    const debut = format(subDays(new Date(), periode), 'yyyy-MM-dd')
-    const fin = format(new Date(), 'yyyy-MM-dd')
-    setLoading(true)
-    api.get(`/relances/stats?debut=${debut}&fin=${fin}`)
+  const charger = () => {
+    setLoading(true); setErreur(null)
+    api.get('/relances/stats', { params: enParametres(periode), timeout: 60000 })
       .then(r => setStats(r.data))
+      .catch(err => setErreur(err.messageLisible || 'Chargement impossible.'))
       .finally(() => setLoading(false))
-  }, [periode])
+  }
+  useEffect(charger, [JSON.stringify(periode)])
 
-  if (loading) return (
+  if (loading && !stats) return (
     <div className="flex-1 flex items-center justify-center bg-quai-light">
       <div className="text-quai-muted animate-pulse text-sm">Chargement…</div>
     </div>
   )
-  if (!stats) return null
+  // Avant : une erreur de réseau laissait une page blanche.
+  if (!stats) return (
+    <div className="flex-1 flex items-center justify-center bg-quai-light p-6">
+      <div className="card max-w-sm text-center">
+        <p className="text-sm text-quai-navy mb-3">{erreur || 'Chargement impossible.'}</p>
+        <button onClick={charger} className="btn-primary">Réessayer</button>
+      </div>
+    </div>
+  )
 
   const rdvCount = stats.parStatut.find(s => s.statut === 'rdv_obtenu')?.cnt || 0
   const contacteCount = stats.parStatut.find(s => s.statut === 'contacte')?.cnt || 0
@@ -37,22 +49,26 @@ export default function DashboardPage({ onNavigate }) {
   const catData = stats.contactsParCategorie.map(c => ({
     name: CATEGORIES[c.categorie]?.label || c.categorie, value: c.cnt
   }))
+  // Au-delà de deux mois le serveur regroupe par semaine, au-delà d'un an par mois.
+  const granularite = stats.periode?.granularite || 'jour'
   const parJourData = stats.parJour.map(j => ({
-    jour: format(new Date(j.jour), 'dd/MM'), relances: j.cnt
+    jour: format(new Date(j.jour + 'T12:00:00'), granularite === 'mois' ? 'MM/yy' : 'dd/MM'), relances: j.cnt
   }))
 
   return (
     <div className="flex-1 overflow-y-auto p-4 md:p-6 pb-24 md:pb-6 bg-quai-light">
       <div className="max-w-6xl mx-auto">
         <PageHeader title="Vue d'ensemble" subtitle={format(new Date(), "EEEE d MMMM yyyy", { locale: fr })}>
-          <select value={periode} onChange={e => setPeriode(Number(e.target.value))} className="input w-auto text-sm" aria-label="Période">
-            <option value={7}>7 derniers jours</option>
-            <option value={30}>30 derniers jours</option>
-            <option value={90}>90 derniers jours</option>
-          </select>
+          <ChoixPeriode valeur={periode} onChange={setPeriode} />
         </PageHeader>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        {erreur && (
+          <div className="card mb-4 text-sm text-quai-navy flex items-center justify-between gap-3">
+            <span>{erreur} Les chiffres affichés sont ceux de la période précédente.</span>
+            <button onClick={charger} className="btn-secondary btn-sm flex-shrink-0">Réessayer</button>
+          </div>
+        )}
+        <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6 transition-opacity ${loading ? 'opacity-50' : ''}`}>
           <KpiCard label="Total contacts" value={stats.totalContacts.toLocaleString('fr')} icon="users" variant="navy" />
           <KpiCard label="Relances (période)" value={stats.totalRelances} icon="phone" variant="gold" />
           <KpiCard label="Taux de contact" value={`${tauxContact}%`} icon="trending-up" variant="light" />
@@ -78,7 +94,8 @@ export default function DashboardPage({ onNavigate }) {
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
           <div className="card">
-            <h2 className="font-semibold text-quai-navy mb-4 text-sm uppercase tracking-wider">Relances par jour</h2>
+            <h2 className="font-semibold text-quai-navy mb-4 text-sm uppercase tracking-wider">Relances par {granularite}</h2>
+            {stats.periode && <p className="text-xs text-quai-muted -mt-3 mb-3">{periodeEnClair(stats.periode)}</p>}
             {parJourData.length > 0 ? (
               <ResponsiveContainer width="100%" height={200}>
                 <BarChart data={parJourData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>

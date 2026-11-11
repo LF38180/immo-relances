@@ -804,4 +804,119 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_op_modelo_reports_fiche ON op_modelo_reports(id_modelo, le DESC);
 `);
 
+// ---------------------------------------------------------------------------
+// Fichiers (« blocs »), corbeille et journal des contacts — 11/11/2026.
+//
+// Jusqu'ici le cœur ne connaissait qu'UN fichier (les estimés de Chrystelle) et
+// une file d'appels commune. Pour accueillir un fichier Acquéreurs, puis la base
+// de chaque agent découpée en blocs (contacts, estimés, acquéreurs, anciens
+// clients, apporteurs…), chaque contact appartient désormais à un bloc.
+//
+// Tout est ADDITIF : aucune table n'est recréée, aucune colonne retirée. Tout
+// l'existant tombe dans le bloc 1 « Fichier Estimés », et tous les comptes
+// « agent » déjà là y ont accès : pour Chrystelle, rien ne change.
+//
+// Les colonnes ajoutées n'ont pas de REFERENCES : avec les clés étrangères
+// actives, SQLite refuse d'ajouter une colonne référencée dont le défaut n'est
+// pas NULL.
+{
+  const colonnes = (t) => db.prepare(`PRAGMA table_info(${t})`).all().map(c => c.name);
+  const existe = (t) => !!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(t);
+
+  // Copie de la base juste avant cette migration, une seule fois, à côté d'elle.
+  // VACUUM INTO écrit un instantané cohérent, même en WAL. Un échec n'empêche pas
+  // de démarrer : la migration elle-même ne fait qu'ajouter.
+  if (!colonnes('contacts').includes('bloc_id') && db.prepare('SELECT COUNT(*) n FROM contacts').get().n > 0) {
+    const fs = require('fs');
+    const copie = DB_PATH + '.avant-blocs-2026-11-11';
+    // Écrite sous un nom provisoire puis renommée : une copie interrompue (redémarrage,
+    // disque plein) ne peut pas être prise pour une copie complète au démarrage suivant.
+    const provisoire = copie + '.tmp';
+    try {
+      if (!fs.existsSync(copie)) {
+        if (fs.existsSync(provisoire)) fs.unlinkSync(provisoire);
+        db.exec(`VACUUM INTO '${provisoire.replace(/'/g, "''")}'`);
+        fs.renameSync(provisoire, copie);
+      }
+      console.log('[migration] copie avant blocs :', copie);
+    } catch (e) { console.error('[migration] copie avant blocs impossible —', e.message); }
+  }
+
+  // Toute la migration est écrite d'un bloc : coupée en route, elle est annulée et
+  // rejouée entière au démarrage suivant. Sans cela, un arrêt entre la création
+  // des tables et l'ouverture du fichier 1 aux agents laissait Chrystelle avec une
+  // file vide, sans aucune erreur.
+  db.transaction(() => {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS blocs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      code TEXT NOT NULL,                  -- 'estimes','acquereurs','anciens_clients','apporteurs','contacts'…
+      libelle TEXT NOT NULL,
+      proprietaire_id INTEGER,             -- NULL = fichier d'agence ; sinon base personnelle d'un agent
+      parent_id INTEGER,                   -- sous-bloc (ex. « estimés » dans la base d'un agent)
+      agence TEXT,                         -- NULL = toutes les agences
+      delai_sans_reponse_jours INTEGER,    -- NULL = réglage général
+      relance_sans_projet_jours INTEGER,   -- NULL = réglage général
+      champs TEXT NOT NULL DEFAULT '[]',   -- champs propres au bloc : [{cle,libelle,type}]
+      libelles_issues TEXT,                -- libellés des résultats d'appel propres au bloc (JSON), NULL = libellés actuels
+      actif INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS bloc_acces (
+      bloc_id INTEGER NOT NULL,
+      user_id INTEGER NOT NULL,
+      PRIMARY KEY (bloc_id, user_id)
+    );
+    -- Ce qui arrive à une fiche hors appels : changement de statut à la main,
+    -- d'attribution, de bloc, suppression, restauration. Alimenté à partir du
+    -- 11/11/2026 seulement ; l'historique des appels reste dans « relances ».
+    CREATE TABLE IF NOT EXISTS contact_evenements (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      le TEXT NOT NULL DEFAULT (datetime('now')),
+      user_id INTEGER,
+      contact_id INTEGER,
+      bloc_id INTEGER,
+      type TEXT NOT NULL,                  -- 'statut','attribution','bloc','suppression','restauration'
+      avant TEXT,
+      apres TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_evt_date ON contact_evenements(le);
+    CREATE INDEX IF NOT EXISTS idx_evt_contact ON contact_evenements(contact_id, le);
+  `);
+  db.prepare("INSERT INTO blocs (id, code, libelle) SELECT 1, 'estimes', 'Fichier Estimés' WHERE NOT EXISTS (SELECT 1 FROM blocs WHERE id = 1)").run();
+
+  const cc = colonnes('contacts');
+  if (!cc.includes('bloc_id')) db.exec('ALTER TABLE contacts ADD COLUMN bloc_id INTEGER NOT NULL DEFAULT 1');
+  if (!cc.includes('extra')) db.exec('ALTER TABLE contacts ADD COLUMN extra TEXT');
+  // Corbeille : une fiche supprimée n'est plus effacée (son historique d'appels
+  // partait avec elle, par cascade). Elle est masquée, et l'admin peut la remettre.
+  if (!cc.includes('supprime_le')) db.exec('ALTER TABLE contacts ADD COLUMN supprime_le TEXT');
+  if (!cc.includes('supprime_par')) db.exec('ALTER TABLE contacts ADD COLUMN supprime_par INTEGER');
+  // Numéro de version de la fiche, augmenté à chaque écriture. La fenêtre de fiche
+  // le renvoie tel qu'elle l'a lu : s'il a changé entre-temps (un appel a été
+  // enregistré), le serveur sait que le statut et le rappel qu'elle renvoie sont
+  // périmés. La date de modification, précise à la seconde, ne suffisait pas.
+  if (!cc.includes('version')) db.exec('ALTER TABLE contacts ADD COLUMN version INTEGER NOT NULL DEFAULT 0');
+  const rc = colonnes('relances');
+  // Le bloc au moment de l'appel : le suivi par bloc reste juste si la fiche change de bloc ensuite.
+  if (!rc.includes('bloc_id')) db.exec('ALTER TABLE relances ADD COLUMN bloc_id INTEGER NOT NULL DEFAULT 1');
+  if (!colonnes('scripts').includes('bloc_id')) db.exec('ALTER TABLE scripts ADD COLUMN bloc_id INTEGER');   // NULL = scripts communs actuels
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_contacts_bloc_file ON contacts(bloc_id, statut, prochain_contact);
+    CREATE INDEX IF NOT EXISTS idx_relances_agent_date ON relances(agent_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_relances_bloc_date ON relances(bloc_id, created_at);
+  `);
+
+  // Une seule fois (marqueur explicite) : les agents déjà en place gardent le
+  // fichier commun. Un compte créé ensuite n'y a PAS accès d'office : c'est
+  // l'administration qui dit sur quel fichier il travaille.
+  const MARQUEUR = 'blocs_acces_initialises';
+  if (!db.prepare('SELECT 1 FROM parametres WHERE cle = ?').get(MARQUEUR)) {
+    db.prepare("INSERT OR IGNORE INTO bloc_acces (bloc_id, user_id) SELECT 1, id FROM users WHERE role = 'agent'").run();
+    db.prepare('INSERT INTO parametres (cle, valeur) VALUES (?, ?)').run(MARQUEUR, new Date().toISOString());
+  }
+  })();
+}
+
 module.exports = { db, recalculerScore, DB_PATH };

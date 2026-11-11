@@ -88,6 +88,9 @@ export default function SessionPage() {
       setFile(r.data.contacts)
       setIndex(0)
       setDone(false)
+    } catch (err) {
+      // Sans ce message, une panne de réseau affichait « aucune relance à faire ».
+      toast.error(err.messageLisible || 'La file n\'a pas pu être chargée. Rechargez la page.', { duration: 8000 })
     } finally {
       setLoading(false)
     }
@@ -220,6 +223,10 @@ export default function SessionPage() {
   useEffect(() => {
     const handler = (e) => {
       if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT') return
+      // Fenêtre ouverte par-dessus (fiche, confirmation) ou raccourci du navigateur :
+      // la touche ne s'adresse pas à la file. Sans cette garde, « 1 » tapé dans une
+      // fenêtre enregistrait « n'a pas répondu » sur le contact resté derrière.
+      if (e.ctrlKey || e.metaKey || e.altKey || e.target.tagName === 'SELECT' || document.querySelector('[role="dialog"]')) return
       if (e.key === 'ArrowRight' || e.key === 'n') skip()
       if (e.key === '1') submit('sans_reponse')
       if (e.key === '2') setEtape(2)
@@ -329,7 +336,13 @@ export default function SessionPage() {
                   <div className={`text-xs font-semibold uppercase tracking-wide mb-1 ${coul}`}>{titre} ({liste.length})</div>
                   {liste.length === 0 && <div className="text-xs text-quai-muted">Aucun.</div>}
                   {liste.map(c => (
-                    <button key={c.id} onClick={() => { setContactOuvert(c); setShowRappels(false) }}
+                    <button key={c.id} onClick={async () => {
+                        // La liste des rappels ne porte que quelques champs : on charge la fiche
+                        // entière avant de l'ouvrir, sinon l'enregistrer effaçait le reste.
+                        let fiche = c
+                        try { fiche = (await api.get(`/contacts/${c.id}`)).data } catch { /* repli : la fiche partielle, que le serveur protège */ }
+                        setContactOuvert(fiche); setShowRappels(false)
+                      }}
                       className="w-full text-left px-2 py-1.5 rounded hover:bg-quai-light">
                       <div className="text-sm font-medium text-quai-navy">
                         {c.prenom} {c.nom}

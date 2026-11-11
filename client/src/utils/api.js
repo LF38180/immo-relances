@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { ajouterBloc } from './blocCourant'
 
 // Quinze secondes : au-delà, le réseau est mort, pas lent. Sans limite, une
 // requête partie dans un ascenseur restait pendante une à deux minutes avec le
@@ -9,7 +10,8 @@ const api = axios.create({ baseURL: '/api', timeout: 15000 })
 api.interceptors.request.use(config => {
   const token = localStorage.getItem('token')
   if (token) config.headers.Authorization = `Bearer ${token}`
-  return config
+  // Fichier choisi par qui en a plusieurs ; sans effet pour qui n'en a qu'un.
+  return ajouterBloc(config)
 })
 
 // Un message que l'agent peut lire, selon ce qui s'est vraiment passé. Tout

@@ -8,6 +8,11 @@ import Icon from './Icon'
 export default function Modal({ title, onClose, children, footer, size = 'lg' }) {
   const ref = useRef(null)
   const titleId = useRef('modal-title-' + Math.random().toString(36).slice(2)).current
+  // `onClose` est une fonction recréée à chaque affichage du parent. Tant que
+  // l'effet en dépendait, il se relançait à chaque fois et renvoyait le focus sur
+  // la croix « Fermer » : on tapait une note, le curseur quittait le champ.
+  const fermer = useRef(onClose)
+  fermer.current = onClose
 
   useEffect(() => {
     const previouslyFocused = document.activeElement
@@ -19,7 +24,7 @@ export default function Modal({ title, onClose, children, footer, size = 'lg' })
     first?.focus()
 
     const onKey = (e) => {
-      if (e.key === 'Escape') { e.stopImmediatePropagation(); onClose(); return }
+      if (e.key === 'Escape') { e.stopImmediatePropagation(); fermer.current(); return }
       if (e.key === 'Tab') {
         const els = focusable()
         if (els.length === 0) return
@@ -33,7 +38,7 @@ export default function Modal({ title, onClose, children, footer, size = 'lg' })
       document.removeEventListener('keydown', onKey)
       previouslyFocused?.focus?.()
     }
-  }, [onClose])
+  }, [])
 
   const maxW = size === 'sm' ? 'max-w-md' : size === 'md' ? 'max-w-lg' : 'max-w-2xl'
 
@@ -45,7 +50,7 @@ export default function Modal({ title, onClose, children, footer, size = 'lg' })
       <div
         ref={ref}
         role="dialog" aria-modal="true" aria-labelledby={titleId}
-        className={`bg-white rounded-2xl shadow-2xl w-full ${maxW} max-h-[90vh] flex flex-col modal-panel`}
+        className={`bg-white rounded-2xl shadow-2xl w-full ${maxW} max-h-[90vh] supports-[height:100dvh]:max-h-[90dvh] flex flex-col modal-panel`}
       >
         <div className="flex items-center justify-between p-5 border-b border-quai-border">
           <h2 id={titleId} className="text-lg font-display font-semibold text-quai-navy">{title}</h2>

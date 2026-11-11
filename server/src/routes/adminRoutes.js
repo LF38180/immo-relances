@@ -154,6 +154,86 @@ router.get('/activite', requireRole('admin'), (req, res) => {
   res.json({ lignes, total: lignes.length, personnes, types });
 });
 
+// Les personnes qu'un manager ou un admin peut suivre (sélecteurs de Supervision
+// et de la vue « par-dessus l'épaule »). La liste complète des comptes reste
+// réservée à l'admin : faute de cette route, l'écran Supervision d'un manager
+// restait bloqué sur « Chargement… ».
+router.get('/agents', (req, res) => {
+  res.json(db.prepare("SELECT id, nom, prenom, role, agence FROM users WHERE actif = 1 AND role IN ('agent','manager','admin') ORDER BY nom, prenom").all());
+});
+
+// --- Fichiers (« blocs ») : qui travaille sur quoi -------------------------
+// Réservé à l'admin. Créer un fichier, régler ses délais, dire qui y a accès.
+// Le fichier 1 (historique) ne peut pas être désactivé.
+const B = require('../blocs');
+const lireChamps = (t) => { try { const v = JSON.parse(t || '[]'); return Array.isArray(v) ? v : []; } catch { return []; } };
+
+router.get('/blocs', requireRole('admin'), (req, res) => {
+  const blocs = db.prepare('SELECT * FROM blocs ORDER BY actif DESC, id').all().map(b => ({
+    ...b, champs: lireChamps(b.champs),
+    nb_contacts: db.prepare('SELECT COUNT(*) n FROM contacts WHERE bloc_id = ? AND supprime_le IS NULL').get(b.id).n,
+    acces: db.prepare('SELECT user_id FROM bloc_acces WHERE bloc_id = ?').all(b.id).map(r => r.user_id),
+  }));
+  const agents = db.prepare("SELECT id, nom, prenom, role, agence FROM users WHERE actif = 1 AND role = 'agent' ORDER BY nom, prenom").all();
+  res.json({ blocs, agents });
+});
+
+function champsDuBloc(body) {
+  const delai = (v) => (v === '' || v === null || v === undefined ? null : parseInt(v, 10));
+  const d1 = delai(body.delai_sans_reponse_jours), d2 = delai(body.relance_sans_projet_jours);
+  if ((d1 !== null && !(d1 >= 1 && d1 <= 365)) || (d2 !== null && !(d2 >= 1 && d2 <= 3650))) return { erreur: 'Délai invalide' };
+  const champs = Array.isArray(body.champs)
+    ? body.champs.filter(c => c && c.cle && c.libelle).map(c => ({ cle: String(c.cle).trim().toLowerCase().replace(/[^a-z0-9_]/g, '_').slice(0, 40), libelle: String(c.libelle).trim().slice(0, 60), type: ['texte', 'nombre', 'date'].includes(c.type) ? c.type : 'texte' }))
+    : undefined;
+  return { d1, d2, champs };
+}
+
+router.post('/blocs', requireRole('admin'), (req, res) => {
+  const libelle = String(req.body?.libelle || '').trim();
+  if (!libelle) return res.status(400).json({ error: 'Nom du fichier requis' });
+  const code = String(req.body?.code || libelle).trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 40) || 'fichier';
+  const proprietaire = req.body?.proprietaire_id ? parseInt(req.body.proprietaire_id, 10) : null;
+  const parent = req.body?.parent_id ? parseInt(req.body.parent_id, 10) : null;
+  if (proprietaire && !db.prepare("SELECT 1 FROM users WHERE id = ? AND actif = 1").get(proprietaire)) return res.status(400).json({ error: 'Propriétaire inconnu' });
+  if (parent && !db.prepare('SELECT 1 FROM blocs WHERE id = ?').get(parent)) return res.status(400).json({ error: 'Fichier parent inconnu' });
+  // Un double clic sur « Créer » ne fait pas deux fichiers du même nom pour la même personne.
+  const jumeau = db.prepare('SELECT id FROM blocs WHERE sans_casse(libelle) = sans_casse(?) AND COALESCE(proprietaire_id, 0) = ? AND actif = 1').get(libelle, proprietaire || 0);
+  if (jumeau) return res.status(409).json({ error: 'Un fichier porte déjà ce nom', id: jumeau.id });
+  const c = champsDuBloc(req.body || {});
+  if (c.erreur) return res.status(400).json({ error: c.erreur });
+  const r = db.prepare(`INSERT INTO blocs (code, libelle, proprietaire_id, parent_id, agence, delai_sans_reponse_jours, relance_sans_projet_jours, champs)
+    VALUES (?,?,?,?,?,?,?,?)`).run(code, libelle, proprietaire, parent, String(req.body?.agence || '').trim() || null, c.d1, c.d2, JSON.stringify(c.champs || []));
+  res.status(201).json({ id: r.lastInsertRowid });
+});
+
+router.put('/blocs/:id', requireRole('admin'), (req, res) => {
+  const bloc = db.prepare('SELECT * FROM blocs WHERE id = ?').get(req.params.id);
+  if (!bloc) return res.status(404).json({ error: 'Fichier inconnu' });
+  const body = req.body || {};
+  const c = champsDuBloc(body);
+  if (c.erreur) return res.status(400).json({ error: c.erreur });
+  if (body.actif === false && bloc.id === B.BLOC_HISTORIQUE) return res.status(400).json({ error: 'Le fichier historique ne peut pas être désactivé' });
+  if (body.libelle !== undefined && !String(body.libelle).trim()) return res.status(400).json({ error: 'Nom du fichier requis' });
+  db.transaction(() => {
+    if (body.libelle !== undefined) {
+      db.prepare('UPDATE blocs SET libelle = ? WHERE id = ?').run(String(body.libelle).trim(), bloc.id);
+    }
+    if ('delai_sans_reponse_jours' in body) db.prepare('UPDATE blocs SET delai_sans_reponse_jours = ? WHERE id = ?').run(c.d1, bloc.id);
+    if ('relance_sans_projet_jours' in body) db.prepare('UPDATE blocs SET relance_sans_projet_jours = ? WHERE id = ?').run(c.d2, bloc.id);
+    if (c.champs !== undefined) db.prepare('UPDATE blocs SET champs = ? WHERE id = ?').run(JSON.stringify(c.champs), bloc.id);
+    if (typeof body.actif === 'boolean') db.prepare('UPDATE blocs SET actif = ? WHERE id = ?').run(body.actif ? 1 : 0, bloc.id);
+    // Accès : la liste envoyée REMPLACE celle du fichier. Rien d'autre n'est touché :
+    // retirer un accès masque le fichier à la personne, ses fiches et ses appels restent.
+    if (Array.isArray(body.acces)) {
+      const ids = [...new Set(body.acces.map(x => parseInt(x, 10)).filter(Boolean))];
+      db.prepare('DELETE FROM bloc_acces WHERE bloc_id = ?').run(bloc.id);
+      const ouvrir = db.prepare('INSERT OR IGNORE INTO bloc_acces (bloc_id, user_id) VALUES (?, ?)');
+      for (const id of ids) ouvrir.run(bloc.id, id);
+    }
+  })();
+  res.json({ ok: true });
+});
+
 // Paramètres
 router.get('/parametres', (req, res) => {
   const rows = db.prepare('SELECT * FROM parametres').all();
@@ -162,18 +242,31 @@ router.get('/parametres', (req, res) => {
   res.json(params);
 });
 
-router.put('/parametres', (req, res) => {
+// L'écran renvoyait TOUT ce qu'il avait chargé : une page ouverte depuis une
+// heure réécrivait le modèle de mail de Marine avec son ancienne version, et les
+// marqueurs de clôture de session des agents. Désormais : écriture réservée à
+// l'admin, l'écran n'envoie que ce qui a changé, et les clés tenues par
+// l'application (clôtures de session) ne s'écrivent pas par ici.
+const CLES_RESERVEES = /^(session_cloturee_|blocs_acces_initialises$)/;
+router.put('/parametres', requireRole('admin'), (req, res) => {
   const update = db.prepare('INSERT OR REPLACE INTO parametres (cle, valeur) VALUES (?, ?)');
+  let ecrites = 0;
   const updateAll = db.transaction((params) => {
-    Object.entries(params).forEach(([k, v]) => update.run(k, String(v)));
+    Object.entries(params || {}).forEach(([k, v]) => {
+      if (CLES_RESERVEES.test(k) || v === null || v === undefined) return;
+      update.run(k, String(v)); ecrites++;
+    });
   });
   updateAll(req.body);
-  res.json({ ok: true });
+  res.json({ ok: true, ecrites });
 });
 
 // Supervision temps réel
+// « Aujourd'hui » est la journée de Paris, et seuls les appels comptent : une note
+// libre ajoutée à une fiche gonflait « Relances » et « Contactés ».
+const P = require('../utils/paris');
 router.get('/supervision', (req, res) => {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = P.aujourdhuiParis();
   const activite = db.prepare(`
     SELECT u.id, u.nom, u.prenom,
       COUNT(r.id) as relances_total,
@@ -181,9 +274,10 @@ router.get('/supervision', (req, res) => {
       SUM(CASE WHEN r.statut = 'tente_sans_reponse' THEN 1 ELSE 0 END) as sans_reponse,
       SUM(CASE WHEN r.statut = 'contacte' THEN 1 ELSE 0 END) as contactes,
       MAX(r.created_at) as derniere_relance
-    FROM users u LEFT JOIN relances r ON r.agent_id = u.id AND DATE(r.created_at) = ?
+    FROM users u LEFT JOIN relances r ON r.agent_id = u.id AND r.type = 'appel'
+      AND r.created_at >= ? AND r.created_at < ?
     WHERE u.role = 'agent' AND u.actif = 1 GROUP BY u.id
-  `).all(today);
+  `).all(P.debutJourUtc(today), P.debutJourUtc(P.plusJours(today, 1)));
 
   res.json({ activite, date: today });
 });
@@ -261,29 +355,31 @@ router.get('/vue-agent/:id', (req, res) => {
 
   const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Paris' });
 
-  // Meme requete que GET /contacts/file-relances : la file est commune aux agents.
+  // Meme requete que GET /contacts/file-relances, sur les fichiers ouverts a CET agent.
+  const blocsAgent = B.blocsVisibles(agent).map(b => b.id);
   const file = db.prepare(`
     SELECT contacts.id, contacts.nom, contacts.prenom, contacts.telephone, contacts.ville,
            contacts.statut, contacts.score_priorite, contacts.prochain_contact, contacts.categorie,
            CASE WHEN contacts.statut = 'a_contacter' THEN 0 ELSE 1 END AS priorite_groupe
     FROM contacts
     WHERE contacts.statut NOT IN ('pas_interesse', 'inactif')
+      AND contacts.supprime_le IS NULL AND ${B.clauseBlocs(blocsAgent)}
       AND (contacts.statut = 'a_contacter'
         OR (contacts.statut IN ('tente_sans_reponse','rappel_planifie','a_recontacter')
             AND contacts.prochain_contact IS NOT NULL AND contacts.prochain_contact <= ?))
     ORDER BY priorite_groupe ASC, contacts.score_priorite DESC, contacts.prochain_contact ASC
     LIMIT 100
-  `).all(today);
+  `).all(...blocsAgent, today);
 
   // Ses rappels a elle : ceux qu'elle a planifies et qui lui restent a traiter.
   const rappels = db.prepare(`
     SELECT c.id, c.nom, c.prenom, c.telephone, c.prochain_contact, c.statut
     FROM contacts c
-    WHERE c.prochain_contact IS NOT NULL
+    WHERE c.prochain_contact IS NOT NULL AND c.supprime_le IS NULL AND ${B.clauseBlocs(blocsAgent, 'c.bloc_id')}
       AND c.statut IN ('rappel_planifie','a_recontacter','tente_sans_reponse')
       AND EXISTS (SELECT 1 FROM relances r WHERE r.contact_id = c.id AND r.agent_id = ?)
     ORDER BY c.prochain_contact ASC LIMIT 100
-  `).all(agentId);
+  `).all(...blocsAgent, agentId);
 
   // Son activite du jour (heure de Paris), pour savoir ou elle en est.
   const offsetMin = parisOffsetMinutes(today);

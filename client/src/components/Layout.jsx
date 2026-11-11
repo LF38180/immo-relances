@@ -1,4 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import api from '../utils/api'
+import { blocCourant, choisirBloc } from '../utils/blocCourant'
 import { useAuth } from '../hooks/useAuth'
 import Icon from './ui/Icon'
 import BottomTabBar from './BottomTabBar'
@@ -15,6 +17,24 @@ const NAV_ITEMS = [
 export default function Layout({ page, onNavigate, children }) {
   const { user, logout } = useAuth()
   const [collapsed, setCollapsed] = useState(false)
+  // Les fichiers ouverts à la personne. Avec un seul (le cas de toujours), rien ne
+  // s'affiche et rien ne change. Avec plusieurs, un sélecteur dit sur lequel on
+  // travaille : la file d'appels, les contacts, l'import et le suivi le suivent.
+  const [blocs, setBlocs] = useState([])
+  const [bloc, setBloc] = useState(blocCourant())
+  useEffect(() => {
+    api.get('/contacts/blocs').then(r => {
+      setBlocs(r.data)
+      // Un choix resté d'une autre session, sur un fichier qui n'est plus ouvert : on l'oublie.
+      if (bloc && !r.data.some(b => b.id === bloc)) { choisirBloc(null); setBloc(null) }
+    }).catch(() => { setBlocs([]); choisirBloc(null); setBloc(null) })   // pas de liste, pas de filtre caché
+  }, [])
+  const changerBloc = (v) => {
+    // Changer de fichier recharge l'écran : en pleine session d'appels, la note en
+    // cours de saisie serait perdue. On prévient.
+    if (page === 'session' && !window.confirm("Changer de fichier recharge la session d'appels. Une note en cours de saisie serait perdue. Continuer ?")) return
+    const id = v ? Number(v) : null; choisirBloc(id); setBloc(id)
+  }
 
   const visibleNav = NAV_ITEMS.filter(n => n.roles.includes(user?.role))
 
@@ -90,18 +110,26 @@ export default function Layout({ page, onNavigate, children }) {
       <main className="flex-1 overflow-hidden flex flex-col">
         {/* Topbar */}
         <div className="bg-white border-b border-quai-border px-4 md:px-6 py-3 flex items-center justify-between flex-shrink-0">
-          <h1 className="text-lg font-semibold text-quai-navy">
+          <h1 className="text-lg font-semibold text-quai-navy truncate min-w-0">
             {NAV_ITEMS.find(n => n.id === page)?.label || 'ImmoRelances'}
           </h1>
-          <div className="flex items-center gap-3">
-            <span className="text-xs text-quai-muted hidden md:inline">Le Quai de l'Immobilier — Gestion des relances</span>
+          <div className="flex items-center gap-3 flex-shrink-0">
+            {blocs.length > 1 && (
+              <select value={bloc || ''} onChange={e => changerBloc(e.target.value)} aria-label="Fichier de travail"
+                className="input w-auto text-sm max-w-[9rem] md:max-w-none">
+                <option value="">Tous mes fichiers</option>
+                {blocs.map(b => <option key={b.id} value={b.id}>{b.libelle}</option>)}
+              </select>
+            )}
+            <span className={`text-xs text-quai-muted hidden ${blocs.length > 1 ? 'lg:inline' : 'md:inline'}`}>Le Quai de l'Immobilier — Gestion des relances</span>
             <button onClick={logout} aria-label="Déconnexion"
               className="md:hidden text-quai-muted hover:text-quai-navy p-1.5">
               <Icon name="log-out" size="md" />
             </button>
           </div>
         </div>
-        {children}
+        {/* Changer de fichier recharge l'écran courant sur le nouveau fichier. */}
+        <div key={bloc || 'tous'} className="contents">{children}</div>
 
         {/* Barre d'onglets basse défilable : MOBILE uniquement */}
         <BottomTabBar items={visibleNav} active={page} onSelect={onNavigate} />
