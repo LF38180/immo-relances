@@ -451,7 +451,7 @@ router.post('/import', (req, res) => {
 
 const ISSUE_LABEL_EXPORT = {
   sans_reponse: 'Sans réponse', projet: 'Projet (estimation/RDV)',
-  rappel: 'A recontacter plus tard', demenage: "N'habite plus a l'adresse",
+  rappel: 'À recontacter plus tard', demenage: "N'habite plus à l'adresse",
   sans_projet: 'Plus de projet', autre: 'Autre',
 };
 

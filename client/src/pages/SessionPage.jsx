@@ -14,8 +14,8 @@ import { formaterNotes } from '../utils/formaterNotes'
 
 const ISSUES_LIST = [
   { key: 'projet',      label: 'Projet (estimation, RDV…)',      icon: 'trophy' },
-  { key: 'rappel',      label: 'A recontacter plus tard',         icon: 'calendar-clock' },
-  { key: 'demenage',    label: "N'habite plus a l'adresse",       icon: 'map-pin' },
+  { key: 'rappel',      label: 'À recontacter plus tard',         icon: 'calendar-clock' },
+  { key: 'demenage',    label: "N'habite plus à l'adresse",       icon: 'map-pin' },
   { key: 'sans_projet', label: 'Plus de projet',                  icon: 'calendar' },
   { key: 'autre',       label: 'Autre',                           icon: 'pencil' },
 ]
@@ -52,7 +52,7 @@ export default function SessionPage() {
   const contact = horsFile || file[index]
 
   const telecharger = async () => {
-    if (actionsSession.length === 0) { toast.error('Aucune action a exporter pour le moment'); return }
+    if (actionsSession.length === 0) { toast.error('Aucune action à exporter pour le moment'); return }
     const now = new Date()
     const dateLabel = format(now, 'dd/MM/yyyy HH:mm')
     const dateFichier = format(now, 'yyyy-MM-dd-HHmm')
@@ -68,7 +68,7 @@ export default function SessionPage() {
       setSessionStats({ total: 0, rdv: 0, contactes: 0, pasRep: 0 })
       setDone(false)
       loadFile()
-    } catch { toast.error('Erreur generation du recap') }
+    } catch { toast.error("Le récap n'a pas pu être généré") }
   }
 
   // Rafraichit les donnees de la file SANS bouger la position courante : apres une
@@ -160,7 +160,7 @@ export default function SessionPage() {
         statut: issue, notes,
       }])
       if (issue === 'projet') toast.success('Projet ! Excellent !', { duration: 3000 })
-      else toast.success('Relance enregistree')
+      else toast.success('Relance enregistrée')
       chargerRappels()
 
       // Appel hors file : on revient a la file sans consommer de contact.
@@ -244,18 +244,18 @@ export default function SessionPage() {
         <div className="text-center max-w-md">
           <Icon name="trophy" size="xl" className="text-quai-gold mx-auto mb-4" />
           <h2 className="text-2xl font-display font-bold text-quai-navy mb-2">
-            {file.length === 0 ? 'Aucune relance a faire' : 'Session terminee'}
+            {file.length === 0 ? 'Aucune relance à faire' : 'Session terminée'}
           </h2>
           <div className="grid grid-cols-2 gap-4 my-6">
             <div className="card text-center"><div className="text-2xl font-bold text-quai-navy">{sessionStats.total}</div><div className="text-xs text-quai-muted">Relances</div></div>
             <div className="card text-center"><div className="text-2xl font-bold text-emerald-600">{sessionStats.rdv}</div><div className="text-xs text-quai-muted">RDV obtenus</div></div>
-            <div className="card text-center"><div className="text-2xl font-bold text-quai-navy">{sessionStats.contactes}</div><div className="text-xs text-quai-muted">Contactes</div></div>
-            <div className="card text-center"><div className="text-2xl font-bold text-amber-600">{sessionStats.pasRep}</div><div className="text-xs text-quai-muted">Sans reponse</div></div>
+            <div className="card text-center"><div className="text-2xl font-bold text-quai-navy">{sessionStats.contactes}</div><div className="text-xs text-quai-muted">Contactés</div></div>
+            <div className="card text-center"><div className="text-2xl font-bold text-amber-600">{sessionStats.pasRep}</div><div className="text-xs text-quai-muted">Sans réponse</div></div>
           </div>
           <div className="flex flex-wrap gap-3 justify-center">
             <button onClick={loadFile} className="btn-primary inline-flex items-center gap-2"><Icon name="refresh-cw" size="sm" /> Recharger la file</button>
             {actionsSession.length > 0 && (
-              <button onClick={telecharger} className="btn-secondary inline-flex items-center gap-2"><Icon name="file-down" size="sm" /> Telecharger le recap</button>
+              <button onClick={telecharger} className="btn-secondary inline-flex items-center gap-2"><Icon name="file-down" size="sm" /> Télécharger le récap</button>
             )}
           </div>
         </div>
@@ -272,8 +272,8 @@ export default function SessionPage() {
           <span>Contact {index + 1} / {file.length}</span>
           <div className="flex flex-wrap gap-2 text-xs">
             <span className="text-emerald-600 font-medium inline-flex items-center gap-1"><Icon name="calendar-check" size="sm" /> {sessionStats.rdv} RDV</span>
-            <span className="text-quai-navy font-medium inline-flex items-center gap-1"><Icon name="phone-call" size="sm" /> {sessionStats.contactes} contactes</span>
-            <span className="text-amber-600 font-medium inline-flex items-center gap-1"><Icon name="phone-off" size="sm" /> {sessionStats.pasRep} sans reponse</span>
+            <span className="text-quai-navy font-medium inline-flex items-center gap-1"><Icon name="phone-call" size="sm" /> {sessionStats.contactes} contactés</span>
+            <span className="text-amber-600 font-medium inline-flex items-center gap-1"><Icon name="phone-off" size="sm" /> {sessionStats.pasRep} sans réponse</span>
           </div>
         </div>
         <div className="h-2 bg-quai-border rounded-full overflow-hidden">
@@ -282,7 +282,7 @@ export default function SessionPage() {
         {actionsSession.length > 0 && (
           <div className="mt-2 flex justify-end">
             <button onClick={telecharger} className="btn-secondary btn-sm inline-flex items-center gap-1.5">
-              <Icon name="file-down" size="sm" /> Fin de session et telecharger recap ({actionsSession.length})
+              <Icon name="file-down" size="sm" /> Fin de session et télécharger le récap ({actionsSession.length})
             </button>
           </div>
         )}
@@ -291,7 +291,7 @@ export default function SessionPage() {
             <Icon name="search" size="sm" className="text-quai-muted" />
             <input
               className="input flex-1"
-              placeholder="Rappel entrant ? Rechercher par numero ou nom…"
+              placeholder="Rappel entrant ? Rechercher par numéro ou nom…"
               value={recherche}
               onChange={e => setRecherche(e.target.value)}
             />
@@ -368,7 +368,7 @@ export default function SessionPage() {
             </span>
             <button onClick={() => setHorsFile(null)}
               className="text-sm text-quai-muted hover:text-quai-navy inline-flex items-center gap-1.5">
-              <Icon name="arrow-left" size="sm" /> Revenir a ma file
+              <Icon name="arrow-left" size="sm" /> Revenir à ma file
             </button>
           </div>
         )}
@@ -395,7 +395,7 @@ export default function SessionPage() {
               {contact.derniere_trace_le && (
                 <div className="mt-1.5 pt-1.5 border-t border-quai-border text-left sm:text-right">
                   <div className="font-medium text-quai-navy">
-                    {contact.derniere_trace_type === 'note' ? 'Derniere note' : 'Dernier appel'}
+                    {contact.derniere_trace_type === 'note' ? 'Dernière note' : 'Dernier appel'}
                     {' · '}
                     {format(new Date(contact.derniere_trace_le), 'dd/MM/yyyy')}
                   </div>
@@ -410,7 +410,7 @@ export default function SessionPage() {
           {contact.telephone && (
             <div className="bg-quai-navy rounded-xl p-5 mb-4 flex items-center justify-between">
               <div>
-                <div className="text-xs text-quai-gold font-medium uppercase tracking-wider mb-1">Telephone</div>
+                <div className="text-xs text-quai-gold font-medium uppercase tracking-wider mb-1">Téléphone</div>
                 <a href={`tel:${contact.telephone}`} className="text-2xl md:text-3xl font-bold text-white hover:text-quai-gold transition-colors inline-flex items-center gap-2">
                   <Icon name="phone" size="lg" /> {contact.telephone}
                 </a>
@@ -513,7 +513,7 @@ export default function SessionPage() {
         )}
 
         <div className="card">
-          <h3 className="font-medium text-quai-navy mb-4">Resultat de l'appel</h3>
+          <h3 className="font-medium text-quai-navy mb-4">Résultat de l'appel</h3>
 
           {etape === 1 && (
             <div className="grid grid-cols-2 gap-3">
@@ -523,7 +523,7 @@ export default function SessionPage() {
                 className="flex flex-col items-center justify-center gap-3 p-5 rounded-xl border-2 border-amber-200 bg-amber-50 hover:bg-amber-100 text-amber-800 font-semibold transition-all min-h-[100px] text-base"
               >
                 <Icon name="phone-off" size="lg" className="flex-shrink-0" />
-                <span>N'a pas repondu</span>
+                <span>N'a pas répondu</span>
                 <kbd className="kbd text-xs">1</kbd>
               </button>
               <button
@@ -532,7 +532,7 @@ export default function SessionPage() {
                 className="flex flex-col items-center justify-center gap-3 p-5 rounded-xl border-2 border-quai-navy bg-quai-navy hover:bg-quai-navy/90 text-white font-semibold transition-all min-h-[100px] text-base"
               >
                 <Icon name="phone-call" size="lg" className="flex-shrink-0" />
-                <span>A repondu</span>
+                <span>A répondu</span>
                 <kbd className="kbd text-xs bg-white/20 text-white border-white/30">2</kbd>
               </button>
             </div>
@@ -606,7 +606,7 @@ export default function SessionPage() {
                           className="input"
                           value={nouvelleAdresse.adresse}
                           onChange={e => setNouvelleAdresse(a => ({ ...a, adresse: e.target.value }))}
-                          placeholder="Numero et nom de rue"
+                          placeholder="Numéro et nom de rue"
                         />
                       </div>
                       <div>
@@ -650,7 +650,7 @@ export default function SessionPage() {
                 >
                   {submitting ? 'Enregistrement…'
                     : horsFile
-                      ? <>Enregistrer et revenir a ma file <Icon name="arrow-left" size="sm" /></>
+                      ? <>Enregistrer et revenir à ma file <Icon name="arrow-left" size="sm" /></>
                       : <>Enregistrer et suivant <Icon name="arrow-right" size="sm" /></>}
                 </button>
                 <button onClick={skip} className="btn-secondary">Passer</button>
@@ -666,7 +666,7 @@ export default function SessionPage() {
         </div>
 
         <div className="text-center text-xs text-quai-muted">
-          Raccourcis : <kbd className="kbd">1</kbd> pas repondu · <kbd className="kbd">2</kbd> a repondu · <kbd className="kbd">S</kbd> script · <kbd className="kbd">→</kbd> passer
+          Raccourcis : <kbd className="kbd">1</kbd> pas répondu · <kbd className="kbd">2</kbd> a répondu · <kbd className="kbd">S</kbd> script · <kbd className="kbd">→</kbd> passer
         </div>
       </div>
       {contactOuvert && (

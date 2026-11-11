@@ -42,9 +42,13 @@ export default function DashboardPage({ onNavigate }) {
     </div>
   )
 
-  const rdvCount = stats.parStatut.find(s => s.statut === 'rdv_obtenu')?.cnt || 0
-  const contacteCount = stats.parStatut.find(s => s.statut === 'contacte')?.cnt || 0
-  const tauxContact = stats.totalRelances > 0 ? Math.round((contacteCount + rdvCount) / stats.totalRelances * 100) : 0
+  // Trois cartes sur quatre suivent le menu de période et ne comptent que ce que
+  // la personne voit (ses propres appels si elle est agente). Avant : le taux
+  // oubliait les personnes jointes qui demandaient un rappel, et « RDV obtenus
+  // (total) » affichait le stock de toute l'équipe, sans période.
+  const t = stats.totaux || {}
+  const appels = t.appels ?? stats.totalRelances
+  const tauxContact = appels > 0 ? Math.round((t.appels_aboutis || 0) / appels * 100) : 0
 
   const catData = stats.contactsParCategorie.map(c => ({
     name: CATEGORIES[c.categorie]?.label || c.categorie, value: c.cnt
@@ -58,7 +62,7 @@ export default function DashboardPage({ onNavigate }) {
   return (
     <div className="flex-1 overflow-y-auto p-4 md:p-6 pb-24 md:pb-6 bg-quai-light">
       <div className="max-w-6xl mx-auto">
-        <PageHeader title="Vue d'ensemble" subtitle={format(new Date(), "EEEE d MMMM yyyy", { locale: fr })}>
+        <PageHeader subtitle={format(new Date(), "EEEE d MMMM yyyy", { locale: fr })}>
           <ChoixPeriode valeur={periode} onChange={setPeriode} />
         </PageHeader>
 
@@ -69,10 +73,10 @@ export default function DashboardPage({ onNavigate }) {
           </div>
         )}
         <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6 transition-opacity ${loading ? 'opacity-50' : ''}`}>
-          <KpiCard label="Total contacts" value={stats.totalContacts.toLocaleString('fr')} icon="users" variant="navy" />
-          <KpiCard label="Relances (période)" value={stats.totalRelances} icon="phone" variant="gold" />
-          <KpiCard label="Taux de contact" value={`${tauxContact}%`} icon="trending-up" variant="light" />
-          <KpiCard label="RDV obtenus (total)" value={stats.rdvObtenus} icon="calendar-check" variant="success" onClick={() => onNavigate('contacts')} />
+          <KpiCard label="Fiches dans le fichier" value={stats.totalContacts.toLocaleString('fr')} icon="users" variant="navy" />
+          <KpiCard label="Appels (période)" value={appels} icon="phone" variant="gold" />
+          <KpiCard label="Taux de contact (période)" value={`${tauxContact}%`} icon="trending-up" variant="light" />
+          <KpiCard label="Projets (période)" value={t.projets ?? 0} icon="calendar-check" variant="success" />
         </div>
 
         {stats.parAgent?.length > 0 && (
@@ -125,7 +129,7 @@ export default function DashboardPage({ onNavigate }) {
         </div>
 
         <div className="card">
-          <h2 className="font-semibold text-quai-navy mb-4 text-sm uppercase tracking-wider">Pipeline contacts</h2>
+          <h2 className="font-semibold text-quai-navy mb-4 text-sm uppercase tracking-wider">Contacts par statut</h2>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-3">
             {stats.contactsParStatut.map(s => {
               const info = STATUTS[s.statut] || { label: s.statut, color: 'bg-quai-light text-quai-muted' }

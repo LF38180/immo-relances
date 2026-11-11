@@ -58,7 +58,7 @@ export default function ScriptsPage() {
   return (
     <div className="flex-1 overflow-y-auto p-4 md:p-6 pb-24 md:pb-6 bg-quai-light">
       <div className="max-w-4xl mx-auto">
-        <PageHeader title="Scripts d'appel">
+        <PageHeader>
           <select className="input w-auto" value={filtre} onChange={e => setFiltre(e.target.value)} aria-label="Filtrer par catégorie">
             <option value="">Toutes catégories</option>
             {Object.entries(CATEGORIES).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}

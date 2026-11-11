@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react'
 import api from '../utils/api'
 import toast from 'react-hot-toast'
 import Icon from '../components/ui/Icon'
-import PageHeader from '../components/ui/PageHeader'
 import ImportCahierModal from '../components/ImportCahierModal'
 import { useAuth } from '../hooks/useAuth'
 import FichiersAdmin, { Corbeille } from './FichiersAdmin'
@@ -110,8 +109,7 @@ export default function AdminPage() {
   return (
     <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 md:p-6 pb-24 md:pb-6 bg-quai-light">
       <div className="max-w-4xl mx-auto">
-        <PageHeader title="Administration" />
-
+        
         <div className="flex overflow-x-auto border-b border-quai-border mb-6">
           {[['users','Utilisateurs','users'],['params','Paramètres','settings'],['courtage','Suivi Marine','phone-call'],...(estAdmin ? [['fichiers','Fichiers','table'],['imports','Imports courtage','file-up'],['donnees','Données','database'],['activite','Activité','history']] : [])].map(([t, lbl, ic]) => (
             <button key={t} onClick={() => setTab(t)}
@@ -217,8 +215,8 @@ export default function AdminPage() {
           <div>
             <h2 className="font-semibold text-quai-navy mb-4">Paramètres de relance</h2>
             <div className="card space-y-4">
-              <ParamField label="Delai re-proposition sans reponse (jours)" cle="delai_sans_reponse_jours" params={params} setParams={setParams} type="number" />
-              <ParamField label="Relance apres 'plus de projet' (jours)" cle="relance_sans_projet_jours" params={params} setParams={setParams} type="number" />
+              <ParamField label="Rappel après « sans réponse » (jours)" cle="delai_sans_reponse_jours" params={params} setParams={setParams} type="number" />
+              <ParamField label="Relance après « plus de projet » (jours)" cle="relance_sans_projet_jours" params={params} setParams={setParams} type="number" />
               <hr className="border-quai-border" />
               <h3 className="font-medium text-quai-navy">Score de base par catégorie</h3>
               {[

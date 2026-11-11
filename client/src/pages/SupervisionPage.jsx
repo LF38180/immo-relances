@@ -71,7 +71,7 @@ export default function SupervisionPage() {
   return (
     <div className="flex-1 overflow-y-auto p-4 md:p-6 pb-24 md:pb-6 bg-quai-light">
       <div className="max-w-5xl mx-auto">
-        <PageHeader title="Supervision">
+        <PageHeader>
           <button onClick={() => { load(); chargerSuivi() }} className="btn-secondary btn-sm inline-flex items-center gap-1.5"><Icon name="refresh-cw" size="sm" /> Actualiser</button>
         </PageHeader>
         {erreur && <div className="card mb-4 text-sm text-quai-navy">{erreur}</div>}

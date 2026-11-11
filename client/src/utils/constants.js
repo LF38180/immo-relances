@@ -29,8 +29,8 @@ export const STATUTS_RELANCE = {
 export const ISSUES = {
   sans_reponse: { label: 'Sans réponse',             icon: 'phone-off' },
   projet:       { label: 'Projet (estimation/RDV)',  icon: 'trophy' },
-  rappel:       { label: 'A recontacter plus tard',  icon: 'calendar-clock' },
-  demenage:     { label: "N'habite plus a l'adresse", icon: 'map-pin' },
+  rappel:       { label: 'À recontacter plus tard',  icon: 'calendar-clock' },
+  demenage:     { label: "N'habite plus à l'adresse", icon: 'map-pin' },
   sans_projet:  { label: 'Plus de projet',           icon: 'calendar' },
   autre:        { label: 'Autre',                    icon: 'pencil' },
 }
