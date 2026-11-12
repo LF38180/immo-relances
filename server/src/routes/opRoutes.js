@@ -1167,6 +1167,9 @@ router.get('/listing', pilotage, (req, res) => {
       c.conseiller_precedent, c.prenom_a_dire, c.dossier_repris, c.npai,
 
       (SELECT COUNT(*) FROM op_appels a WHERE a.id_modelo = c.id_modelo)        AS appels,
+      -- Tentatives du mois civil : c'est ce compteur qui atteint le plafond.
+      (SELECT COUNT(*) FROM op_appels a WHERE a.id_modelo = c.id_modelo
+        AND strftime('%Y-%m', a.horodatage) = ?)                                AS appels_ce_mois,
       (SELECT MAX(a.horodatage) FROM op_appels a WHERE a.id_modelo = c.id_modelo) AS dernier_le,
       (SELECT a.issue FROM op_appels a WHERE a.id_modelo = c.id_modelo
         ORDER BY a.horodatage DESC LIMIT 1)                                     AS derniere_issue,
@@ -1203,7 +1206,7 @@ router.get('/listing', pilotage, (req, res) => {
     FROM op_contacts c
     LEFT JOIN op_resultats r ON r.id_modelo = c.id_modelo
     WHERE ${where}
-    ORDER BY c.conseiller, c.nom, c.prenom`).all(...params);
+    ORDER BY c.conseiller, c.nom, c.prenom`).all(R.moisCourant(), ...params);
 
   // L'état d'une fiche en un mot : c'est ce qu'on lit en premier dans un
   // tableau de 1 088 lignes.

@@ -28,6 +28,9 @@ export default function OperationHub({ onRetour }) {
   // La page d'accueil s'affiche d'abord : elle se lit une fois, le premier
   // matin, et donne le pourquoi avant le comment.
   const [onglet, setOnglet] = useState('accueil')
+  // Une case du Suivi cliquée : le Listing s'ouvre déjà filtré sur ces fiches.
+  const [filtreListing, setFiltreListing] = useState('')
+  const voirDansListing = (f) => { setFiltreListing(f); setOnglet('listing') }
   // Une fiche ouverte depuis le listing ou le suivi : on bascule sur l'écran
   // d'appel sans faire chercher le client dans sa liste. Consommée une fois,
   // puis oubliée — sinon revenir sur l'onglet la rouvrirait.
@@ -109,7 +112,7 @@ export default function OperationHub({ onRetour }) {
         <nav className="bg-white border-b border-quai-border flex gap-0.5 px-2 pt-1 shrink-0
                         overflow-x-auto scrollbar-none">
           {onglets.map(o => (
-            <button key={o.id} onClick={() => setOnglet(o.id)}
+            <button key={o.id} onClick={() => { setFiltreListing(''); setOnglet(o.id) }}
               className={`px-3 py-2 text-[13px] font-medium whitespace-nowrap inline-flex items-center
                           gap-1.5 border-b-2 transition-colors ${
                 onglet === o.id ? 'border-quai-gold text-quai-navy'
@@ -132,9 +135,9 @@ export default function OperationHub({ onRetour }) {
           <SessionOperation ficheAOuvrir={ficheAOuvrir}
             onFicheOuverte={() => setFicheAOuvrir(null)} retour={retourPilote} />
         )}
-        {onglet === 'pilotage' && <PilotagePage onAppeler={ouvrirAppel} />}
+        {onglet === 'pilotage' && <PilotagePage onAppeler={ouvrirAppel} onVoir={voirDansListing} />}
         {onglet === 'dispatch' && <DispatchPage />}
-        {onglet === 'listing' && <ListingPage onAppeler={ouvrirAppel} />}
+        {onglet === 'listing' && <ListingPage key={filtreListing} onAppeler={ouvrirAppel} filtreInitial={filtreListing} />}
         {onglet === 'demo' && <DemoPage />}
       </Suspense>
       </ErrorBoundary>

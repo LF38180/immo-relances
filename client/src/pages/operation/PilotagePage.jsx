@@ -10,7 +10,7 @@ import MarquerNpai from './MarquerNpai'
 // qui se transforme en mandat. On ne compte pas les mandats — le délai entre
 // l'appel et la signature se mesure en mois, et un compteur bloqué à zéro
 // pendant six semaines démobilise une équipe.
-export default function PilotagePage({ onAppeler }) {
+export default function PilotagePage({ onAppeler, onVoir }) {
   const [d, setD] = useState(null)
   const [erreur, setErreur] = useState(false)
   const [npaiOuvert, setNpaiOuvert] = useState(false)
@@ -45,21 +45,23 @@ export default function PilotagePage({ onAppeler }) {
             base. L'écran dit « actualisations », qui est le mot qu'on emploie
             devant le client. Lire `r.actualisations` laissait la tuile à zéro
             quoi qu'il arrive. */}
-        <div className="bg-quai-navy text-white rounded-xl p-4">
+        <div className={`bg-quai-navy text-white rounded-xl p-4 ${onVoir ? 'cursor-pointer hover:bg-quai-navymd transition-colors' : ''}`}
+          {...(onVoir ? { role: 'button', tabIndex: 0, title: 'Voir ces fiches', onClick: () => onVoir('ESTIMATION'),
+            onKeyDown: (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); onVoir('ESTIMATION') } } } : {})}>
           <div className="text-[11px] text-white/60 uppercase tracking-wide">Actualisations calées</div>
           <div className="font-display text-4xl font-bold text-quai-gold leading-none mt-1">
             {r.estimations || 0}
           </div>
           <div className="text-[11px] text-white/60 mt-1.5">
-            C’est le seul indicateur qui se transforme en mandat.
+            C’est le seul indicateur qui se transforme en mandat.{onVoir ? ' Cliquez pour voir les fiches.' : ''}
           </div>
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-          <Tuile valeur={r.adresses_maj || 0} libelle="adresses récupérées" />
-          <Tuile valeur={r.soiree || 0} libelle="inscrits à la soirée" />
-          <Tuile valeur={r.courriers_renvoyes || 0} libelle="courriers renvoyés" />
-          <Tuile valeur={r.panneau || 0} libelle="panneaux acceptés" />
+          <Tuile valeur={r.adresses_maj || 0} libelle="adresses récupérées" onClick={onVoir && (() => onVoir('ADRESSE'))} />
+          <Tuile valeur={r.soiree || 0} libelle="inscrits à la soirée" onClick={onVoir && (() => onVoir('SOIREE'))} />
+          <Tuile valeur={r.courriers_renvoyes || 0} libelle="courriers renvoyés" onClick={onVoir && (() => onVoir('RENVOI'))} />
+          <Tuile valeur={r.panneau || 0} libelle="panneaux acceptés" onClick={onVoir && (() => onVoir('PANNEAU'))} />
         </div>
 
         {/* Le pont Modelo, pour l'admin : ce qui est reporté, ce qui attend. */}
@@ -453,7 +455,16 @@ function SectionAttributions({ onAppeler }) {
   )
 }
 
-function Tuile({ valeur, libelle }) {
+// Cliquable quand on lui donne où aller : la case ouvre la liste des fiches
+// qu'elle compte.
+function Tuile({ valeur, libelle, onClick }) {
+  if (onClick) return (
+    <button type="button" onClick={onClick} title="Voir ces fiches"
+      className="bg-white border border-quai-border rounded-xl p-3 text-left hover:border-quai-gold transition-colors">
+      <div className="font-display text-2xl font-bold text-quai-navy leading-none tabular-nums">{valeur}</div>
+      <div className="text-[11px] text-quai-muted mt-1 leading-snug">{libelle} <span aria-hidden="true">→</span></div>
+    </button>
+  )
   return (
     <div className="bg-white border border-quai-border rounded-xl p-3">
       <div className="font-display text-2xl font-bold text-quai-navy leading-none tabular-nums">{valeur}</div>

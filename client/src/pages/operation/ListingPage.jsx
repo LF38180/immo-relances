@@ -53,7 +53,20 @@ const majFiche = (l) => RECUEILLI.filter(([k]) => {
   return l[k] !== null && l[k] !== undefined && l[k] !== ''
 })
 
-export default function ListingPage({ onAppeler }) {
+// Ce qu'on a obtenu, et le plafond du mois : les filtres qu'ouvrent les cases
+// du Suivi. Mêmes règles que les compteurs du serveur.
+const PLAFOND_MENSUEL = 4
+const RESULTATS = {
+  ESTIMATION: { label: 'Actualisations calées', test: l => l.actualisation === 'ACCEPTEE' },
+  ADRESSE:    { label: 'Adresses récupérées',   test: l => !!l.adresse_maj },
+  SOIREE:     { label: 'Inscrits à la soirée',  test: l => l.soiree === 1 },
+  RENVOI:     { label: 'Courriers renvoyés',    test: l => l.courrier_renvoye === 1 },
+  PANNEAU:    { label: 'Panneaux acceptés',     test: l => l.panneau === 1 },
+  PLAFOND:    { label: `Appelés ${PLAFOND_MENSUEL} fois ce mois`, test: l => (l.appels_ce_mois || 0) >= PLAFOND_MENSUEL },
+}
+
+export default function ListingPage({ onAppeler, filtreInitial = '' }) {
+  const [resultat, setResultat] = useState(RESULTATS[filtreInitial] ? filtreInitial : '')
   const [data, setData] = useState(null)
   const [erreur, setErreur] = useState(false)
   const [agent, setAgent] = useState('')
@@ -105,11 +118,12 @@ export default function ListingPage({ onAppeler }) {
       if (majSeules && !majFiche(l).length) return false
       if (attribueesJour && !attribueeAujourdhui(l)) return false
       if (aReporter && !resteAReporter(l)) return false
+      if (resultat && !RESULTATS[resultat].test(l)) return false
       if (!q) return true
       return [l.nom, l.prenom, l.commune, l.bien_commune, l.id_modelo]
         .some(x => String(x || '').toLowerCase().includes(q))
     })
-  }, [lignes, agent, etat, recherche, npaiSeuls, majSeules, attribueesJour, aReporter])
+  }, [lignes, agent, etat, recherche, npaiSeuls, majSeules, attribueesJour, aReporter, resultat])
   const nbAReporter = useMemo(() => lignes.filter(resteAReporter).length, [lignes])
 
   // Les chiffres se recalculent sur ce qui est affiché : filtrer par agent
@@ -243,6 +257,20 @@ export default function ListingPage({ onAppeler }) {
               À reporter dans Modelo <span className="opacity-70">{nbAReporter}</span>
             </Pastille>
           )}
+        </div>
+
+        {/* Ce qu'on a obtenu. Les cases du Suivi arrivent ici, déjà filtrées. */}
+        <div className="flex flex-wrap gap-1.5 items-center">
+          <span className="text-[11px] text-quai-muted mr-0.5">Obtenu :</span>
+          {Object.entries(RESULTATS).map(([cle, f]) => {
+            const n = lignes.filter(f.test).length
+            if (!n && resultat !== cle) return null
+            return (
+              <Pastille key={cle} actif={resultat === cle} onClick={() => setResultat(resultat === cle ? '' : cle)}>
+                {f.label} <span className="opacity-70">{n}</span>
+              </Pastille>
+            )
+          })}
         </div>
 
         {estAdmin && <ReportModelo nb={nbAReporter} onRetour={charger} />}
