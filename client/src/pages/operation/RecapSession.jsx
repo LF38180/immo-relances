@@ -36,7 +36,7 @@ export default function RecapSession({ onFermer }) {
     if (!appels?.length) return toast.error('Rien à exporter')
     const colonnes = ['horodatage', 'conseiller', 'nom', 'prenom', 'commune', 'issue',
       'actualisation', 'date_rdv', 'adresse_maj', 'code_postal_maj', 'commune_maj',
-      'soiree', 'panneau', 'projet', 'recommandation_nom', 'notes', 'id_modelo']
+      'soiree', 'panneau', 'projet', 'recommandation_nom', 'notes', 'id_modelo', 'canal', 'sms_texte']
     const echappe = (v) => {
       const x = v == null ? '' : String(v)
       return /[";\n]/.test(x) ? '"' + x.replace(/"/g, '""') + '"' : x
@@ -148,7 +148,7 @@ function Appel({ appel: a, enEdition, onEditer, onEnregistre }) {
               a.issue === 'JOINT' ? 'bg-emerald-100 text-emerald-800'
                 : a.issue === 'REFUS_FERME' ? 'bg-red-100 text-red-800'
                 : 'bg-quai-light text-quai-muted'}`}>
-              {LIBELLE_ISSUE[a.issue] || a.issue}
+              {a.canal === 'SMS' ? 'SMS envoyé' : (LIBELLE_ISSUE[a.issue] || a.issue)}
             </span>
           </div>
           <div className="text-[11px] text-quai-muted">{quand} · {a.commune}</div>
@@ -166,6 +166,7 @@ function Appel({ appel: a, enEdition, onEditer, onEnregistre }) {
             {a.recommandation_nom && <div>Recommande : {a.recommandation_nom}</div>}
             {a.rappel_le && <div>Rappel : {new Date(a.rappel_le).toLocaleString('fr-FR')}</div>}
             {a.notes && <div className="text-quai-muted italic">{a.notes}</div>}
+            {a.sms_texte && <div className="text-quai-muted">SMS : « {a.sms_texte} »</div>}
             {a.hors_cadre && (
               <div className="text-amber-700">Hors cadre : {a.hors_cadre.toLowerCase().replace(/_/g, ' ')}</div>
             )}

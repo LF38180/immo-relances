@@ -697,6 +697,13 @@ db.exec(`
 {
   const cols = db.prepare("PRAGMA table_info(op_appels)").all().map(c => c.name);
   if (!cols.includes('cle')) db.exec("ALTER TABLE op_appels ADD COLUMN cle TEXT");
+  // SMS envoyé au lieu d'un nouvel appel (12 novembre). La liste des issues est
+  // verrouillée par un CHECK : y ajouter « SMS » obligerait à reconstruire la
+  // table en pleine opération. Un SMS est donc une tentative sans réponse
+  // (issue PAS_DE_REPONSE) dont le canal dit que c'était un SMS. Les lignes
+  // d'avant gardent canal NULL : ce sont des appels.
+  if (!cols.includes('canal')) db.exec("ALTER TABLE op_appels ADD COLUMN canal TEXT");
+  if (!cols.includes('sms_texte')) db.exec("ALTER TABLE op_appels ADD COLUMN sms_texte TEXT");
   db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_op_appels_cle ON op_appels(cle) WHERE cle IS NOT NULL");
 }
 

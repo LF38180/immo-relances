@@ -20,7 +20,14 @@ const ISSUES = [
   ['ERREUR_IDENTITE', 'Pas la bonne personne', null],
   ['DECEDE', 'Décédé', null],
   ['REFUS_FERME', 'Refus — ne plus appeler', 'red'],
+  // En dernier, touche 9 : les huit premières touches ne bougent pas.
+  ['SMS', 'SMS envoyé', null],
 ]
+
+// Le dernier SMS que ce conseiller a noté, gardé sur son appareil : il envoie
+// souvent le même à plusieurs personnes.
+const CLE_DERNIER_SMS = 'op-dernier-sms'
+const dernierSms = () => { try { return localStorage.getItem(CLE_DERNIER_SMS) || '' } catch { return '' } }
 
 // Ce qu'il a fait avec nous. C'est la première chose à savoir avant de
 // décrocher : les questions de la fiche n'ont pas le même sens pour quelqu'un
@@ -44,6 +51,7 @@ export default function EcranAppel({ contact: c, onEnregistre, onPasser, horsFil
   const [issue, setIssue] = useState('')
   const [rappelLe, setRappelLe] = useState('')
   const [notes, setNotes] = useState('')
+  const [smsTexte, setSmsTexte] = useState('')
   const [res, setRes] = useState({})
   const [envoi, setEnvoi] = useState(false)
   // Une clé par fiche ouverte : si la réponse du serveur se perd et que
@@ -58,8 +66,8 @@ export default function EcranAppel({ contact: c, onEnregistre, onPasser, horsFil
       const dansUnChamp = /^(INPUT|TEXTAREA|SELECT)$/.test(ev.target.tagName)
       if (ev.key === 'Escape' && scriptOuvert) { setScriptOuvert(false); return }
       if (dansUnChamp) return
-      // 1 à 8 : les huit issues, dans l'ordre affiché.
-      if (/^[1-8]$/.test(ev.key)) {
+      // 1 à 9 : les issues, dans l'ordre affiché.
+      if (/^[1-9]$/.test(ev.key)) {
         const choix = ISSUES[Number(ev.key) - 1]
         if (choix) { setIssue(choix[0]); ev.preventDefault() }
       }
@@ -89,9 +97,9 @@ export default function EcranAppel({ contact: c, onEnregistre, onPasser, horsFil
     const conversation = ['situations', 'statut_actuel', 'projet_type', 'projet', 'actualisation',
       'toujours_proprietaire', 'investissement_locatif', 'recommandation_nom', 'fiche_confirmee', 'adresse_maj']
       .some(k => res[k] != null && res[k] !== '' && res[k] !== 0)
-    if (['REPONDEUR', 'PAS_DE_REPONSE'].includes(issue) && conversation
+    if (['REPONDEUR', 'PAS_DE_REPONSE', 'SMS'].includes(issue) && conversation
       && !window.confirm('Vous avez rempli la fiche comme après une conversation, mais l’issue est « ' +
-        (issue === 'REPONDEUR' ? 'Répondeur' : 'Pas de réponse') + ' ». Enregistrer quand même ?')) return
+        (issue === 'REPONDEUR' ? 'Répondeur' : issue === 'SMS' ? 'SMS envoyé' : 'Pas de réponse') + ' ». Enregistrer quand même ?')) return
     setEnvoi(true)
 
     // En démonstration, rien ne part : l'écran se comporte exactement comme en
@@ -124,7 +132,9 @@ export default function EcranAppel({ contact: c, onEnregistre, onPasser, horsFil
       const { data } = await api.post(`/operation/contacts/${c.id_modelo}/appel`,
         { issue, rappel_le: rappelLe || null, notes: notes.trim() || null,
           duree_sec: Math.round((Date.now() - ouvertA) / 1000),
+          sms_texte: issue === 'SMS' ? (smsTexte.trim() || null) : undefined,
           resultat: aSaisi ? res : undefined, cle })
+      if (issue === 'SMS' && smsTexte.trim()) { try { localStorage.setItem(CLE_DERNIER_SMS, smsTexte.trim()) } catch { /* stockage indisponible */ } }
 
       // Le message dit ce qui est parti, pour que l'agent n'ait pas à le croire.
       const parti = []
@@ -306,7 +316,7 @@ export default function EcranAppel({ contact: c, onEnregistre, onPasser, horsFil
                 {c.dernier_appel_le && <> · dernier le {new Date(c.dernier_appel_le.replace(' ', 'T') + 'Z')
                   .toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}</>}
                 {c.dernier_par && <> par {c.dernier_par}</>}
-                {c.derniere_issue && <> ({c.derniere_issue.replace(/_/g, ' ').toLowerCase()})</>}
+                {c.derniere_issue && <> ({c.dernier_canal === 'SMS' ? 'sms envoyé' : c.derniere_issue.replace(/_/g, ' ').toLowerCase()})</>}
                 {/* Le rappel convenu : sans l'heure, une fiche « à rappeler
                     jeudi 15h » resservie mardi se rappelait à contretemps. */}
                 {c.derniere_issue === 'A_RAPPELER' && c.rappel_le && (
@@ -364,6 +374,38 @@ export default function EcranAppel({ contact: c, onEnregistre, onPasser, horsFil
                   : ' Je voulais prendre de vos nouvelles et vous parler d’une soirée le 3 décembre.'}
                 {' '}Je vous rappelle dans les prochains jours. »
               </blockquote>
+            )}
+
+            {/* SMS : le conseiller l'écrit et l'envoie lui-même, depuis son
+                téléphone. Ici il note ce qu'il a envoyé, s'il le veut. */}
+            {issue === 'SMS' && (
+              <div>
+                <span className="text-[11px] text-quai-muted">Texte du SMS que vous avez envoyé (facultatif)</span>
+                <textarea value={smsTexte} onChange={ev => setSmsTexte(ev.target.value)} rows={3} maxLength={1000}
+                  className="w-full mt-0.5 px-2.5 py-2 text-sm rounded-lg border border-quai-border
+                             focus:outline-none focus:ring-2 focus:ring-quai-navy/30" />
+                <div className="flex flex-wrap gap-2 mt-1">
+                  <button type="button" disabled={!smsTexte.trim()}
+                    onClick={async () => {
+                      try { await navigator.clipboard.writeText(smsTexte); toast.success('Texte copié') }
+                      catch { toast.error('Copie impossible : sélectionnez le texte à la main') }
+                    }}
+                    className="text-xs px-3 py-2 rounded-lg border border-quai-border bg-white text-quai-navy
+                               hover:border-quai-gold min-h-[2.75rem] disabled:opacity-40">
+                    Copier le texte
+                  </button>
+                  {dernierSms() && dernierSms() !== smsTexte.trim() && (
+                    <button type="button" onClick={() => setSmsTexte(dernierSms())}
+                      className="text-xs px-3 py-2 rounded-lg border border-quai-border bg-white text-quai-navy
+                                 hover:border-quai-gold min-h-[2.75rem]">
+                      Reprendre mon dernier SMS
+                    </button>
+                  )}
+                </div>
+                <p className="text-[11px] text-quai-muted leading-snug mt-1">
+                  La fiche reviendra dans votre liste dans 48 h, comme après un appel sans réponse.
+                </p>
+              </div>
             )}
 
             {issue === 'REFUS_FERME' && (

@@ -332,7 +332,7 @@ const TYPES_ACTIVITE = {
 }
 const ISSUES_LIBELLES = {
   JOINT: 'joint', REPONDEUR: 'répondeur', PAS_DE_REPONSE: 'pas de réponse', FAUX_NUMERO: 'faux numéro',
-  A_RAPPELER: 'à rappeler', REFUS_FERME: 'refus ferme', ERREUR_IDENTITE: 'pas la bonne personne', DECEDE: 'décédé',
+  SMS: 'SMS envoyé', A_RAPPELER: 'à rappeler', REFUS_FERME: 'refus ferme', ERREUR_IDENTITE: 'pas la bonne personne', DECEDE: 'décédé',
 }
 function detailActivite(l) {
   let d = {}

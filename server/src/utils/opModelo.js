@@ -96,7 +96,7 @@ function fichesAReporter() {
     if (diff(c.tel_fixe, c.tel_fixe_maj)) parts.push(`Nouveau fixe : ${c.tel_fixe_maj}.`);
     if (c.recommandation_nom) parts.push(`Recommandation : ${c.recommandation_nom} (voir fichier des recommandations).`);
     if (dernier?.notes) parts.push(`Note : « ${dernier.notes.trim()} »`);
-    if (tentatives.length) parts.push('Tentatives : ' + tentatives.map(a => `${jjmm(a.horodatage)} ${a.issue === 'REPONDEUR' ? 'répondeur' : 'pas de réponse'}`).join(', ') + '.');
+    if (tentatives.length) parts.push('Tentatives : ' + tentatives.map(a => `${jjmm(a.horodatage)} ${a.canal === 'SMS' ? 'SMS envoyé' : a.issue === 'REPONDEUR' ? 'répondeur' : 'pas de réponse'}`).join(', ') + '.');
 
     // Rien à dire : une ligne de résultat vide (un essai d'avant l'opération)
     // ou une saisie sans contenu. Pas de note vide dans Modelo.

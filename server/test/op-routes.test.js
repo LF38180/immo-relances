@@ -276,6 +276,58 @@ const t = (n, fn) => { try { fn(); console.log('  OK  ' + n) } catch (e) { conso
     assert.ok(/compte/i.test(r.body.error), r.body.error);
   });
 
+  // --- SMS envoyé (12 novembre) --------------------------------------------
+  // Une issue de plus à l'écran, deux colonnes de plus en base. Rien ne change
+  // pour les huit autres.
+  {
+    const f = (await call('GET', '/operation/file', tTara)).body.file.find(c => !c.stop_telephone && !c.appels_total);
+    const avantN = db.prepare('SELECT COUNT(*) n FROM op_appels').get().n;
+    r = await call('POST', `/operation/contacts/${f.id_modelo}/appel`, tTara,
+      { issue: 'SMS', sms_texte: '  Bonjour, Tara du Quai. Je vous rappelle jeudi.  ', duree_sec: 42, cle: 'sms-test-1' });
+    const ligne = db.prepare('SELECT * FROM op_appels WHERE cle = ?').get('sms-test-1');
+    t('SMS : enregistré comme une tentative sans réponse, canal SMS, texte gardé, sans durée', () => {
+      assert.strictEqual(r.status, 201);
+      assert.strictEqual(ligne.issue, 'PAS_DE_REPONSE');
+      assert.strictEqual(ligne.canal, 'SMS');
+      assert.strictEqual(ligne.sms_texte, 'Bonjour, Tara du Quai. Je vous rappelle jeudi.');
+      assert.strictEqual(ligne.duree_sec, null);
+      assert.strictEqual(db.prepare('SELECT COUNT(*) n FROM op_appels').get().n, avantN + 1);
+    });
+    t('SMS : la fiche le dit (dernier canal) et compte une tentative ce mois-ci', () => {
+      assert.strictEqual(r.body.contact.dernier_canal, 'SMS');
+      assert.strictEqual(r.body.contact.appels_total, 1);
+      assert.strictEqual(r.body.contact.appels_ce_mois, 1);
+    });
+    t('SMS : jamais « hors plage », les horaires sont ceux des appels', () => {
+      assert.ok(!String(ligne.hors_cadre || '').includes('HORS_PLAGE'), String(ligne.hors_cadre));
+    });
+    const r2 = await call('POST', `/operation/contacts/${f.id_modelo}/appel`, tTara, { issue: 'SMS', sms_texte: 'autre', cle: 'sms-test-1' });
+    t('SMS : renvoyé deux fois, enregistré une fois', () => {
+      assert.strictEqual(r2.body.deja, true);
+      assert.strictEqual(db.prepare('SELECT COUNT(*) n FROM op_appels').get().n, avantN + 1);
+    });
+    const file2 = (await call('GET', '/operation/file', tTara)).body;
+    t('SMS : la fiche sort de la file et reviendra à 48 h, comme un appel dans le vide', () => {
+      assert.ok(!file2.file.some(c => c.id_modelo === f.id_modelo));
+    });
+    const g = file2.file.find(c => !c.stop_telephone && !c.appels_total);
+    r = await call('POST', `/operation/contacts/${g.id_modelo}/appel`, tTara, { issue: 'SMS', cle: 'sms-test-2' });
+    t('SMS : le texte est facultatif', () => {
+      assert.strictEqual(r.status, 201);
+      assert.strictEqual(db.prepare('SELECT sms_texte FROM op_appels WHERE cle = ?').get('sms-test-2').sms_texte, null);
+    });
+    const h = file2.file.find(c => !c.stop_telephone && !c.appels_total && c.id_modelo !== g.id_modelo);
+    r = await call('POST', `/operation/contacts/${h.id_modelo}/appel`, tTara, { issue: 'PAS_DE_REPONSE', sms_texte: 'ne doit pas être gardé', cle: 'sms-test-3' });
+    t('un appel ordinaire reste un appel : pas de canal, pas de texte', () => {
+      const l = db.prepare('SELECT canal, sms_texte FROM op_appels WHERE cle = ?').get('sms-test-3');
+      assert.strictEqual(l.canal, null); assert.strictEqual(l.sms_texte, null);
+    });
+    const recap = (await call('GET', '/operation/recap', tTara)).body.appels.find(a => a.id === ligne.id);
+    t('SMS : visible au récapitulatif avec son texte', () => {
+      assert.strictEqual(recap.canal, 'SMS'); assert.ok(recap.sms_texte.startsWith('Bonjour'));
+    });
+  }
+
   db.close();
   srv.kill();
   for (const s of ['', '-wal', '-shm']) fs.rmSync(tmp + s, { force: true });

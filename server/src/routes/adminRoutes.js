@@ -119,7 +119,7 @@ router.get('/activite', requireRole('admin'), (req, res) => {
       FROM op_journal j
     UNION ALL
     SELECT a.horodatage, a.conseiller, 'APPEL', a.id_modelo,
-           json_object('issue', a.issue, 'rappel_le', a.rappel_le, 'duree_sec', a.duree_sec, 'hors_cadre', a.hors_cadre)
+           json_object('issue', CASE WHEN a.canal = 'SMS' THEN 'SMS' ELSE a.issue END, 'rappel_le', a.rappel_le, 'duree_sec', a.duree_sec, 'hors_cadre', a.hors_cadre)
       FROM op_appels a
     UNION ALL
     SELECT r.horodatage, r.auteur, 'MAJ_FICHE', r.id_modelo, r.champs

@@ -89,7 +89,7 @@ export default function SessionOperation({ ficheAOuvrir, onFicheOuverte, retour 
       joints: b.joints + (resume.issue === 'JOINT' ? 1 : 0),
       rdv: b.rdv + (resume.rdv ? 1 : 0),
       fiches: (b.fiches || 0) + (resume.fiche ? 1 : 0),
-      sansReponse: b.sansReponse + (['PAS_DE_REPONSE', 'REPONDEUR'].includes(resume.issue) ? 1 : 0),
+      sansReponse: b.sansReponse + (['PAS_DE_REPONSE', 'REPONDEUR', 'SMS'].includes(resume.issue) ? 1 : 0),
     }))
     // Un rappel entrant ne fait pas avancer la file : on y revient où on en
     // était.

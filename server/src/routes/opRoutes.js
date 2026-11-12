@@ -130,7 +130,7 @@ function enrichir(c, maintenant = new Date()) {
   if (!c) return null;
   const n = compteurMois(c.id_modelo, maintenant);
   const dernier = db.prepare(
-    'SELECT issue, horodatage, conseiller FROM op_appels WHERE id_modelo = ? ORDER BY horodatage DESC LIMIT 1').get(c.id_modelo);
+    'SELECT issue, horodatage, conseiller, canal FROM op_appels WHERE id_modelo = ? ORDER BY horodatage DESC LIMIT 1').get(c.id_modelo);
 
   // L'historique, sous les mêmes noms que dans /file.
   //
@@ -164,6 +164,7 @@ function enrichir(c, maintenant = new Date()) {
     attribuee_le: db.prepare(`SELECT le FROM op_attributions WHERE id_modelo = ?
       AND vers IS NOT NULL ORDER BY le DESC, id DESC LIMIT 1`).get(c.id_modelo)?.le || null,
     derniere_issue: dernier?.issue || null,
+    dernier_canal: dernier?.canal || null,
     derniere_note: note?.notes || null,
     entete: S.enTete(c),
     resultat: db.prepare('SELECT * FROM op_resultats WHERE id_modelo = ?').get(c.id_modelo) || null,
@@ -269,6 +270,8 @@ router.get('/file', conseillerOuPlus, (req, res) => {
       (SELECT MAX(a.horodatage) FROM op_appels a WHERE a.id_modelo = c.id_modelo) AS dernier_appel_le,
       (SELECT a.issue FROM op_appels a WHERE a.id_modelo = c.id_modelo
         ORDER BY a.horodatage DESC LIMIT 1)                                AS derniere_issue,
+      (SELECT a.canal FROM op_appels a WHERE a.id_modelo = c.id_modelo
+        ORDER BY a.horodatage DESC LIMIT 1)                                AS dernier_canal,
       (SELECT a.rappel_le FROM op_appels a WHERE a.id_modelo = c.id_modelo
         AND a.issue = 'A_RAPPELER' ORDER BY a.horodatage DESC LIMIT 1)     AS rappel_le,
       (SELECT a.conseiller FROM op_appels a WHERE a.id_modelo = c.id_modelo
@@ -549,7 +552,13 @@ router.post('/contacts/:id/appel', conseillerOuPlus, dansPerimetre, (req, res) =
     return res.status(403).json({ error: 'Ce contact ne vous est pas attribué' });
 
   const b = req.body || {};
-  const issue = String(b.issue || '').toUpperCase();
+  // « SMS envoyé » : le conseiller a écrit au lieu de rappeler. Enregistré comme
+  // une tentative sans réponse, canal SMS : la fiche revient d'elle-même à 48 h,
+  // comme après un appel dans le vide, et la tentative compte dans le plafond
+  // mensuel. Le texte est celui que le conseiller dit avoir envoyé, facultatif.
+  const sms = String(b.issue || '').toUpperCase() === 'SMS';
+  const smsTexte = sms ? (String(b.sms_texte || '').trim().slice(0, 1000) || null) : null;
+  const issue = sms ? 'PAS_DE_REPONSE' : String(b.issue || '').toUpperCase();
   const ISSUES = ['JOINT', 'REPONDEUR', 'PAS_DE_REPONSE', 'FAUX_NUMERO', 'A_RAPPELER',
     'REFUS_FERME', 'ERREUR_IDENTITE', 'DECEDE'];
   if (!ISSUES.includes(issue)) return res.status(400).json({ error: 'Issue d\'appel inconnue' });
@@ -560,8 +569,10 @@ router.post('/contacts/:id/appel', conseillerOuPlus, dansPerimetre, (req, res) =
 
   const maintenant = new Date();
   const av = R.avertissementsAppel(c, compteurMois(c.id_modelo, maintenant), maintenant);
-  const trace = R.horsCadre(av) ? av.filter(a => a.niveau === 'grave' || a.code === 'HORS_PLAGE')
-    .map(a => a.code).join(',') : null;
+  // Les plages horaires sont celles des appels : un SMS envoyé à midi n'est pas
+  // hors cadre. L'opposition et le plafond, eux, valent pour les deux.
+  const horsCadreDe = av.filter(a => a.niveau === 'grave' || (a.code === 'HORS_PLAGE' && !sms));
+  const trace = horsCadreDe.length ? horsCadreDe.map(a => a.code).join(',') : null;
 
   // La saisie de l'agent voyage avec l'appel et s'écrit dans la même
   // transaction : soit les deux sont enregistrés, soit aucun des deux. Rien ne
@@ -582,11 +593,13 @@ router.post('/contacts/:id/appel', conseillerOuPlus, dansPerimetre, (req, res) =
   let champsEcrits = null;
 
   const ecrire = db.transaction(() => {
-    const r = db.prepare(`INSERT INTO op_appels (id_modelo, conseiller, user_id, issue, rappel_le, duree_sec, notes, hors_cadre, cle)
-      VALUES (?,?,?,?,?,?,?,?,?)`).run(
+    const r = db.prepare(`INSERT INTO op_appels (id_modelo, conseiller, user_id, issue, rappel_le, duree_sec, notes, hors_cadre, cle, canal, sms_texte)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(
       c.id_modelo, moi.nom_complet, moi.id, issue,
       issue === 'A_RAPPELER' ? b.rappel_le : null,
-      b.duree_sec || null, (b.notes || '').trim() || null, trace, cle);
+      // Pas de durée pour un SMS : la durée moyenne des appels sert de signal au manager.
+      sms ? null : (b.duree_sec || null), (b.notes || '').trim() || null, trace, cle,
+      sms ? 'SMS' : null, smsTexte);
 
     if (b.resultat) champsEcrits = ecrireResultat(c, b.resultat, moi, r.lastInsertRowid);
 
@@ -929,7 +942,7 @@ router.get('/recap', conseillerOuPlus, (req, res) => {
   const depuis = String(req.query.depuis || '').trim() || null;
 
   const lignes = db.prepare(`
-    SELECT a.id, a.horodatage, a.issue, a.notes, a.rappel_le, a.hors_cadre, a.conseiller,
+    SELECT a.id, a.horodatage, a.issue, a.notes, a.rappel_le, a.hors_cadre, a.conseiller, a.canal, a.sms_texte,
       c.id_modelo, c.civilite, c.nom, c.prenom, c.commune, c.script,
       c.tel_portable, c.tel_fixe, c.email,
       r.adresse_maj, r.code_postal_maj, r.commune_maj, r.actualisation, r.date_rdv,
