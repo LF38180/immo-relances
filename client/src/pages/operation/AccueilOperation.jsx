@@ -133,7 +133,7 @@ export default function AccueilOperation({ acces, bilan, onCommencer, estPilote 
           </p>
           <ol className="text-sm space-y-1.5 mt-2">
             <Proposition n="1" titre="L’actualisation de la valeur"
-              texte="offerte, sans engagement. On dit « actualisation » au client, jamais « estimation »." />
+              texte="offerte, sans engagement." />
             <Proposition n="2" titre="La soirée du 3 décembre"
               texte="au Casarosa à Crolles, on réunit les familles qu’on a accompagnées." />
             <Proposition n="3" titre="Le panneau « Vendu par Le Quai »"
