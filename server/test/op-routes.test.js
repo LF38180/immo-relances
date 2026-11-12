@@ -328,6 +328,33 @@ const t = (n, fn) => { try { fn(); console.log('  OK  ' + n) } catch (e) { conso
     });
   }
 
+  // --- Mes contacts (12 novembre) : tout le portefeuille, appelé ou non ------
+  {
+    r = await call('GET', '/operation/mes-contacts', tTara);
+    const attendu = db.prepare(`SELECT COUNT(*) n FROM op_contacts
+      WHERE LOWER(TRIM(conseiller)) = LOWER('Tara ZOPPAS') AND a_dispatcher = 0`).get().n;
+    t('mes contacts : toutes ses fiches, y compris celles déjà appelées et sorties de la file', () => {
+      assert.strictEqual(r.status, 200);
+      assert.strictEqual(r.body.length, attendu, r.body.length + ' / ' + attendu);
+      const sms = r.body.find(c => c.dernier_canal === 'SMS');
+      assert.ok(sms && sms.appels >= 1, 'la fiche du SMS doit y être');
+    });
+    t('mes contacts : jamais les fiches d un autre', () => {
+      const ids = new Set(r.body.map(c => c.id_modelo));
+      const autre = db.prepare("SELECT id_modelo FROM op_contacts WHERE conseiller = 'Lynda GUDINCI' LIMIT 1").get();
+      assert.ok(autre && !ids.has(autre.id_modelo));
+    });
+    const sms = r.body.find(c => c.dernier_canal === 'SMS');
+    const fiche = await call('GET', '/operation/contacts/' + sms.id_modelo, tTara);
+    const apres = await call('POST', `/operation/contacts/${sms.id_modelo}/appel`, tTara,
+      { issue: 'JOINT', notes: 'A répondu au SMS', resultat: { soiree: 1 }, cle: 'apres-sms-1' });
+    t('mes contacts : la fiche se rouvre et se complète après coup', () => {
+      assert.strictEqual(fiche.status, 200);
+      assert.strictEqual(apres.status, 201);
+      assert.strictEqual(db.prepare('SELECT soiree FROM op_resultats WHERE id_modelo = ?').get(sms.id_modelo).soiree, 1);
+    });
+  }
+
   db.close();
   srv.kill();
   for (const s of ['', '-wal', '-shm']) fs.rmSync(tmp + s, { force: true });

@@ -433,6 +433,31 @@ router.get('/recherche', conseillerOuPlus, (req, res) => {
   })));
 });
 
+// --- Mes contacts : tout le portefeuille, appelé ou non ----------------------
+//
+// La file ne propose que ce qui reste à appeler. Une fois ses appels finis, un
+// conseiller n'avait plus aucun chemin vers ses fiches : un client qui répond
+// à son SMS trois jours plus tard, et il ne pouvait plus rien noter. Ici, toutes
+// ses fiches, avec où elles en sont. Ses fiches à lui, jamais son périmètre.
+router.get('/mes-contacts', conseillerOuPlus, (req, res) => {
+  const moi = identite(req);
+  if (!moi) return res.status(401).json({ error: 'Compte introuvable' });
+  const { where, params } = maFile(moi, 'c');
+  res.json(db.prepare(`
+    SELECT c.id_modelo, c.civilite, c.nom, c.prenom, c.commune, c.tel_portable, c.tel_fixe,
+      c.stop_telephone, c.npai,
+      (SELECT COUNT(*) FROM op_appels a WHERE a.id_modelo = c.id_modelo)          AS appels,
+      (SELECT MAX(a.horodatage) FROM op_appels a WHERE a.id_modelo = c.id_modelo) AS dernier_le,
+      (SELECT a.issue FROM op_appels a WHERE a.id_modelo = c.id_modelo
+        ORDER BY a.horodatage DESC, a.id DESC LIMIT 1)                            AS derniere_issue,
+      (SELECT a.canal FROM op_appels a WHERE a.id_modelo = c.id_modelo
+        ORDER BY a.horodatage DESC, a.id DESC LIMIT 1)                            AS dernier_canal,
+      r.actualisation, r.soiree, r.panneau
+    FROM op_contacts c LEFT JOIN op_resultats r ON r.id_modelo = c.id_modelo
+    WHERE ${where} AND c.a_dispatcher = 0
+    ORDER BY c.nom, c.prenom`).all(...params));
+});
+
 // --- Une fiche --------------------------------------------------------------
 router.get('/contacts/:id', conseillerOuPlus, dansPerimetre, (req, res) => {
   const moi = identite(req);

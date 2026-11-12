@@ -178,7 +178,9 @@ export default function EcranAppel({ contact: c, onEnregistre, onPasser, horsFil
                 <Icon name="phone-call" size="sm" />
                 {origine === 'ouverte'
                   ? ' Fiche ouverte depuis le suivi'
-                  : ' Hors de votre liste — rappel entrant'}
+                  : origine === 'contacts'
+                    ? ' Fiche ouverte depuis vos contacts'
+                    : ' Hors de votre liste — rappel entrant'}
               </div>
             )}
             <div className="flex items-center gap-2 flex-wrap mb-1.5">
