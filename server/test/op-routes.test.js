@@ -355,6 +355,26 @@ const t = (n, fn) => { try { fn(); console.log('  OK  ' + n) } catch (e) { conso
     });
   }
 
+  // --- Retour des sans-réponse (13 novembre) : 48 h, quelle que soit l'heure -
+  // Lilas n'appelait que le matin : ses sans-réponse du matin attendaient
+  // « l'autre tranche » et l'écran disait « tout fini ».
+  {
+    const h = db.prepare("SELECT id_modelo FROM op_appels WHERE cle = 'sms-test-3'").get().id_modelo;
+    let f = (await call('GET', '/operation/file', tTara)).body;
+    t('sans-réponse récent : hors de la file, mais annoncé avec sa date de retour', () => {
+      assert.ok(!f.file.some(c => c.id_modelo === h));
+      assert.ok(f.groupes.sans_reponse_en_attente >= 1);
+      const retour = new Date(f.prochain_retour).getTime();
+      assert.ok(retour > Date.now() + 47 * 3600e3 && retour < Date.now() + 49 * 3600e3, f.prochain_retour);
+    });
+    // Trois jours pile : même heure, même demi-journée qu'aujourd'hui.
+    db.prepare("UPDATE op_appels SET horodatage = datetime('now', '-72 hours') WHERE cle = 'sms-test-3'").run();
+    f = (await call('GET', '/operation/file', tTara)).body;
+    t('sans-réponse de plus de 48 h : revient, même appelé à la même heure', () => {
+      assert.ok(f.file.some(c => c.id_modelo === h));
+    });
+  }
+
   db.close();
   srv.kill();
   for (const s of ['', '-wal', '-shm']) fs.rmSync(tmp + s, { force: true });

@@ -113,7 +113,7 @@ export default function SessionOperation({ ficheAOuvrir, onFicheOuverte, retour 
   if (!horsFile && retour && ficheAOuvrir) return <p className="p-6 text-quai-muted">Chargement…</p>
   if (!horsFile && (fini || !file.length)) return (
     <>
-      <Termine bilan={bilan} vide={!file.length} onRecharger={charger}
+      <Termine bilan={bilan} vide={!file.length} infos={infos} onRecharger={charger}
         onRecap={() => setRecapOuvert(true)} onContacts={() => setContactsOuverts(true)} />
       {contactsOuverts && <MesContacts onChoisir={ouvrirDepuisContacts} onFermer={() => setContactsOuverts(false)} />}
       {recapOuvert && (
@@ -351,7 +351,10 @@ function Progression({ index, total, bilan, cumul, plage, horsFile, origine, onC
   )
 }
 
-function Termine({ bilan, vide, onRecharger, onRecap, onContacts }) {
+function Termine({ bilan, vide, infos, onRecharger, onRecap, onContacts }) {
+  const enAttente = infos?.groupes?.sans_reponse_en_attente || 0
+  const retour = infos?.prochain_retour ? new Date(infos.prochain_retour) : null
+  const quand = retour && retour.toLocaleString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })
   return (
     <div className="flex-1 flex items-center justify-center p-6 bg-quai-light">
       <div className="text-center max-w-sm">
@@ -368,6 +371,12 @@ function Termine({ bilan, vide, onRecharger, onRecap, onContacts }) {
           </div>
         )}
         {vide && <p className="text-sm text-quai-muted mt-1 mb-5">Votre liste est à jour.</p>}
+        {enAttente > 0 && quand && (
+          <p className="text-sm text-quai-navy bg-white border border-quai-border rounded-xl p-3 mb-4 leading-snug">
+            {enAttente} {enAttente > 1 ? 'personnes n’ont pas répondu' : 'personne n’a pas répondu'}.
+            {' '}On les rappelle 48 h après le dernier essai : le premier revient {quand}.
+          </p>
+        )}
         <p className="text-[11px] text-quai-muted mb-3 leading-snug">
           Un client vous a répondu ? Retrouvez sa fiche dans « Mes contacts » pour la compléter.
         </p>

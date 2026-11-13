@@ -338,13 +338,25 @@ router.get('/file', conseillerOuPlus, (req, res) => {
   const neuves = reste.filter(l => !l.appels_total);
   const jamaisAppeles = [...neuves.filter(l => !recueAujourdhui(l)), ...neuves.filter(recueAujourdhui)];
 
-  // Relance : 48 h, et à une autre tranche horaire que la dernière tentative.
+  // Relance : 48 h après la dernière tentative. L'autre tranche horaire est
+  // une priorité, plus un filtre : un agent qui n'appelle que le matin
+  // n'aurait jamais revu ses sans-réponse du matin (Lilas, 13/11 : « vous
+  // avez tout fini » alors que ses sans-réponse attendaient l'après-midi).
   const il48h = maintenant.getTime() - 48 * 3600 * 1000;
-  const aRelancer = reste.filter(l => {
-    if (!l.appels_total || !['PAS_DE_REPONSE', 'REPONDEUR'].includes(l.derniere_issue)) return false;
+  const sansReponse = reste.filter(l => l.appels_total
+    && ['PAS_DE_REPONSE', 'REPONDEUR'].includes(l.derniere_issue));
+  const relancables = sansReponse.filter(l => {
     const dernier = R.depuisSqlite(l.dernier_appel_le);
-    return dernier && dernier.getTime() < il48h && !R.memeTranche(dernier, maintenant);
+    return dernier && dernier.getTime() < il48h;
   });
+  const autreTranche = (l) => !R.memeTranche(R.depuisSqlite(l.dernier_appel_le), maintenant);
+  const aRelancer = [...relancables.filter(autreTranche), ...relancables.filter(l => !autreTranche(l))];
+  // Ceux qui attendent encore leurs 48 h : l'écran de fin dit quand ils
+  // reviennent, pour qu'on ne croie pas qu'ils sont perdus.
+  const enAttente = sansReponse.filter(l => !relancables.includes(l));
+  const retours = enAttente.map(l => R.depuisSqlite(l.dernier_appel_le))
+    .filter(Boolean).map(d => d.getTime() + 48 * 3600 * 1000).sort((a, b) => a - b);
+  const prochainRetour = retours.length ? new Date(retours[0]).toISOString() : null;
 
   // Les fiches à signalement grave passent en queue : on ne les cache pas,
   // mais on ne les met pas non plus sous la main en premier.
@@ -378,7 +390,9 @@ router.get('/file', conseillerOuPlus, (req, res) => {
       jamais_appeles: jamaisAppeles.length,
       a_relancer: aRelancer.length,
       a_revoir: autres.length,
+      sans_reponse_en_attente: enAttente.length,
     },
+    prochain_retour: prochainRetour,
     compteurs: {
       sans_telephone: sansTelephone,
       portefeuille: lignes.length,
