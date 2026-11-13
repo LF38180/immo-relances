@@ -63,8 +63,13 @@ fiche('M-1', 'DURAND'); fiche('M-2', 'MARTIN'); fiche('M-3', 'REFUS'); fiche('M-
     db.prepare("INSERT INTO op_contacts (id_modelo, nom, prenom, conseiller, agence, script, courrier_etat, a_dispatcher, tel_portable) VALUES ('M-6','TEXTO','P','Lilas FERKOUS','LE QUAI',1,'ENVOYE',0,'0639980010')").run();
     db.prepare("INSERT INTO op_appels (id_modelo, conseiller, issue, horodatage) VALUES ('M-6','Lilas FERKOUS','PAS_DE_REPONSE', datetime('now','-1 day'))").run();
     db.prepare("INSERT INTO op_appels (id_modelo, conseiller, issue, canal, sms_texte, horodatage) VALUES ('M-6','Lilas FERKOUS','PAS_DE_REPONSE','SMS','Bonjour, Lilas du Quai.', datetime('now'))").run();
-    const x = require('../src/utils/opModelo.js').fichesAReporter().fiches.find(f => f.id_modelo === 'M-6');
-    vrai(x && /Non joint\. Tentatives : \d\d\/\d\d pas de réponse, \d\d\/\d\d SMS envoyé \(« Bonjour, Lilas du Quai\. »\)\.$/.test(x.commentaire), x && x.commentaire);
+    db.prepare("INSERT INTO op_contacts (id_modelo, nom, prenom, conseiller, agence, script, courrier_etat, a_dispatcher, tel_portable) VALUES ('M-7','SMSSEUL','P','Lilas FERKOUS','LE QUAI',1,'ENVOYE',0,'0639980011')").run();
+    db.prepare("INSERT INTO op_appels (id_modelo, conseiller, issue, canal, horodatage) VALUES ('M-7','Lilas FERKOUS','PAS_DE_REPONSE','SMS', datetime('now'))").run();
+    const toutes = require('../src/utils/opModelo.js').fichesAReporter().fiches;
+    const seul = toutes.find(f => f.id_modelo === 'M-7');
+    vrai(seul && /\] Non joint\. SMS envoyé le \d\d\/\d\d\.$/.test(seul.commentaire), seul && seul.commentaire);
+    const x = toutes.find(f => f.id_modelo === 'M-6');
+    vrai(x && /Non joint\. Tentatives : \d\d\/\d\d pas de réponse\. SMS envoyé le \d\d\/\d\d : « Bonjour, Lilas du Quai\. »$/.test(x.commentaire), x && x.commentaire);
   });
   const m1 = e.corps.fiches.find(f => f.id_modelo === 'M-1');
   t('commentaire au format convenu', () => {
@@ -108,7 +113,7 @@ fiche('M-1', 'DURAND'); fiche('M-2', 'MARTIN'); fiche('M-3', 'REFUS'); fiche('M-
     eq(db.prepare("SELECT COUNT(*) n FROM op_modelo_reports").get().n, 2);
   });
   e = await req('adm@t.fr', 'GET', '/operation/modelo/a-reporter');
-  t('M-1 reportée sort de l\'export, M-3 en échec y reste', () => eq(e.corps.fiches.map(f => f.id_modelo).filter(x => !['M-2', 'M-5', 'M-6'].includes(x)).join(','), 'M-3'));
+  t('M-1 reportée sort de l\'export, M-3 en échec y reste', () => eq(e.corps.fiches.map(f => f.id_modelo).filter(x => !['M-2', 'M-5', 'M-6', 'M-7'].includes(x)).join(','), 'M-3'));
 
   await new Promise(res => setTimeout(res, 1100));
   r = await req('a@t.fr', 'POST', '/operation/contacts/M-1/appel', { issue: 'A_RAPPELER', rappel_le: '2026-11-10T15:00' });

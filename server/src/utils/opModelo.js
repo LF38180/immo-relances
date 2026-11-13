@@ -99,7 +99,12 @@ function fichesAReporter() {
     if (diff(c.tel_fixe, c.tel_fixe_maj)) parts.push(`Nouveau fixe : ${c.tel_fixe_maj}.`);
     if (c.recommandation_nom) parts.push(`Recommandation : ${c.recommandation_nom} (voir fichier des recommandations).`);
     if (dernier?.notes) parts.push(`Note : « ${dernier.notes.trim()} »`);
-    if (tentatives.length) parts.push('Tentatives : ' + tentatives.map(a => `${jjmm(a.horodatage)} ${a.canal === 'SMS' ? `SMS envoyé${a.sms_texte ? ` (« ${a.sms_texte.trim().replace(/\s+/g, ' ')} »)` : ''}` : a.issue === 'REPONDEUR' ? 'répondeur' : 'pas de réponse'}`).join(', ') + '.');
+    // Appels dans le vide d'un côté, SMS de l'autre : format demandé par la
+    // conversation Modelo le 13/11 (« Non joint. SMS envoyé le 13/11. »).
+    const essais = tentatives.filter(a => a.canal !== 'SMS');
+    const sms = tentatives.filter(a => a.canal === 'SMS');
+    if (essais.length) parts.push('Tentatives : ' + essais.map(a => `${jjmm(a.horodatage)} ${a.issue === 'REPONDEUR' ? 'répondeur' : 'pas de réponse'}`).join(', ') + '.');
+    for (const a of sms) parts.push(`SMS envoyé le ${jjmm(a.horodatage)}${a.sms_texte ? ` : « ${a.sms_texte.trim().replace(/\s+/g, ' ')} »` : '.'}`);
 
     // Rien à dire : une ligne de résultat vide (un essai d'avant l'opération)
     // ou une saisie sans contenu. Pas de note vide dans Modelo.
@@ -107,7 +112,7 @@ function fichesAReporter() {
     // Pas de conversation, mais des informations saisies : le dire en tête,
     // pour que la note ne se lise pas comme un appel abouti.
     if (!dernier && !(c.r_npai === 1 || c.npai === 1)) {
-      const seulementTentatives = parts.length === 1 && tentatives.length;
+      const seulementTentatives = tentatives.length && parts.length === (essais.length ? 1 : 0) + sms.length;
       parts.unshift(seulementTentatives ? 'Non joint.'
         : tentatives.length ? 'Non joint. Infos connues de l’agent :' : 'Sans appel. Infos saisies par l’agent :');
     }
