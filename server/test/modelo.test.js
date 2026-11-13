@@ -122,6 +122,13 @@ fiche('M-1', 'DURAND'); fiche('M-2', 'MARTIN'); fiche('M-3', 'REFUS'); fiche('M-
     const f = e.corps.fiches.find(x => x.id_modelo === 'M-1');
     vrai(f, 'M-1 absente'); vrai(f.commentaire.includes('à rappeler le 10/11 à 15h00'), f.commentaire); vrai(!f.commentaire.includes('Tentatives'), f.commentaire);
   });
+  const li = await req('adm@t.fr', 'GET', '/operation/listing');
+  t('listing : « à reporter » = exactement les fiches de l export (sans-réponse et SMS compris)', () => {
+    eq(li.statut, 200);
+    eq(li.corps.lignes.filter(l => l.a_reporter).map(l => l.id_modelo).sort().join(','),
+      e.corps.fiches.map(f => f.id_modelo).sort().join(','));
+    vrai(li.corps.lignes.find(l => l.id_modelo === 'M-7').a_reporter, 'SMS seul absent');
+  });
   const c = await req('a@t.fr', 'GET', '/operation/modelo/a-reporter');
   t('réservé à l\'admin', () => eq(c.statut, 403));
 

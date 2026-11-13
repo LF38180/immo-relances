@@ -1261,7 +1261,11 @@ router.get('/listing', pilotage, (req, res) => {
     return 'A_RELANCER';
   };
 
-  const avecEtat = lignes.map(l => ({ ...l, etat: etat(l) }));
+  // « À reporter » : la même règle que l'export Modelo, calculée par lui.
+  // Le listing avait sa propre règle, qui ignorait les sans-réponse et les
+  // SMS : 5 fiches à côté du bouton, 13 sur l'accueil (13/11).
+  const aReporter = new Set(M.fichesAReporter().fiches.map(f => f.id_modelo));
+  const avecEtat = lignes.map(l => ({ ...l, etat: etat(l), a_reporter: aReporter.has(l.id_modelo) }));
   const compte = {};
   avecEtat.forEach(l => { compte[l.etat] = (compte[l.etat] || 0) + 1; });
 

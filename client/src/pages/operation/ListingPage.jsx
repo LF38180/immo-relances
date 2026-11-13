@@ -310,9 +310,10 @@ function Chiffre({ v, l, couleur = 'text-quai-navy' }) {
 
 // Une fiche reste à reporter si quelque chose de reportable est arrivé après
 // le dernier report : un appel avec contact, ou une saisie sur la fiche.
+// Calculé par le serveur avec la règle de l'export : le compteur et le
+// fichier ne peuvent plus diverger.
 function resteAReporter(l) {
-  const depuis = l.modelo_reporte_le || ''
-  return (!!l.dernier_contact_le && l.dernier_contact_le > depuis) || (!!l.fiche_maj_le && l.fiche_maj_le > depuis)
+  return !!l.a_reporter
 }
 
 // Le pont vers Modelo : deux exports au format convenu avec la conversation
