@@ -76,6 +76,22 @@ app.get('/api/health', (_, res) => {
           creees_depuis_le_3_novembre: fiches.filter(c => (c.created_at || '') >= '2026-11-03').length,
         };
       })(),
+      // Report Modelo des tentatives (13/11) : combien de SMS et d'appels sans
+      // réponse existent, et combien attendent encore d'être reportés (après
+      // la date du dernier report de leur fiche). Chiffres seuls, aucun nom.
+      tentatives_operation: (() => {
+        const q = (filtre) => db.prepare(`SELECT COUNT(*) n, COUNT(DISTINCT a.id_modelo) f FROM op_appels a
+          JOIN op_contacts c ON c.id_modelo = a.id_modelo
+          WHERE a.issue IN ('PAS_DE_REPONSE','REPONDEUR') AND ${filtre}`).get();
+        const nonReporte = "a.horodatage > COALESCE(c.modelo_reporte_le, '')";
+        const sms = q("a.canal = 'SMS'"), smsNR = q(`a.canal = 'SMS' AND ${nonReporte}`);
+        const appels = q("COALESCE(a.canal, '') <> 'SMS'"), appelsNR = q(`COALESCE(a.canal, '') <> 'SMS' AND ${nonReporte}`);
+        return {
+          sms: sms.n, sms_fiches: sms.f, sms_a_reporter: smsNR.n,
+          sans_reponse: appels.n, sans_reponse_fiches: appels.f, sans_reponse_a_reporter: appelsNR.n,
+          fiches_a_reporter: require('./utils/opModelo').fichesAReporter().fiches.length,
+        };
+      })(),
       conseillers_sans_fiche: db.prepare(`SELECT COUNT(*) n FROM users u
         WHERE u.actif = 1 AND u.role = 'conseiller'
           AND NOT EXISTS (SELECT 1 FROM op_contacts c
