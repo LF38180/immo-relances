@@ -32,8 +32,10 @@ const diff = (avant, apres) => {
 // Les fiches qui ont du nouveau depuis leur dernier report : un appel avec
 // contact (joint, rappel, refus, décédé, faux numéro, erreur d'identité) ou
 // une saisie sur la fiche (adresse, NPAI, résultat) postérieurs à la date du
-// dernier report. Les répondeurs seuls n'ouvrent pas de note : ils s'ajoutent
-// en « Tentatives » à la note suivante.
+// dernier report. Depuis le 13/11 (demande de Loïck), les tentatives seules
+// (pas de réponse, répondeur, SMS envoyé) ouvrent aussi une note « Non
+// joint. Tentatives : … » : avant, elles n'apparaissaient dans Modelo qu'au
+// premier contact abouti, et un client jamais joint n'y laissait aucune trace.
 function fichesAReporter() {
   const contacts = db.prepare(`
     SELECT c.*, r.updated_at AS resultat_le, r.adresse_maj, r.complement_maj, r.code_postal_maj, r.commune_maj,
@@ -55,15 +57,16 @@ function fichesAReporter() {
     const avecContact = appels.filter(a => !SANS_CONTACT.has(a.issue));
     const tentatives = appels.filter(a => SANS_CONTACT.has(a.issue));
     const resultatNouveau = !!(c.resultat_le && c.resultat_le > depuisLe);
-    if (!avecContact.length && !resultatNouveau) continue;
+    if (!avecContact.length && !resultatNouveau && !tentatives.length) continue;
 
     const dernier = avecContact[avecContact.length - 1] || null;
     // Sans appel : le conseiller de la fiche ; sans conseiller (fiche à
     // répartir), la personne qui a signalé le courrier revenu. Jamais un nom
     // générique : Modelo réattribue la fiche à qui agit dessus.
-    const agent = dernier?.conseiller || c.conseiller
+    const derniereTentative = tentatives[tentatives.length - 1] || null;
+    const agent = dernier?.conseiller || derniereTentative?.conseiller || c.conseiller
       || auteurNpai.get(c.id_modelo)?.auteur || SAISIE_NPAI_AVANT_JOURNAL;
-    const dateNote = dernier?.horodatage || c.resultat_le;
+    const dateNote = dernier?.horodatage || (resultatNouveau ? c.resultat_le : null) || derniereTentative?.horodatage || c.resultat_le;
 
     const parts = [];
     if (dernier) {
@@ -96,7 +99,7 @@ function fichesAReporter() {
     if (diff(c.tel_fixe, c.tel_fixe_maj)) parts.push(`Nouveau fixe : ${c.tel_fixe_maj}.`);
     if (c.recommandation_nom) parts.push(`Recommandation : ${c.recommandation_nom} (voir fichier des recommandations).`);
     if (dernier?.notes) parts.push(`Note : « ${dernier.notes.trim()} »`);
-    if (tentatives.length) parts.push('Tentatives : ' + tentatives.map(a => `${jjmm(a.horodatage)} ${a.canal === 'SMS' ? 'SMS envoyé' : a.issue === 'REPONDEUR' ? 'répondeur' : 'pas de réponse'}`).join(', ') + '.');
+    if (tentatives.length) parts.push('Tentatives : ' + tentatives.map(a => `${jjmm(a.horodatage)} ${a.canal === 'SMS' ? `SMS envoyé${a.sms_texte ? ` (« ${a.sms_texte.trim().replace(/\s+/g, ' ')} »)` : ''}` : a.issue === 'REPONDEUR' ? 'répondeur' : 'pas de réponse'}`).join(', ') + '.');
 
     // Rien à dire : une ligne de résultat vide (un essai d'avant l'opération)
     // ou une saisie sans contenu. Pas de note vide dans Modelo.
@@ -104,7 +107,9 @@ function fichesAReporter() {
     // Pas de conversation, mais des informations saisies : le dire en tête,
     // pour que la note ne se lise pas comme un appel abouti.
     if (!dernier && !(c.r_npai === 1 || c.npai === 1)) {
-      parts.unshift(tentatives.length ? 'Non joint. Infos connues de l’agent :' : 'Sans appel. Infos saisies par l’agent :');
+      const seulementTentatives = parts.length === 1 && tentatives.length;
+      parts.unshift(seulementTentatives ? 'Non joint.'
+        : tentatives.length ? 'Non joint. Infos connues de l’agent :' : 'Sans appel. Infos saisies par l’agent :');
     }
 
     const refus = dernier?.issue === 'REFUS_FERME' || c.stop_telephone === 1 && avecContact.some(a => a.issue === 'REFUS_FERME');
