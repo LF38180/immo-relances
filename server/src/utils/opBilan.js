@@ -33,6 +33,32 @@ function bilanOperation() {
       WHERE NOT EXISTS (SELECT 1 FROM op_appels a WHERE a.id_modelo = c.id_modelo)`),
   };
 
+  // Les jamais appelées, triées : ce qui peut partir en appel tout de suite,
+  // et ce qui bloque (pas encore réparti, pas de numéro, identité douteuse,
+  // stop téléphone). Une fiche ne tombe que dans la première case qui la
+  // concerne, dans cet ordre.
+  const jamais = db.prepare(`SELECT
+      CASE
+        WHEN c.stop_telephone = 1 THEN 'stop_telephone'
+        WHEN c.a_verifier = 1 AND (c.verifie IS NULL OR c.verifie = 'ECARTE') THEN 'identite_a_verifier_ou_ecartee'
+        WHEN NULLIF(TRIM(COALESCE(c.tel_portable, '')), '') IS NULL
+         AND NULLIF(TRIM(COALESCE(c.tel_fixe, '')), '') IS NULL THEN 'sans_telephone'
+        WHEN c.a_dispatcher = 1 OR NULLIF(TRIM(COALESCE(c.conseiller, '')), '') IS NULL THEN 'pas_encore_reparties'
+        ELSE 'dans_la_file_d_un_agent'
+      END k, COUNT(*) n
+    FROM op_contacts c
+    WHERE NOT EXISTS (SELECT 1 FROM op_appels a WHERE a.id_modelo = c.id_modelo)
+    GROUP BY 1`).all();
+  fiches.jamais_appelees_detail = Object.fromEntries(jamais.map(x => [x.k, x.n]));
+  fiches.jamais_appelees_detail.par_agent = Object.fromEntries(db.prepare(`SELECT c.conseiller k, COUNT(*) n
+    FROM op_contacts c
+    WHERE NOT EXISTS (SELECT 1 FROM op_appels a WHERE a.id_modelo = c.id_modelo)
+      AND COALESCE(c.stop_telephone, 0) = 0 AND c.a_dispatcher = 0
+      AND NOT (c.a_verifier = 1 AND (c.verifie IS NULL OR c.verifie = 'ECARTE'))
+      AND (NULLIF(TRIM(COALESCE(c.tel_portable, '')), '') IS NOT NULL OR NULLIF(TRIM(COALESCE(c.tel_fixe, '')), '') IS NOT NULL)
+      AND NULLIF(TRIM(COALESCE(c.conseiller, '')), '') IS NOT NULL
+    GROUP BY c.conseiller ORDER BY n DESC`).all().map(x => [x.k, x.n]));
+
   // Dernière issue de chaque fiche appelée.
   const derniere_issue = {};
   for (const r of db.prepare(`SELECT issue, canal, COUNT(*) n FROM (
