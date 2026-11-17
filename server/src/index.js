@@ -92,6 +92,7 @@ app.get('/api/health', (_, res) => {
           fiches_a_reporter: require('./utils/opModelo').fichesAReporter().fiches.length,
         };
       })(),
+      bilan_operation: require('./utils/opBilan').bilanOperation(),
       conseillers_sans_fiche: db.prepare(`SELECT COUNT(*) n FROM users u
         WHERE u.actif = 1 AND u.role = 'conseiller'
           AND NOT EXISTS (SELECT 1 FROM op_contacts c
