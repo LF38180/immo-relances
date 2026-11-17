@@ -64,9 +64,16 @@ const RESULTATS = {
   PANNEAU:    { label: 'Panneaux acceptés',     test: l => l.panneau === 1 },
   PLAFOND:    { label: `Appelés ${PLAFOND_MENSUEL} fois ce mois`, test: l => (l.appels_ce_mois || 0) >= PLAFOND_MENSUEL },
 }
+// Les fiches bloquées : stop téléphone (Modelo ou refus pendant l'appel),
+// stop mail (Modelo, ou refus de démarchage, qui le pose au report).
+const BLOCAGES = {
+  STOP_TEL:  { label: 'Bloc téléphone', test: l => l.stop_telephone === 1 },
+  STOP_MAIL: { label: 'Bloc mail',      test: l => l.stop_mail === 1 || l.refus_ferme === 1 },
+}
+const FILTRES = { ...RESULTATS, ...BLOCAGES }
 
 export default function ListingPage({ onAppeler, filtreInitial = '' }) {
-  const [resultat, setResultat] = useState(RESULTATS[filtreInitial] ? filtreInitial : '')
+  const [resultat, setResultat] = useState(FILTRES[filtreInitial] ? filtreInitial : '')
   const [data, setData] = useState(null)
   const [erreur, setErreur] = useState(false)
   const [agent, setAgent] = useState('')
@@ -118,7 +125,7 @@ export default function ListingPage({ onAppeler, filtreInitial = '' }) {
       if (majSeules && !majFiche(l).length) return false
       if (attribueesJour && !attribueeAujourdhui(l)) return false
       if (aReporter && !resteAReporter(l)) return false
-      if (resultat && !RESULTATS[resultat].test(l)) return false
+      if (resultat && !FILTRES[resultat].test(l)) return false
       if (!q) return true
       return [l.nom, l.prenom, l.commune, l.bien_commune, l.id_modelo]
         .some(x => String(x || '').toLowerCase().includes(q))
@@ -271,6 +278,15 @@ export default function ListingPage({ onAppeler, filtreInitial = '' }) {
               </Pastille>
             )
           })}
+        </div>
+
+        <div className="flex flex-wrap gap-1.5 items-center">
+          <span className="text-[11px] text-quai-muted mr-0.5">Bloqués :</span>
+          {Object.entries(BLOCAGES).map(([cle, f]) => (
+            <Pastille key={cle} actif={resultat === cle} onClick={() => setResultat(resultat === cle ? '' : cle)}>
+              {f.label} <span className="opacity-70">{lignes.filter(f.test).length}</span>
+            </Pastille>
+          ))}
         </div>
 
         {estAdmin && <ReportModelo nb={nbAReporter} onRetour={charger} />}
@@ -453,6 +469,9 @@ function Ligne({ l, ouverte, onBasculer, conseillers, onCorrige, onAppeler }) {
               )}
               {l.stop_telephone === 1 && (
                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-600 text-white">stop tél.</span>
+              )}
+              {(l.stop_mail === 1 || l.refus_ferme === 1) && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-100 text-red-700">stop mail</span>
               )}
             </div>
             <div className="text-[11px] text-quai-muted mt-0.5">

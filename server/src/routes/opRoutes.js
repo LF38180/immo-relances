@@ -1206,6 +1206,10 @@ router.get('/listing', pilotage, (req, res) => {
       c.conseiller_precedent, c.prenom_a_dire, c.dossier_repris, c.npai,
 
       (SELECT COUNT(*) FROM op_appels a WHERE a.id_modelo = c.id_modelo)        AS appels,
+      -- Refus de démarchage pendant l'opération : stop téléphone ici, et stop
+      -- mail aussi au report Modelo (même règle que l'export).
+      EXISTS (SELECT 1 FROM op_appels a WHERE a.id_modelo = c.id_modelo
+        AND a.issue = 'REFUS_FERME')                                            AS refus_ferme,
       -- Tentatives du mois civil : c'est ce compteur qui atteint le plafond.
       (SELECT COUNT(*) FROM op_appels a WHERE a.id_modelo = c.id_modelo
         AND strftime('%Y-%m', a.horodatage) = ?)                                AS appels_ce_mois,

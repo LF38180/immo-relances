@@ -129,6 +129,10 @@ fiche('M-1', 'DURAND'); fiche('M-2', 'MARTIN'); fiche('M-3', 'REFUS'); fiche('M-
       e.corps.fiches.map(f => f.id_modelo).sort().join(','));
     vrai(li.corps.lignes.find(l => l.id_modelo === 'M-7').a_reporter, 'SMS seul absent');
   });
+  t('listing : refus de démarchage signalé (bloc tél. et bloc mail), pas les autres', () => {
+    const m3 = li.corps.lignes.find(l => l.id_modelo === 'M-3'), m1 = li.corps.lignes.find(l => l.id_modelo === 'M-1');
+    eq(m3.refus_ferme, 1); eq(m3.stop_telephone, 1); eq(m1.refus_ferme, 0);
+  });
   const c = await req('a@t.fr', 'GET', '/operation/modelo/a-reporter');
   t('réservé à l\'admin', () => eq(c.statut, 403));
 
