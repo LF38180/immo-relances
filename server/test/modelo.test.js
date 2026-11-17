@@ -133,6 +133,16 @@ fiche('M-1', 'DURAND'); fiche('M-2', 'MARTIN'); fiche('M-3', 'REFUS'); fiche('M-
     const m3 = li.corps.lignes.find(l => l.id_modelo === 'M-3'), m1 = li.corps.lignes.find(l => l.id_modelo === 'M-1');
     eq(m3.refus_ferme, 1); eq(m3.stop_telephone, 1); eq(m1.refus_ferme, 0);
   });
+  const mr = await req('adm@t.fr', 'GET', '/operation/mail-recap');
+  const mrAgent = await req('a@t.fr', 'GET', '/operation/mail-recap');
+  t('mail récap : HTML avec les chiffres de l appli, admin seulement', () => {
+    eq(mr.statut, 200); eq(mrAgent.statut, 403);
+    const c = mr.corps.chiffres;
+    vrai(c.appelees >= 6 && c.joints >= 1 && c.soiree === 1 && c.estimations === 1, JSON.stringify(c));
+    vrai(mr.corps.html.startsWith('<!doctype html>'));
+    vrai(mr.corps.html.includes('1 intéressés pour la soirée') && mr.corps.html.includes('clients joints'), 'contenu');
+    vrai(!/undefined|NaN|null/.test(mr.corps.html), 'valeur vide dans le mail');
+  });
   const c = await req('a@t.fr', 'GET', '/operation/modelo/a-reporter');
   t('réservé à l\'admin', () => eq(c.statut, 403));
 

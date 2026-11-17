@@ -1358,6 +1358,13 @@ router.get('/modelo/a-reporter', requireRole('admin'), (req, res) => {
   res.json(M.fichesAReporter());
 });
 
+// Mail récap aux agents : les chiffres de l'appli, mis en page. Admin.
+router.get('/mail-recap', requireRole('admin'), (req, res) => {
+  const B = require('../utils/opBilan');
+  const chiffres = B.chiffresMail();
+  res.json({ chiffres, html: B.mailRecapHtml(chiffres) });
+});
+
 router.post('/modelo/retour', requireRole('admin'), (req, res) => {
   const moi = identite(req);
   const lignes = Array.isArray(req.body?.lignes) ? req.body.lignes : null;

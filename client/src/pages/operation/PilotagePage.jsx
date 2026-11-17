@@ -21,6 +21,26 @@ export default function PilotagePage({ onAppeler, onVoir }) {
       .catch(() => { setErreur(true); toast.error('Chargement impossible') })
   }, [])
 
+  // La fenêtre s'ouvre au clic (sinon le navigateur la bloque), puis se
+  // remplit quand le serveur a répondu.
+  const ouvrirMailRecap = async () => {
+    const fen = window.open('', '_blank')
+    try {
+      const r = await api.get('/operation/mail-recap')
+      if (!fen) {
+        const url = URL.createObjectURL(new Blob([r.data.html], { type: 'text/html' }))
+        const a = document.createElement('a'); a.href = url; a.download = 'mail-recap-operation.html'; a.click()
+        setTimeout(() => URL.revokeObjectURL(url), 5000)
+        toast('Fenêtre bloquée : le mail a été téléchargé.')
+        return
+      }
+      fen.document.open(); fen.document.write(r.data.html); fen.document.close()
+    } catch {
+      fen?.close()
+      toast.error('Impossible de générer le mail')
+    }
+  }
+
   if (erreur) return <p className="p-6 text-quai-muted">Impossible de charger le suivi.</p>
   if (!d) return <p className="p-6 text-quai-muted">Chargement…</p>
 
@@ -69,6 +89,20 @@ export default function PilotagePage({ onAppeler, onVoir }) {
           <div className="grid grid-cols-2 gap-2">
             <Tuile valeur={d.modelo.reportees} libelle={`fiches reportées dans Modelo${d.modelo.dernier_passage ? ` · dernier passage le ${dateLocale(d.modelo.dernier_passage)}` : ''}`} />
             <Tuile valeur={d.modelo.a_reporter} libelle="fiches à reporter dans Modelo (Listing → Report)" />
+          </div>
+        )}
+
+        {/* Mail récap aux agents : admin (d.modelo n'est rempli que pour lui). */}
+        {d.modelo && (
+          <div className="flex flex-wrap items-center gap-2 bg-white border border-quai-border rounded-xl px-4 py-3">
+            <div className="flex-1 min-w-[12rem]">
+              <div className="text-sm font-semibold text-quai-navy">Mail récap aux agents</div>
+              <div className="text-xs text-quai-muted">Les chiffres du jour, mis en page. Ouvrez-le, sélectionnez tout, copiez, collez dans votre mail.</div>
+            </div>
+            <button onClick={ouvrirMailRecap}
+              className="text-xs px-3 py-2 rounded-lg bg-quai-navy text-white inline-flex items-center gap-1.5">
+              <Icon name="mail" size="sm" /> Générer le mail
+            </button>
           </div>
         )}
 
