@@ -12,32 +12,26 @@ function Bloc({ titre, children }) {
 }
 const lireFichier = (f) => new Promise((ok, ko) => { const l = new FileReader(); l.onload = () => ok(l.result); l.onerror = ko; l.readAsText(f, 'utf-8') })
 
-function Acces() {
-  const [users, setUsers] = useState([])
-  const charger = () => api.get('/acquereurs/admin/acces').then(r => setUsers(r.data.users)).catch(err)
-  useEffect(() => { charger() }, [])
-  const basculer = (u) => api.put(`/acquereurs/admin/acces/${u.id}`, { acces: !u.acces_acquereurs }).then(charger).catch(err)
+// Qui a la mission : se coche dans Immo Relances › Administration ›
+// Utilisateurs, avec les autres réglages du compte. Ici, on ne fait que lire.
+function Acces({ users }) {
   const avec = users.filter(u => u.acces_acquereurs)
   return (
-    <Bloc titre="Qui travaille dans le Fichier Acquéreurs">
-      <p className="text-xs text-quai-muted mb-2">Cocher donne l’espace en plus de ce que la personne a déjà. Les administrateurs y ont accès d’office.</p>
-      <div className="flex flex-wrap gap-1.5 mb-2">{avec.map(u => <span key={u.id} className="badge bg-quai-navy text-white">{u.prenom} {u.nom}</span>)}</div>
-      <details><summary className="text-sm cursor-pointer text-quai-navy">Modifier</summary>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-1 mt-2">
-          {users.filter(u => u.role !== 'admin').map(u => (
-            <label key={u.id} className="text-sm inline-flex items-center gap-1.5"><input type="checkbox" checked={!!u.acces_acquereurs} onChange={() => basculer(u)} />{u.prenom} {u.nom}</label>
-          ))}
-        </div>
-      </details>
+    <Bloc titre="Mission « Fichier Acquéreurs »">
+      <div className="flex flex-wrap gap-1.5 mb-1">{avec.length ? avec.map(u => <span key={u.id} className="badge bg-quai-navy text-white">{u.prenom} {u.nom}</span>) : <span className="text-sm text-quai-muted">Personne pour l’instant.</span>}</div>
+      <p className="text-xs text-quai-muted">À cocher dans Immo Relances › Administration › Utilisateurs, colonne « Missions ».</p>
     </Bloc>
   )
 }
 
-function Import({ onFait }) {
-  const [csv, setCsv] = useState(null), [doublons, setDoublons] = useState(null), [nom, setNom] = useState('Lilas FERKOUS')
+function Import({ onFait, users }) {
+  const enMission = users.filter(u => u.acces_acquereurs).map(u => `${u.prenom} ${u.nom}`)
+  const [csv, setCsv] = useState(null), [doublons, setDoublons] = useState(null), [choix, setNom] = useState('')
+  const nom = choix || enMission[0] || ''
   const [bilan, setBilan] = useState(null), [envoi, setEnvoi] = useState(false)
   const lancer = async (ecrire) => {
     if (!csv) return toast.error('Choisissez le fichier d’import.')
+    if (!nom) return toast.error('Donnez d’abord la mission à quelqu’un (Administration › Utilisateurs).')
     setEnvoi(true)
     try {
       const r = await api.post('/acquereurs/admin/import', { csv: csv.texte, doublons_csv: doublons?.texte || null, madame_fichier: nom, ecrire }, { timeout: 120000 })
@@ -51,8 +45,11 @@ function Import({ onFait }) {
           <input type="file" accept=".csv" className="block text-xs mt-1" onChange={async e => { const f = e.target.files[0]; if (f) setCsv({ nom: f.name, texte: await lireFichier(f) }); setBilan(null) }} /></label>
         <label className="block"><span className="text-[11px] text-quai-muted">Audit des doublons (facultatif)</span>
           <input type="file" accept=".csv" className="block text-xs mt-1" onChange={async e => { const f = e.target.files[0]; if (f) setDoublons({ nom: f.name, texte: await lireFichier(f) }); setBilan(null) }} /></label>
-        <label className="block"><span className="text-[11px] text-quai-muted">Traité par (Prénom NOM du compte)</span>
-          <input className="input mt-1" value={nom} onChange={e => setNom(e.target.value)} /></label>
+        <label className="block"><span className="text-[11px] text-quai-muted">Traité par</span>
+          <select className="input mt-1" value={nom} onChange={e => setNom(e.target.value)}>
+            {!enMission.length && <option value="">Personne n’a la mission</option>}
+            {enMission.map(n => <option key={n} value={n}>{n}</option>)}
+          </select></label>
       </div>
       <div className="flex gap-2 mt-3">
         <button className="btn-secondary" disabled={envoi} onClick={() => lancer(false)}>Vérifier sans enregistrer</button>
@@ -137,19 +134,31 @@ function Report({ cle }) {
       a.href = url; a.download = `Report_Modelo_Acquereurs_${d.jusqu_a.slice(0, 10)}.csv`; a.click(); URL.revokeObjectURL(url)
     } catch (e) { err(e) }
   }
-  const retour = () => {
-    if (!window.confirm('Exploration Modelo a-t-il bien appliqué ce fichier dans Modelo ? Les contacts seront marqués comme reportés.')) return
-    api.post('/acquereurs/admin/report/retour', { jusqu_a: d.jusqu_a }).then(r => { toast.success(`${r.data.contacts} contacts marqués reportés`); charger() }).catch(err)
+  const [res, setRes] = useState(null)
+  const importerRetour = async (ev) => {
+    const f = ev.target.files?.[0]; ev.target.value = ''
+    if (!f) return
+    try {
+      const r = await api.post('/acquereurs/admin/report/retour', { csv: await lireFichier(f) })
+      setRes(r.data); toast.success(`${r.data.reportes} contact${r.data.reportes > 1 ? 's' : ''} reporté${r.data.reportes > 1 ? 's' : ''}, ${r.data.echecs} en échec`, { duration: 6000 }); charger()
+    } catch (e) { err(e) }
   }
   return (
     <Bloc titre="Report dans Modelo">
+      <p className="text-xs text-quai-muted mb-2">Comme pour l’opération anciens clients : je télécharge le fichier, je le donne à Exploration Modelo, puis j’importe son retour.</p>
       {bloque ? <p className="text-sm text-amber-800">{bloque}</p> : !d ? null : d.fiches === 0 ? <p className="text-sm text-quai-muted">Rien à reporter.</p> : <>
         <p className="text-sm">{d.contacts} personnes, {d.fiches} lignes (une par fiche acquéreur), jusqu’au {jj(d.jusqu_a)}.</p>
         <div className="flex flex-wrap gap-2 mt-2">
           <button className="btn-primary" onClick={telecharger}>Télécharger le fichier pour Exploration Modelo</button>
-          <button className="btn-secondary" onClick={retour}>Exploration Modelo l’a appliqué</button>
         </div>
       </>}
+      <div className="mt-3 pt-3 border-t border-quai-border">
+        <label className="btn-secondary inline-flex items-center gap-1.5 cursor-pointer">Importer le retour d’Exploration Modelo
+          <input type="file" accept=".csv,.txt" className="hidden" onChange={importerRetour} /></label>
+        <p className="text-[11px] text-quai-muted mt-1">Le fichier de report, avec la colonne « statut » remplie : reporté ou échec (et « motif_echec »). Les contacts reportés sortent de la liste ; ceux en échec y restent.</p>
+        {res && <div className="text-sm mt-2">{res.reportes} reporté(s), {res.echecs} en échec{res.inconnus.length ? `, ${res.inconnus.length} inconnu(s)` : ''}.
+          {res.motifs.length > 0 && <ul className="text-xs text-red-700 mt-1">{res.motifs.map(m => <li key={m.id_contact}>n° {m.id_contact} : {m.motif || 'sans motif'}</li>)}</ul>}</div>}
+      </div>
     </Bloc>
   )
 }
@@ -190,11 +199,13 @@ function Scripts() {
 
 export default function AcqAdmin() {
   const [cle, setCle] = useState(0)
+  const [users, setUsers] = useState([])
+  useEffect(() => { api.get('/acquereurs/admin/acces').then(r => setUsers(r.data.users)).catch(err) }, [])
   const rafraichir = () => setCle(k => k + 1)
   return (
     <div className="p-3 max-w-4xl mx-auto">
-      <Acces />
-      <Import onFait={rafraichir} />
+      <Acces users={users} />
+      <Import onFait={rafraichir} users={users} />
       <Valider cle={cle} onFait={rafraichir} />
       <Report cle={cle} />
       <Transmettre />

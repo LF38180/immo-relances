@@ -310,17 +310,44 @@ router.get('/admin/report', admin, (req, res) => {
   res.json({ jusqu_a: jusquA, contacts: new Set(lignes.map(l => l.id_contact)).size, fiches: lignes.length, lignes });
 });
 
-// Exploration Modelo a appliqué le fichier : on marque les contacts reportés.
+// Le fichier de retour d'Exploration Modelo, comme pour l'opération anciens
+// clients : le fichier de report, avec pour chaque ligne une colonne
+// « statut » (reporté ou échec) et, si échec, « motif_echec ». Un contact est
+// marqué reporté quand toutes ses lignes le sont ; une seule ligne en échec et
+// il reste « à reporter », avec son motif.
 router.post('/admin/report/retour', admin, (req, res) => {
-  const j = String(req.body?.jusqu_a || '');
-  if (!/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(j)) return res.status(400).json({ error: 'Date du fichier de report invalide' });
-  const ids = [...new Set(M.lignesReport(j).map(l => l.id_contact))];
+  const csv = req.body?.csv;
+  if (typeof csv !== 'string' || !csv.trim()) return res.status(400).json({ error: 'Aucun fichier de retour' });
+  const { lignes, colonnes } = I.lire(csv);
+  const manque = ['id_contact', 'statut'].filter(c => !colonnes.includes(c));
+  if (manque.length) return res.status(400).json({ error: `Colonnes attendues : id_contact ; id_fiche ; statut ; motif_echec ; jusqu_a (absentes : ${manque.join(', ')})` });
+  const existe = db.prepare('SELECT 1 FROM acq_contacts WHERE id_contact = ?');
+  const inserer = db.prepare('INSERT INTO acq_modelo_reports (id_contact, id_fiche, le, statut, motif, par) VALUES (?, ?, ?, ?, ?, ?)');
+  const parContact = new Map(); const inconnus = new Set();
+  for (const l of lignes) {
+    const id = String(l.id_contact || '').trim();
+    if (!id) continue;
+    if (!existe.get(id)) { inconnus.add(id); continue; }
+    const statut = /^report/i.test(String(l.statut || '').trim()) ? 'REPORTE' : 'ECHEC';
+    if (!parContact.has(id)) parContact.set(id, []);
+    parContact.get(id).push({ ...l, statut });
+  }
+  const maintenant = db.prepare("SELECT datetime('now') d").get().d;
+  let reportes = 0, echecs = 0; const motifs = [];
   db.transaction(() => {
-    const st = db.prepare('UPDATE acq_contacts SET modelo_reporte_le = ? WHERE id_contact = ?');
-    for (const id of ids) st.run(j, id);
-    db.prepare('INSERT INTO acq_reports (par, jusqu_a, contacts, fiches) VALUES (?, ?, ?, ?)').run(req.moi.nom_complet, j, ids.length, 0);
+    for (const [id, ls] of parContact) {
+      for (const l of ls) inserer.run(id, String(l.id_fiche || '').trim() || null, String(l.horodatage || '').trim() || maintenant,
+        l.statut, String(l.motif_echec || '').trim() || null, req.moi.nom_complet);
+      if (ls.every(l => l.statut === 'REPORTE')) {
+        const j = ls.map(l => String(l.jusqu_a || '').trim()).find(x => /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(x)) || maintenant;
+        db.prepare('UPDATE acq_contacts SET modelo_reporte_le = ? WHERE id_contact = ?').run(j, id);
+        reportes++;
+      } else { echecs++; const e = ls.find(l => l.statut === 'ECHEC'); motifs.push({ id_contact: id, motif: String(e.motif_echec || '').trim() || null }); }
+    }
+    db.prepare('INSERT INTO acq_reports (par, jusqu_a, contacts, fiches) VALUES (?, ?, ?, ?)').run(req.moi.nom_complet, maintenant, reportes, lignes.length);
   })();
-  res.json({ ok: true, contacts: ids.length });
+  journaliser({ id: req.moi.id, nom_complet: req.moi.nom_complet }, 'MODELO_RETOUR', { details: { module: 'acquereurs', reportes, echecs, inconnus: inconnus.size } });
+  res.json({ ok: true, reportes, echecs, inconnus: [...inconnus], motifs });
 });
 
 // Ce qui part chez Marine et les estimations à caler (aucune fiche créée chez elles).

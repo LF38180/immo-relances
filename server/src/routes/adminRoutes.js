@@ -43,7 +43,7 @@ router.get('/users', requireRole('admin'), (req, res) => {
   // `agence` restreint un manager à son agence : sans elle à l'écran, on ne
   // voyait pas qui était rattaché à quoi.
   res.json(db.prepare(`SELECT id, nom, prenom, email, role, agence, actif,
-    must_change_password, created_at, last_login FROM users`).all());
+    must_change_password, created_at, last_login, acces_acquereurs FROM users`).all());
 });
 
 router.post('/users', requireRole('admin'), (req, res) => {

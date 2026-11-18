@@ -142,9 +142,22 @@ const t = (n, fn) => { try { fn(); console.log('  OK  ' + n) } catch (e) { conso
     const n = r.body.lignes.find(x => x.id_contact === '12');
     assert.ok(n.note_contact.includes('Non joint') && n.note_contact.includes('SMS envoyé'));
   });
-  await call('POST', '/acquereurs/admin/report/retour', tAdmin, { jusqu_a: r.body.jusqu_a });
+  // Retour d'Exploration Modelo : le fichier, plus « statut ». Un échec
+  // laisse le contact à reporter, avec son motif.
+  const retour = (ok12) => ['id_contact;id_fiche;statut;motif_echec;jusqu_a',
+    ...r.body.lignes.map(l => [l.id_contact, l.id_fiche, l.id_contact === '12' && !ok12 ? 'échec' : 'reporté', l.id_contact === '12' && !ok12 ? 'fiche introuvable' : '', l.jusqu_a].join(';'))].join('\n');
+  let rr = await call('POST', '/acquereurs/admin/report/retour', tAdmin, { csv: 'a;b\n1;2' });
+  t('retour : mauvais fichier refusé, colonnes attendues dites', () => { assert.strictEqual(rr.status, 400); assert.ok(/id_contact/.test(rr.body.error)); });
+  rr = await call('POST', '/acquereurs/admin/report/retour', tAdmin, { csv: retour(false) });
+  t('retour : 1 reporté, 1 en échec avec son motif', () => {
+    assert.strictEqual(rr.body.reportes, 1); assert.strictEqual(rr.body.echecs, 1);
+    assert.strictEqual(rr.body.motifs[0].motif, 'fiche introuvable');
+  });
+  let r3 = await call('GET', '/acquereurs/admin/report', tAdmin);
+  t('le contact en échec reste à reporter', () => assert.deepStrictEqual([...new Set(r3.body.lignes.map(l => l.id_contact))], ['12']));
+  rr = await call('POST', '/acquereurs/admin/report/retour', tAdmin, { csv: retour(true) });
   r = await call('GET', '/acquereurs/admin/report', tAdmin);
-  t('après le retour : plus rien à reporter', () => assert.strictEqual(r.body.lignes.length, 0));
+  t('après le retour complet : plus rien à reporter', () => assert.strictEqual(r.body.lignes.length, 0));
 
   // Ne plus contacter : journal commun des oppositions.
   r = await call('POST', '/acquereurs/contacts/18/cloture', tLilas, { statut_final: 'NE_PLUS_CONTACTER' });

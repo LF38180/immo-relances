@@ -96,6 +96,16 @@ export default function AdminPage() {
     } catch (e) { toast.error(e.messageLisible || 'Échec') }
   }
 
+  // Mission « Fichier Acquéreurs » : un espace de plus pour la personne,
+  // sans rien lui retirer.
+  const basculerAcquereurs = async (u) => {
+    try {
+      await api.put(`/acquereurs/admin/acces/${u.id}`, { acces: !u.acces_acquereurs })
+      toast.success(u.acces_acquereurs ? 'Mission retirée' : 'Mission Fichier Acquéreurs donnée')
+      api.get('/admin/users').then(r => setUsers(r.data)).catch(() => {})
+    } catch (e) { toast.error(e.messageLisible || 'Modification impossible') }
+  }
+
   const toggleUser = async (u) => {
     // Désactiver coupe l'accès de la personne sur-le-champ : on demande avant.
     if (u.actif && !window.confirm(`Désactiver le compte de ${u.prenom} ${u.nom} ? La personne ne pourra plus se connecter. Rien n'est effacé, et vous pourrez le réactiver.`)) return
@@ -164,6 +174,7 @@ export default function AdminPage() {
                     <th className="text-left px-4 py-3 font-medium text-quai-muted">Rôle</th>
                     <th className="text-left px-4 py-3 font-medium text-quai-muted">Dernière connexion</th>
                     <th className="text-left px-4 py-3 font-medium text-quai-muted">Statut</th>
+                    <th className="text-left px-4 py-3 font-medium text-quai-muted">Missions</th>
                     <th className="text-left px-4 py-3 font-medium text-quai-muted">Actions</th>
                   </tr>
                 </thead>
@@ -188,6 +199,14 @@ export default function AdminPage() {
                         <span className={`badge ${u.actif ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-quai-light text-quai-muted border border-quai-border'}`}>
                           {u.actif ? 'Actif' : 'Inactif'}
                         </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        {u.role === 'admin' ? <span className="text-xs text-quai-muted">toutes</span> : (
+                          <label className="text-xs inline-flex items-center gap-1.5 whitespace-nowrap cursor-pointer">
+                            <input type="checkbox" checked={!!u.acces_acquereurs} onChange={() => basculerAcquereurs(u)} />
+                            Fichier Acquéreurs
+                          </label>
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-3 whitespace-nowrap">

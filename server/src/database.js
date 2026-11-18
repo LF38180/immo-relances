@@ -993,6 +993,13 @@ db.exec(`
     le TEXT NOT NULL DEFAULT (datetime('now')),
     par TEXT, jusqu_a TEXT NOT NULL, contacts INTEGER, fiches INTEGER
   );
+  -- Le retour d'Exploration Modelo, ligne par ligne (comme op_modelo_reports).
+  CREATE TABLE IF NOT EXISTS acq_modelo_reports (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id_contact TEXT NOT NULL, id_fiche TEXT,
+    le TEXT NOT NULL, statut TEXT NOT NULL CHECK(statut IN ('REPORTE','ECHEC')),
+    motif TEXT, par TEXT, importe_le TEXT NOT NULL DEFAULT (datetime('now'))
+  );
   CREATE TABLE IF NOT EXISTS acq_scripts (
     partie TEXT PRIMARY KEY,
     texte TEXT NOT NULL DEFAULT '',

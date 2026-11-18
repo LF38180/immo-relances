@@ -74,7 +74,9 @@ const COLONNES = ['id_contact', 'id_fiche', 'nom', 'prenom', 'agent', 'date_note
   'type_bien_apres', 'budget_min_apres', 'budget_max_avant', 'budget_max_apres', 'surface_min_apres',
   'pieces_min_apres', 'chambres_min_apres', 'priorite_apres', 'criteres_obligatoires_apres', 'precisions_apres',
   'nego_contact_cible', 'nego_fiche_cible', 'alerte_mail', 'archiver_fiche', 'commentaire_fiche', 'fusion_dans',
-  'type_contact_ajout', 'a_proposer_a_loick', 'jusqu_a'];
+  'type_contact_ajout', 'a_proposer_a_loick', 'jusqu_a',
+  // À remplir par Exploration Modelo, puis réimporter : « reporté » ou « échec ».
+  'statut', 'motif_echec'];
 
 // Les fiches dont l'archivage attend la validation de Loïck ou Thomas.
 function archivagesEnAttente() {
