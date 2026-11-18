@@ -72,74 +72,36 @@ function AppConnecte({ user, page, setPage }) {
   // Tant qu'on ne sait pas, on n'affiche rien plutôt qu'un écran qui sauterait.
   if (!acces || !acq) return <div className="min-h-screen flex"><ChargementPage /></div>
 
-  const espaceAcq = acq.acces
-    ? { id: 'acquereurs', titre: 'Fichier Acquéreurs', icon: 'users',
-        aide: `${acq.contacts} personne${acq.contacts > 1 ? 's' : ''} dans le fichier` }
-    : null
-  if (espace === 'acquereurs') {
-    return (
-      <ErrorBoundary>
-        <Suspense fallback={<div className="min-h-screen flex"><ChargementPage /></div>}>
-          <AcqHub onRetour={() => setEspace(null)} />
-        </Suspense>
-      </ErrorBoundary>
-    )
-  }
-
+  // Règle de Loïck (18/11) : l'écran de choix ne propose que DEUX choses,
+  // l'opération anciens clients (tant que la personne y participe) et Immo
+  // Relances. Les missions « fichier » (Fichier Estimés, Fichier Acquéreurs,
+  // courtage) vivent dans Immo Relances. Une personne qui n'a qu'un seul
+  // module ouvert y va directement, sans écran de choix.
+  const espaceAcq = !!acq.acces
   const espaceHabituel = user.role === 'courtage' ? 'courtage' : 'agence'
-
-  // Un conseiller recruté pour l'opération et qui n'a (pas encore) de fiche
-  // à son nom atterrissait sur le tableau de bord des relances, vide, sans
-  // menu ni explication. Il doit savoir que ce n'est pas lui.
-  if (!acces.participe && user.role === 'conseiller') {
-    if (espaceAcq) return (
+  // Ce que « Immo Relances » ouvre pour cette personne. Un conseiller n'a pas
+  // accès au cœur des relances : son Immo Relances, c'est sa mission fichier.
+  const immoRelances = user.role === 'conseiller'
+    ? (espaceAcq ? 'acquereurs' : null)
+    : espaceHabituel
+  const ouvrirImmoRelances = (onRetour) => {
+    if (immoRelances === 'acquereurs') return (
       <ErrorBoundary>
         <Suspense fallback={<div className="min-h-screen flex"><ChargementPage /></div>}>
-          <AcqHub />
+          <AcqHub onRetour={onRetour} libelleRetour="Anciens clients" />
         </Suspense>
       </ErrorBoundary>
     )
-    return <SansFiche prenom={user.prenom} />
+    if (immoRelances === 'courtage') return <EspaceCourtage onRetour={onRetour} />
+    return <EspaceAgence acq={espaceAcq} page={page} setPage={setPage} onRetour={onRetour} />
   }
 
-  // Ne participe pas : strictement le comportement d'avant (sauf le Fichier
-  // Acquéreurs, proposé en plus à qui y a droit).
+  // Un seul module ouvert : on y va directement.
   if (!acces.participe) {
-    const habituel = espaceHabituel === 'courtage' ? <EspaceCourtage onRetour={espaceAcq ? () => setEspace(null) : undefined} />
-      : <EspaceAgence acq={!!espaceAcq} page={page} setPage={setPage} onRetour={espaceAcq ? () => setEspace(null) : undefined} />
-    if (!espaceAcq || espace === 'habituel') return habituel
-    return (
-      <Suspense fallback={<div className="min-h-screen flex"><ChargementPage /></div>}>
-        <ChoixEspace prenom={user.prenom} onChoisir={setEspace} espaces={[espaceAcq,
-          { id: 'habituel', titre: espaceHabituel === 'courtage' ? 'Mon espace courtage' : 'Immo Relances',
-            aide: 'Votre espace habituel', icon: espaceHabituel === 'courtage' ? 'table' : 'layout-dashboard' }]} />
-      </Suspense>
-    )
+    if (!immoRelances) return <SansFiche prenom={user.prenom} />
+    return ouvrirImmoRelances(undefined)
   }
-
-  // Qui a un second espace ?
-  //
-  // Un conseiller recruté pour l'opération n'a qu'elle : lui montrer un choix
-  // l'enverrait sur un écran vide. Tous les autres ont deux endroits où
-  // travailler — Marine son courtage, Chrystelle ses relances, un manager son
-  // pilotage, un admin l'application entière.
-  const aUnAutreEspace = user.role !== 'conseiller'
-  if (!aUnAutreEspace && espaceAcq) {
-    if (espace === 'operation') return (
-      <Suspense fallback={<div className="min-h-screen flex"><ChargementPage /></div>}>
-        <OperationHub onRetour={() => setEspace(null)} />
-      </Suspense>
-    )
-    return (
-      <Suspense fallback={<div className="min-h-screen flex"><ChargementPage /></div>}>
-        <ChoixEspace prenom={user.prenom} onChoisir={setEspace} espaces={[
-          { id: 'operation', titre: 'Opération anciens clients', image: '/operation/sceau-badge.png',
-            aide: `${acces.fiches} personne${acces.fiches > 1 ? 's' : ''} à rappeler` },
-          espaceAcq]} />
-      </Suspense>
-    )
-  }
-  if (!aUnAutreEspace) {
+  if (!immoRelances) {
     return (
       <ErrorBoundary>
         <Suspense fallback={<div className="min-h-screen flex"><ChargementPage /></div>}>
@@ -149,28 +111,23 @@ function AppConnecte({ user, page, setPage }) {
     )
   }
 
-  // Le second espace, selon qui on est.
-  const second = espaceHabituel === 'courtage'
-    ? { id: 'courtage', titre: 'Mon espace courtage',
-        aide: 'Vos fiches de courtage, comme d’habitude', icon: 'table' }
-    : user.role === 'admin'
-      ? { id: 'agence', titre: 'Immo Relances',
-          aide: 'Tableau de bord, contacts, supervision, administration', icon: 'layout-dashboard' }
-      : user.role === 'manager'
-        ? { id: 'agence', titre: 'Immo Relances',
-            aide: 'Tableau de bord et supervision de l’agence', icon: 'layout-dashboard' }
-        : { id: 'agence', titre: 'Mes relances',
-            aide: 'Vos sessions d’appels habituelles', icon: 'phone-call' }
+  // Deux modules : l'opération et Immo Relances. On demande, une fois par session.
+  const second = immoRelances === 'courtage'
+    ? { id: 'immo', titre: 'Mon espace courtage', aide: 'Vos fiches de courtage, comme d’habitude', icon: 'table' }
+    : immoRelances === 'acquereurs'
+      ? { id: 'immo', titre: 'Immo Relances', aide: `Fichier Acquéreurs · ${acq.contacts} personne${acq.contacts > 1 ? 's' : ''}`, icon: 'users' }
+      : user.role === 'admin'
+        ? { id: 'immo', titre: 'Immo Relances', aide: 'Tableau de bord, contacts, supervision, administration', icon: 'layout-dashboard' }
+        : user.role === 'manager'
+          ? { id: 'immo', titre: 'Immo Relances', aide: 'Tableau de bord et supervision de l’agence', icon: 'layout-dashboard' }
+          : { id: 'immo', titre: 'Immo Relances', aide: espaceAcq ? 'Vos relances et le Fichier Acquéreurs' : 'Vos sessions d’appels habituelles', icon: 'phone-call' }
 
-  // Ce que l'opération propose dépend de ce qu'on y fait : un manager qui a
-  // aussi des fiches voit les deux, pas seulement le pilotage.
   const aideOperation = acces.pilote && acces.fiches > 0
     ? `${acces.fiches} personne${acces.fiches > 1 ? 's' : ''} à rappeler, et le suivi de l’équipe`
     : acces.pilote
       ? 'Suivi, répartition des fiches et vérifications'
       : `${acces.fiches} personne${acces.fiches > 1 ? 's' : ''} à rappeler`
 
-  // Deux espaces : on demande, une fois par session.
   if (!espace) {
     return (
       <Suspense fallback={<div className="min-h-screen flex"><ChargementPage /></div>}>
@@ -180,7 +137,6 @@ function AppConnecte({ user, page, setPage }) {
           espaces={[
             { id: 'operation', titre: 'Opération anciens clients',
               aide: aideOperation, image: '/operation/sceau-badge.png' },
-            ...(espaceAcq ? [espaceAcq] : []),
             second,
           ]}
         />
@@ -195,9 +151,7 @@ function AppConnecte({ user, page, setPage }) {
       </Suspense>
     )
   }
-  return espace === 'courtage'
-    ? <EspaceCourtage onRetour={() => setEspace(null)} />
-    : <EspaceAgence acq={!!espaceAcq} page={page} setPage={setPage} onRetour={() => setEspace(null)} />
+  return ouvrirImmoRelances(() => setEspace(null))
 }
 
 // L'espace courtage de Marine. La page elle-même n'est pas touchée : le bouton
