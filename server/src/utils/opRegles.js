@@ -178,6 +178,17 @@ function memeTranche(a, b) {
   return (a.getHours() < 14) === (b.getHours() < 14);
 }
 
+// Délai avant de rappeler quelqu'un qui n'a pas décroché (règle de Loïck,
+// 18/11, valable pour tous les modules) : 48 h après un premier
+// sans-réponse ou répondeur, 7 jours dès le deuxième d'affilée — rappeler
+// tous les deux jours quelqu'un qui ne décroche pas « fait trop ». La série
+// repart à zéro dès qu'une autre issue est notée (joint, rappel convenu…).
+// Un SMS compte comme une tentative : il est noté « pas de réponse ».
+const SANS_REPONSE = ['PAS_DE_REPONSE', 'REPONDEUR'];
+function delaiRelanceMs(sansReponseDeSuite) {
+  return (sansReponseDeSuite >= 2 ? 7 * 24 : 48) * 3600 * 1000;
+}
+
 // Les issues qui mettent fin définitivement aux appels.
 const ISSUES_TERMINALES = new Set(['REFUS_FERME', 'DECEDE']);
 const ISSUE_OPPOSITION = 'REFUS_FERME';
@@ -188,4 +199,5 @@ module.exports = {
   adresseProfessionnelle, DOMAINES_PRO,
   moisCourant, jourLocal,
   depuisSqlite, depuisSaisieLocale, rappelDu, memeTranche,
+  SANS_REPONSE, delaiRelanceMs,
 };

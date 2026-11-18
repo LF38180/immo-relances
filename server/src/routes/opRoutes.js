@@ -277,7 +277,14 @@ router.get('/file', conseillerOuPlus, (req, res) => {
       (SELECT a.conseiller FROM op_appels a WHERE a.id_modelo = c.id_modelo
         ORDER BY a.horodatage DESC LIMIT 1)                                AS dernier_par,
       (SELECT a.notes FROM op_appels a WHERE a.id_modelo = c.id_modelo
-        AND a.notes IS NOT NULL ORDER BY a.horodatage DESC LIMIT 1)        AS derniere_note
+        AND a.notes IS NOT NULL ORDER BY a.horodatage DESC LIMIT 1)        AS derniere_note,
+      -- Sans-réponse d'affilée depuis la dernière autre issue : décide du
+      -- délai de relance (48 h, puis 7 jours).
+      (SELECT COUNT(*) FROM op_appels a WHERE a.id_modelo = c.id_modelo
+        AND a.issue IN ('PAS_DE_REPONSE','REPONDEUR')
+        AND a.horodatage > COALESCE((SELECT MAX(b.horodatage) FROM op_appels b
+          WHERE b.id_modelo = c.id_modelo
+            AND b.issue NOT IN ('PAS_DE_REPONSE','REPONDEUR')), ''))      AS sans_reponse_de_suite
     FROM op_contacts c
     WHERE ${where}
       AND c.a_dispatcher = 0
@@ -342,20 +349,23 @@ router.get('/file', conseillerOuPlus, (req, res) => {
   // une priorité, plus un filtre : un agent qui n'appelle que le matin
   // n'aurait jamais revu ses sans-réponse du matin (Lilas, 13/11 : « vous
   // avez tout fini » alors que ses sans-réponse attendaient l'après-midi).
-  const il48h = maintenant.getTime() - 48 * 3600 * 1000;
-  const sansReponse = reste.filter(l => l.appels_total
-    && ['PAS_DE_REPONSE', 'REPONDEUR'].includes(l.derniere_issue));
-  const relancables = sansReponse.filter(l => {
+  // Puis 7 jours dès le deuxième sans-réponse d'affilée (règle du 18/11).
+  const retourLe = (l) => {
     const dernier = R.depuisSqlite(l.dernier_appel_le);
-    return dernier && dernier.getTime() < il48h;
+    return dernier ? dernier.getTime() + R.delaiRelanceMs(l.sans_reponse_de_suite) : null;
+  };
+  const sansReponse = reste.filter(l => l.appels_total
+    && R.SANS_REPONSE.includes(l.derniere_issue));
+  const relancables = sansReponse.filter(l => {
+    const retour = retourLe(l);
+    return retour && retour <= maintenant.getTime();
   });
   const autreTranche = (l) => !R.memeTranche(R.depuisSqlite(l.dernier_appel_le), maintenant);
   const aRelancer = [...relancables.filter(autreTranche), ...relancables.filter(l => !autreTranche(l))];
   // Ceux qui attendent encore leurs 48 h : l'écran de fin dit quand ils
   // reviennent, pour qu'on ne croie pas qu'ils sont perdus.
   const enAttente = sansReponse.filter(l => !relancables.includes(l));
-  const retours = enAttente.map(l => R.depuisSqlite(l.dernier_appel_le))
-    .filter(Boolean).map(d => d.getTime() + 48 * 3600 * 1000).sort((a, b) => a - b);
+  const retours = enAttente.map(retourLe).filter(Boolean).sort((a, b) => a - b);
   const prochainRetour = retours.length ? new Date(retours[0]).toISOString() : null;
 
   // Les fiches à signalement grave passent en queue : on ne les cache pas,

@@ -405,7 +405,7 @@ export default function EcranAppel({ contact: c, onEnregistre, onPasser, horsFil
                   )}
                 </div>
                 <p className="text-[11px] text-quai-muted leading-snug mt-1">
-                  La fiche reviendra dans votre liste dans 48 h, comme après un appel sans réponse.
+                  La fiche reviendra dans votre liste comme après un appel sans réponse : 48 h après un premier essai, 7 jours ensuite.
                 </p>
               </div>
             )}

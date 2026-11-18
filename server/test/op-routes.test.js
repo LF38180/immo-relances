@@ -373,6 +373,33 @@ const t = (n, fn) => { try { fn(); console.log('  OK  ' + n) } catch (e) { conso
     t('sans-réponse de plus de 48 h : revient, même appelé à la même heure', () => {
       assert.ok(f.file.some(c => c.id_modelo === h));
     });
+
+    // Règle du 18/11 : 7 jours dès le deuxième sans-réponse d'affilée.
+    const tara = db.prepare("SELECT conseiller FROM op_appels WHERE cle = 'sms-test-3'").get().conseiller;
+    const ajoute = (issue, ilYa) => db.prepare(`INSERT INTO op_appels (id_modelo, conseiller, horodatage, issue)
+      VALUES (?, ?, datetime('now', ?), ?)`).run(h, tara, ilYa, issue);
+    db.prepare("UPDATE op_appels SET horodatage = datetime('now', '-5 days') WHERE cle = 'sms-test-3'").run();
+    ajoute('REPONDEUR', '-72 hours');
+    f = (await call('GET', '/operation/file', tTara)).body;
+    t('deuxième sans-réponse d affilée : pas de retour à 48 h, seulement à 7 jours', () => {
+      // Dernier essai il y a 72 h : il serait revenu avec l'ancienne règle.
+      assert.ok(!f.file.some(c => c.id_modelo === h));
+      assert.ok(f.groupes.sans_reponse_en_attente >= 1);
+    });
+    db.prepare("UPDATE op_appels SET horodatage = datetime('now', '-8 days') WHERE id_modelo = ? AND issue = 'REPONDEUR'").run(h);
+    db.prepare("UPDATE op_appels SET horodatage = datetime('now', '-10 days') WHERE cle = 'sms-test-3'").run();
+    f = (await call('GET', '/operation/file', tTara)).body;
+    t('deuxième sans-réponse de plus de 7 jours : revient', () => {
+      assert.ok(f.file.some(c => c.id_modelo === h));
+    });
+    // Une autre issue entre deux remet la série à zéro : 48 h suffisent.
+    db.prepare("DELETE FROM op_appels WHERE id_modelo = ? AND issue = 'REPONDEUR'").run(h);
+    ajoute('A_RAPPELER', '-9 days');
+    ajoute('PAS_DE_REPONSE', '-72 hours');
+    f = (await call('GET', '/operation/file', tTara)).body;
+    t('série remise à zéro par une autre issue : retour à 48 h', () => {
+      assert.ok(f.file.some(c => c.id_modelo === h));
+    });
   }
 
   db.close();

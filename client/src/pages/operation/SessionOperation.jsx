@@ -374,7 +374,7 @@ function Termine({ bilan, vide, infos, onRecharger, onRecap, onContacts }) {
         {enAttente > 0 && quand && (
           <p className="text-sm text-quai-navy bg-white border border-quai-border rounded-xl p-3 mb-4 leading-snug">
             {enAttente} {enAttente > 1 ? 'personnes n’ont pas répondu' : 'personne n’a pas répondu'}.
-            {' '}On les rappelle 48 h après le dernier essai : le premier revient {quand}.
+            {' '}On les rappelle 48 h après un premier essai, puis 7 jours après chaque essai suivant : le premier revient {quand}.
           </p>
         )}
         <p className="text-[11px] text-quai-muted mb-3 leading-snug">
