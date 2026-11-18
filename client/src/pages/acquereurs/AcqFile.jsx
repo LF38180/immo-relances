@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback, lazy, Suspense } from 'react'
 import api from '../../utils/api'
 import Icon from '../../components/ui/Icon'
+import { Pastille, Initiales, Titre } from './ui'
 
 const AcqAppel = lazy(() => import('./AcqAppel'))
 
-const GROUPES = { RAPPEL: 'Rappel convenu', DELEGUE: 'Délégué', VENDEUR: 'Aussi vendeur', NOUVEAU: 'Jamais appelé', RELANCE: 'À relancer' }
 const jj = (s) => s ? new Date(s).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }) : ''
 
 // La file de Madame Fichier : une ligne par personne, dans l'ordre du cahier.
@@ -105,6 +105,11 @@ function Effectues({ onChoisir, onFermer }) {
 // « Il vous rappelle ? » qui ouvre la fiche sans perdre l'appel en cours.
 function Barre({ index, total, horsFile, faits, plage, contacts, onOuvrir, onAFaire, onEffectues, onContacts }) {
   const [q, setQ] = useState('')
+  // Pendant un appel, sur téléphone, la recherche se replie derrière une
+  // loupe : la barre prenait un tiers de l'écran. Sur ordinateur, elle reste
+  // toujours ouverte.
+  const enAppel = index != null || horsFile
+  const [loupe, setLoupe] = useState(false)
   const motif = q.trim().toLowerCase(), chiffres = motif.replace(/\D/g, '')
   const res = motif.length < 2 ? [] : (contacts || []).filter(c =>
     `${c.nom || ''} ${c.prenom || ''} ${c.nom || ''} ${c.email || ''}`.toLowerCase().includes(motif)
@@ -112,25 +117,26 @@ function Barre({ index, total, horsFile, faits, plage, contacts, onOuvrir, onAFa
   const pct = total ? Math.round(((index ?? 0) / total) * 100) : 0
   const pastille = 'inline-flex items-center gap-1 px-2 py-1 rounded-full border border-quai-border text-quai-navy hover:border-quai-gold bg-white'
   return (
-    <div className="bg-white border-b border-quai-border px-3 py-2 sticky top-0 z-20">
-      <div className="max-w-3xl mx-auto">
+    <div className="bg-white border-b border-quai-border py-2 sticky top-0 z-20">
+      <div className="max-w-3xl mx-auto px-3">
         <div className="flex items-center justify-between gap-2 text-xs mb-1.5 flex-wrap">
           <span className="text-quai-muted">{horsFile ? <span className="text-quai-gold font-medium">Fiche ouverte hors de la file</span>
             : index != null ? <>Fiche <b className="text-quai-navy">{index + 1}</b> / {total}</> : <>{total} à appeler</>}</span>
           <div className="flex items-center gap-2 text-[11px]">
             <button onClick={onAFaire} className={pastille}><Icon name="table" size="sm" /> À faire <b>{total}</b></button>
             <button onClick={onEffectues} className={pastille}><Icon name="history" size="sm" /> Effectués <b>{faits}</b></button>
-            <button onClick={onContacts} className={pastille}><Icon name="users" size="sm" /> Mes contacts</button>
+            <button onClick={onContacts} className={pastille}><Icon name="users" size="sm" /> <span className={enAppel ? 'hidden sm:inline' : ''}>Mes contacts</span></button>
+            {enAppel && <button onClick={() => setLoupe(l => !l)} aria-label="Rechercher quelqu’un qui rappelle" className={`${pastille} md:hidden`}><Icon name="search" size="sm" /></button>}
           </div>
         </div>
         <div className="h-1.5 bg-quai-border rounded-full overflow-hidden"><div className="h-full bg-quai-gold rounded-full transition-all" style={{ width: `${pct}%` }} /></div>
-        <div className="relative mt-2">
+        <div className={`relative mt-2 ${enAppel && !loupe ? 'hidden md:block' : ''}`}>
           <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-quai-muted pointer-events-none"><Icon name="search" size="sm" /></span>
           <input value={q} onChange={e => setQ(e.target.value)} placeholder="Il vous rappelle ? Nom ou numéro…" className="input pl-8 min-h-[2.75rem] md:min-h-0" />
           {res.length > 0 && (
             <ul className="absolute z-[1100] left-0 right-0 mt-1 bg-white border border-quai-border rounded-lg shadow-lg overflow-hidden max-h-72 overflow-y-auto">
               {res.map(c => (
-                <li key={c.id_contact}><button onClick={() => { setQ(''); onOuvrir(c.id_contact) }} className="w-full text-left px-3 py-2.5 hover:bg-quai-light">
+                <li key={c.id_contact}><button onClick={() => { setQ(''); setLoupe(false); onOuvrir(c.id_contact) }} className="w-full text-left px-3 py-2.5 hover:bg-quai-light">
                   <div className="text-sm text-quai-navy truncate">{c.civilite} {c.prenom} {c.nom}</div>
                   <div className="text-[11px] text-quai-muted">{[c.tel_portable || c.tel_fixe, c.commune, c.exclu_libelle ? `hors file : ${c.exclu_libelle}` : null].filter(Boolean).join(' · ')}</div>
                 </button></li>
@@ -206,51 +212,73 @@ export default function AcqFile() {
   if (!d) return <p className="p-6 text-sm text-quai-muted">Chargement…</p>
   if (d.erreur) return <p className="p-6 text-sm text-red-700">La file n’a pas pu être chargée. Réessayez.</p>
   const g = d.groupes
+  // La file, rangée par raison d'appeler : on voit d'un coup d'œil ce qui
+  // presse (un rappel convenu) et ce qui peut attendre.
+  const SECTIONS = [['RAPPEL', 'Rappels convenus', 'ambre'], ['DELEGUE', 'Délégués par un conseiller', 'or'], ['VENDEUR', 'Aussi vendeurs', 'or'],
+    ['NOUVEAU', 'Jamais appelés', 'neutre'], ['RELANCE', 'À relancer', 'neutre']]
+    .map(([k, l, ton]) => ({ k, l, ton, lignes: d.file.filter(c => c.groupe === k) })).filter(x => x.lignes.length)
+  const premier = d.file[0]
   return (
     <>
     <Barre index={null} total={d.file.length} faits={faits} plage={null} contacts={contacts} onOuvrir={ouvrirHorsFile}
       onAFaire={() => {}} onEffectues={() => setFenetre('effectues')} onContacts={() => setFenetre('contacts')} />
-    <div className="p-3 max-w-3xl mx-auto">
+    <div className="p-3 max-w-3xl mx-auto pb-8">
       {outils}
-      <div className={`rounded-xl p-3 mb-3 text-sm ${d.plage.ok ? 'bg-emerald-50 text-emerald-900' : 'bg-amber-50 text-amber-900'}`}>
-        {d.plage.ok ? 'Plage d’appel ouverte : 10h-13h et 14h-20h, du lundi au vendredi.' : d.plage.raison}
+      <div className={`rounded-xl px-3 py-2.5 mb-3 text-sm flex items-center gap-2 ${d.plage.ok ? 'bg-emerald-50 text-emerald-900' : 'bg-amber-50 text-amber-900'}`}>
+        <Icon name={d.plage.ok ? 'phone-call' : 'phone-off'} size="sm" className="shrink-0" />
+        <span>{d.plage.ok ? 'Plage d’appel ouverte : 10h-13h et 14h-20h, du lundi au vendredi.' : d.plage.raison}</span>
       </div>
-      <div className="flex flex-wrap gap-1.5 text-xs mb-3">
-        <span className="badge bg-quai-navy text-white">{d.file.length} à appeler</span>
-        {g.rappels > 0 && <span className="badge bg-amber-100 text-amber-900">{g.rappels} rappel{g.rappels > 1 ? 's' : ''} convenu{g.rappels > 1 ? 's' : ''}</span>}
-        <span className="badge bg-white border border-quai-border text-quai-muted">{g.nouveaux} jamais appelés</span>
-        <span className="badge bg-white border border-quai-border text-quai-muted">{g.relances} à relancer</span>
-        {g.en_attente > 0 && <span className="badge bg-white border border-quai-border text-quai-muted">{g.en_attente} sans réponse en attente{d.prochain_retour ? `, le premier revient le ${jj(d.prochain_retour)}` : ''}</span>}
-        {g.rappels_a_venir > 0 && <span className="badge bg-white border border-quai-border text-quai-muted">{g.rappels_a_venir} rappels à venir</span>}
-        {g.plafonnes > 0 && <span className="badge bg-white border border-quai-border text-quai-muted">{g.plafonnes} au plafond ce mois</span>}
-      </div>
+
       {d.file.length === 0 ? (
-        <div className="card text-center text-sm text-quai-muted">Personne à appeler pour l’instant.{d.prochain_retour ? ` Les sans-réponse reviennent à partir du ${jj(d.prochain_retour)}.` : ''}</div>
+        <div className="bg-white border border-quai-border rounded-2xl p-8 text-center">
+          <div className="w-12 h-12 rounded-full bg-emerald-50 grid place-items-center mx-auto mb-3"><Icon name="check-circle-2" size="md" className="text-emerald-700" /></div>
+          <div className="font-display font-semibold text-quai-navy text-lg">Personne à appeler pour l’instant</div>
+          {d.prochain_retour && <p className="text-sm text-quai-muted mt-1">Les sans-réponse reviennent à partir du {jj(d.prochain_retour)}.</p>}
+        </div>
       ) : (
-        <>
-          <button className="btn-primary w-full mb-3 min-h-[3rem]" onClick={() => setOuvert(d.file[0].id_contact)}>
-            <span className="inline-flex items-center gap-2"><Icon name="play" size="sm" /> Commencer par {d.file[0].prenom} {d.file[0].nom}</span>
-          </button>
-          <ul className="bg-white border border-quai-border rounded-xl divide-y divide-quai-border">
-            {d.file.map(c => (
+        <button onClick={() => setOuvert(premier.id_contact)}
+          className="w-full mb-4 rounded-2xl bg-quai-navy text-white p-4 flex items-center gap-3 text-left hover:bg-quai-navymd transition-colors">
+          <span className="w-11 h-11 rounded-full bg-quai-gold grid place-items-center shrink-0"><Icon name="play" size="md" className="text-quai-navy" /></span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-xs text-quai-gold uppercase tracking-wider">Commencer</span>
+            <span className="block font-display font-semibold text-lg leading-tight truncate">{premier.civilite ? premier.civilite + ' ' : ''}{premier.prenom} {premier.nom}</span>
+          </span>
+          <span className="text-right shrink-0"><span className="block font-display text-2xl font-semibold text-quai-gold leading-none">{d.file.length}</span><span className="block text-[11px] text-white/60">à appeler</span></span>
+        </button>
+      )}
+
+      {(g.en_attente > 0 || g.rappels_a_venir > 0 || g.plafonnes > 0) && (
+        <div className="flex flex-wrap gap-1.5 mb-4">
+          {g.en_attente > 0 && <Pastille>{g.en_attente} sans réponse en attente{d.prochain_retour ? `, le premier revient le ${jj(d.prochain_retour)}` : ''}</Pastille>}
+          {g.rappels_a_venir > 0 && <Pastille>{g.rappels_a_venir} rappel{g.rappels_a_venir > 1 ? 's' : ''} à venir</Pastille>}
+          {g.plafonnes > 0 && <Pastille>{g.plafonnes} au plafond ce mois</Pastille>}
+        </div>
+      )}
+
+      {SECTIONS.map(sec => (
+        <section key={sec.k} className="mb-4">
+          <div className="flex items-center gap-2 mb-1.5"><Titre>{sec.l}</Titre><span className="-mt-2"><Pastille ton={sec.ton}>{sec.lignes.length}</Pastille></span></div>
+          <ul className="bg-white border border-quai-border rounded-xl divide-y divide-quai-border overflow-hidden">
+            {sec.lignes.map(c => (
               <li key={c.id_contact}>
-                <button onClick={() => setOuvert(c.id_contact)} className="w-full text-left px-3 py-2.5 hover:bg-quai-light flex items-center gap-2">
+                <button onClick={() => setOuvert(c.id_contact)} className="w-full text-left px-3 py-2.5 hover:bg-quai-light flex items-center gap-3 transition-colors">
+                  <Initiales prenom={c.prenom} nom={c.nom} />
                   <div className="min-w-0 flex-1">
                     <div className="text-sm font-medium text-quai-navy truncate">{c.civilite ? c.civilite + ' ' : ''}{c.prenom} {c.nom}</div>
                     <div className="text-[11px] text-quai-muted truncate">
-                      {GROUPES[c.groupe]}{c.groupe === 'RAPPEL' && c.rappel_le ? ` · ${new Date(c.rappel_le).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}` : ''}
-                      {' · '}{c.nb_fiches} recherche{c.nb_fiches > 1 ? 's' : ''}{c.commune ? ` · ${c.commune}` : ''}
-                      {c.appels_ce_mois ? ` · ${c.appels_ce_mois} appel${c.appels_ce_mois > 1 ? 's' : ''} ce mois` : ''}
+                      {[c.groupe === 'RAPPEL' && c.rappel_le ? `rappel à ${new Date(c.rappel_le).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}` : null,
+                        `${c.nb_fiches} recherche${c.nb_fiches > 1 ? 's' : ''}`, c.commune,
+                        c.appels_ce_mois ? `${c.appels_ce_mois} appel${c.appels_ce_mois > 1 ? 's' : ''} ce mois` : null].filter(Boolean).join(' · ')}
                     </div>
-                    {c.appel_recent && <div className="text-[11px] text-amber-800">Appelé le {jj(c.appel_recent.le)} ({c.appel_recent.module})</div>}
+                    {c.appel_recent && <div className="text-[11px] text-amber-800 mt-0.5">Appelé le {jj(c.appel_recent.le)} ({c.appel_recent.module})</div>}
                   </div>
                   <Icon name="chevron-right" size="sm" className="text-quai-muted shrink-0" />
                 </button>
               </li>
             ))}
           </ul>
-        </>
-      )}
+        </section>
+      ))}
     </div>
     </>
   )

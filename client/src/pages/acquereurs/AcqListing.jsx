@@ -2,15 +2,14 @@ import { useState, useEffect, useMemo, lazy, Suspense } from 'react'
 import Papa from 'papaparse'
 import api from '../../utils/api'
 import Icon from '../../components/ui/Icon'
+import { STATUTS as STATUTS_UI, StatutBadge, Pastille, Initiales } from './ui'
 
 const AcqAppel = lazy(() => import('./AcqAppel'))
 
 // Le Listing du Fichier Acquéreurs, comme celui de l'opération anciens
 // clients : toutes les personnes, des filtres, une recherche, l'export CSV, et
 // la fiche qui s'ouvre d'un clic.
-const STATUTS = { REQUALIFIE: 'Requalifié', A_RAPPELER: 'À rappeler', EN_PAUSE: 'En pause', ABANDONNE: 'Abandonné',
-  DEJA_ACHETE: 'Déjà acheté', SANS_REPONSE: 'Sans réponse (4 essais)', NE_PLUS_CONTACTER: 'Ne plus contacter',
-  ERREUR_IDENTITE: 'Pas la bonne personne', DECEDE: 'Décédé', FAUX_NUMERO: 'Faux numéro' }
+const STATUTS = Object.fromEntries(Object.entries(STATUTS_UI).map(([k, v]) => [k, v.l]))
 export const FILTRES = {
   '': { l: 'Tous', f: () => true },
   dans_file: { l: 'Dans la file', f: c => !c.exclu && !c.statut },
@@ -59,7 +58,7 @@ export default function AcqListing({ filtreInitial = '', onOuvrir = null }) {
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob)
     a.download = `fichier-acquereurs-${(FILTRES[filtre]?.l || 'tous').toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${new Date().toLocaleDateString('fr-CA')}.csv`; a.click()
   }
-  const puce = (k) => `text-xs px-2.5 py-1.5 rounded-full border whitespace-nowrap ${filtre === k ? 'bg-quai-navy text-white border-quai-navy' : 'bg-white border-quai-border text-quai-muted'}`
+  const puce = (k, vide) => `text-xs px-2.5 py-1.5 rounded-full border whitespace-nowrap transition-colors ${filtre === k ? 'bg-quai-navy text-white border-quai-navy' : vide ? 'bg-transparent border-quai-border/60 text-quai-muted/60' : 'bg-white border-quai-border text-quai-navy hover:border-quai-gold'}`
   return (
     <div className="p-3 max-w-5xl mx-auto">
       <div className="flex flex-wrap gap-2 mb-2">
@@ -70,31 +69,36 @@ export default function AcqListing({ filtreInitial = '', onOuvrir = null }) {
         <button onClick={exporter} className="btn-secondary inline-flex items-center gap-1.5"><Icon name="download" size="sm" /> Export ({visibles.length})</button>
       </div>
       {GROUPES.map(([titre, cles]) => (
-        <div key={titre} className="flex items-center gap-1.5 mb-1.5 overflow-x-auto scrollbar-none">
-          <span className="text-[11px] text-quai-muted w-16 shrink-0">{titre}</span>
-          {cles.map(k => <button key={k} className={puce(k)} onClick={() => setFiltre(k)}>{FILTRES[k].l} {n(k)}</button>)}
+        <div key={titre} className="flex items-center gap-1.5 mb-1.5 overflow-x-auto no-scrollbar">
+          <span className="text-[10px] uppercase tracking-wider text-quai-muted w-16 shrink-0">{titre}</span>
+          {cles.map(k => { const nb = n(k); return (
+            <button key={k} className={puce(k, !nb)} onClick={() => setFiltre(k)}>{FILTRES[k].l} <b className="font-semibold">{nb}</b></button>
+          ) })}
         </div>
       ))}
       <ul className="bg-white border border-quai-border rounded-xl divide-y divide-quai-border mt-2">
         {visibles.slice(0, 300).map(c => (
           <li key={c.id_contact}>
-            <button onClick={() => onOuvrir ? onOuvrir(c.id_contact) : setOuvert(c.id_contact)} className="w-full text-left px-3 py-2.5 hover:bg-quai-light">
-              <div className="flex items-baseline gap-2 flex-wrap">
+            <button onClick={() => onOuvrir ? onOuvrir(c.id_contact) : setOuvert(c.id_contact)} className="w-full text-left px-3 py-2.5 hover:bg-quai-light flex items-start gap-3 transition-colors">
+              <Initiales prenom={c.prenom} nom={c.nom} taille="sm" />
+              <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-sm text-quai-navy font-medium">{c.civilite} {c.prenom} {c.nom}</span>
                 <span className="text-[11px] text-quai-muted">{[c.tel_portable || c.tel_fixe, c.commune].filter(Boolean).join(' · ')}</span>
-                <span className="ml-auto flex gap-1 flex-wrap">
-                  {c.statut && <span className="badge bg-quai-light text-quai-navy">{STATUTS[c.statut]}</span>}
-                  {c.exclu && <span className="badge bg-quai-light text-quai-muted">hors file : {d.libelles[c.exclu] || c.exclu}</span>}
-                  {c.vendeur ? <span className="badge bg-amber-100 text-amber-900">vendeur</span> : null}
-                  {c.estimation_acceptee ? <span className="badge bg-emerald-100 text-emerald-800">estimation</span> : null}
-                  {c.marine_proposee ? <span className="badge bg-sky-100 text-sky-900">courtage</span> : null}
-                  {c.a_reporter ? <span className="badge bg-amber-50 text-amber-800 border border-amber-200">à reporter</span> : null}
+                <span className="ml-auto flex gap-1 flex-wrap justify-end">
+                  <StatutBadge statut={c.statut} />
+                  {c.exclu && <Pastille>hors file : {d.libelles[c.exclu] || c.exclu}</Pastille>}
+                  {c.vendeur ? <Pastille ton="or">vendeur</Pastille> : null}
+                  {c.estimation_acceptee ? <Pastille ton="vert">estimation</Pastille> : null}
+                  {c.marine_proposee ? <Pastille ton="or">courtage</Pastille> : null}
+                  {c.a_reporter ? <Pastille ton="ambre">à reporter</Pastille> : null}
                 </span>
               </div>
               <div className="text-[11px] text-quai-muted mt-0.5">
                 {c.nb_fiches} recherche{c.nb_fiches > 1 ? 's' : ''}{c.types_bien ? ` (${c.types_bien.replace(/,/g, ', ')})` : ''}
                 {c.appels ? ` · ${c.appels} appel${c.appels > 1 ? 's' : ''}, le dernier le ${jour(c.dernier_appel_le)}` : ' · jamais appelé'}
                 {c.anciens_conseillers ? ` · ancien conseiller : ${c.anciens_conseillers}` : ''}
+              </div>
               </div>
             </button>
           </li>

@@ -87,7 +87,7 @@ function ImportEstimes() {
 // Sous-onglets, quand un onglet regroupe plusieurs écrans existants.
 function Pastilles({ choix, valeur, onChange }) {
   return (
-    <div className="bg-quai-light px-4 md:px-6 pt-3 flex gap-1.5 overflow-x-auto scrollbar-none shrink-0">
+    <div className="bg-quai-light px-4 md:px-6 pt-3 flex gap-1.5 overflow-x-auto no-scrollbar shrink-0">
       {choix.map(([id, l]) => (
         <button key={id} onClick={() => onChange(id)}
           className={`text-xs px-3 py-1.5 rounded-full border whitespace-nowrap ${valeur === id ? 'bg-quai-navy text-white border-quai-navy' : 'bg-white border-quai-border text-quai-muted'}`}>
@@ -196,7 +196,7 @@ export default function EspaceAdmin({ operation }) {
           {AUTRES[page] && <AdminPage key={page} onglet={AUTRES[page].onglet} />}
           {mission && (
             <>
-              <div className="bg-white border-b border-quai-border flex gap-0.5 px-2 md:px-4 shrink-0 overflow-x-auto scrollbar-none">
+              <div className="bg-white border-b border-quai-border flex gap-0.5 px-2 md:px-4 shrink-0 overflow-x-auto no-scrollbar">
                 {ONGLETS.map(o => (
                   <button key={o.id} onClick={() => { setOngletBrut(o.id); setSous(null) }}
                     className={`px-3 py-2.5 text-[13px] font-medium whitespace-nowrap inline-flex items-center gap-1.5 border-b-2 transition-colors ${

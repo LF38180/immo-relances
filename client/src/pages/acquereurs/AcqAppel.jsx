@@ -3,6 +3,7 @@ import toast from 'react-hot-toast'
 import api from '../../utils/api'
 import Icon from '../../components/ui/Icon'
 import SaisieAdresse from '../../components/SaisieAdresse'
+import { Initiales, Pastille } from './ui'
 
 // L'écran d'appel du Fichier Acquéreurs (cahier, section 4). Il suit l'appel
 // dans l'ordre : ouverture, coordonnées, projet (par fiche gardée), vendre
@@ -16,9 +17,10 @@ const AVEC_VALEUR = ['Surface du séjour', 'État intérieur', 'Chauffage']
 const FIN_VALIDE = [['ACCORD', 'Oui, accord de principe bancaire'], ['SIMULATION', 'Oui, simulation faite'], ['COMPTANT', 'Oui, achat comptant'], ['EN_COURS', 'En cours'], ['NON', 'Non, rien de fait']]
 // Les mêmes issues que l'opération anciens clients, dans le même ordre :
 // l'issue se choisit en premier, et l'écran ne s'ouvre que sur « Joint ».
-const ISSUES = [['JOINT', 'Joint'], ['REPONDEUR', 'Répondeur'], ['PAS_DE_REPONSE', 'Pas de réponse'], ['A_RAPPELER', 'À rappeler'],
+// Troisième valeur : la teinte une fois choisie (vert = joint, rouge = refus).
+const ISSUES = [['JOINT', 'Joint', 'emerald'], ['REPONDEUR', 'Répondeur'], ['PAS_DE_REPONSE', 'Pas de réponse'], ['A_RAPPELER', 'À rappeler'],
   ['FAUX_NUMERO', 'Faux numéro'], ['ERREUR_IDENTITE', 'Pas la bonne personne'], ['DECEDE', 'Décédé'],
-  ['REFUS_FERME', 'Refus — ne plus appeler'], ['SMS', 'SMS envoyé'], ['MAIL', 'Mail envoyé']]
+  ['REFUS_FERME', 'Refus — ne plus appeler', 'red'], ['SMS', 'SMS envoyé'], ['MAIL', 'Mail envoyé']]
 const TENTATIVES = ['REPONDEUR', 'PAS_DE_REPONSE', 'SMS', 'MAIL', 'FAUX_NUMERO']
 // Joint : la suite donnée au projet.
 const STATUTS = [['REQUALIFIE', 'Requalifié'], ['A_RAPPELER', 'À rappeler'], ['EN_PAUSE', 'En pause'], ['ABANDONNE', 'Abandonné'], ['DEJA_ACHETE', 'Déjà acheté']]
@@ -50,21 +52,47 @@ function Choix({ options, valeur, onChange, petit }) {
   )
 }
 
-function Partie({ titre, aide, script, children, ouverte, onBasculer, faite }) {
+function Partie({ num, ancre, titre, aide, script, children, ouverte, onBasculer, faite }) {
   return (
-    <section className="bg-white border border-quai-border rounded-xl mb-2.5">
-      <button type="button" onClick={onBasculer} className="w-full text-left px-3 py-2.5 flex items-center gap-2">
-        <Icon name={ouverte ? 'chevron-down' : 'chevron-right'} size="sm" className="text-quai-muted" />
-        <span className="font-semibold text-quai-navy text-sm flex-1">{titre}{aide && <span className="font-normal text-quai-muted"> · {aide}</span>}</span>
-        {faite && <span className="text-[11px] text-emerald-700">fait</span>}
+    <section id={ancre} className={`bg-white border rounded-xl mb-2.5 scroll-mt-40 transition-colors ${ouverte ? 'border-quai-gold/70 shadow-sm' : 'border-quai-border'}`}>
+      <button type="button" onClick={onBasculer} className="w-full text-left px-3 py-3 flex items-center gap-2.5">
+        <span className={`w-7 h-7 rounded-full grid place-items-center text-xs font-semibold shrink-0 ${faite ? 'bg-emerald-600 text-white' : ouverte ? 'bg-quai-navy text-quai-gold' : 'bg-quai-light text-quai-muted border border-quai-border'}`}>
+          {faite ? <Icon name="check-circle-2" size="sm" /> : (num ?? <Icon name="search" size="sm" />)}
+        </span>
+        <span className="font-display font-semibold text-quai-navy flex-1 leading-tight">{titre}{aide && <span className="font-sans font-normal text-xs text-quai-muted"> · {aide}</span>}</span>
+        <Icon name={ouverte ? 'chevron-up' : 'chevron-down'} size="sm" className="text-quai-muted" />
       </button>
       {ouverte && (
-        <div className="px-3 pb-3">
-          {script && <div className="border-l-4 border-quai-gold/60 bg-quai-light px-3 py-2 text-[13px] text-quai-text mb-3 whitespace-pre-line">{script}</div>}
+        <div className="px-3 pb-3.5">
+          {script && <BlocScript>{script}</BlocScript>}
           {children}
         </div>
       )}
     </section>
+  )
+}
+
+// Ce que l'agent dit : un encart à part, pour ne pas le confondre avec ce
+// qu'il saisit.
+const BlocScript = ({ children }) => (
+  <div className="border-l-4 border-quai-gold bg-quai-gold/10 rounded-r-lg px-3 py-2.5 text-[13px] text-quai-text mb-3 whitespace-pre-line leading-relaxed">{children}</div>
+)
+
+// Où j'en suis dans l'appel : les parties, cochées au fur et à mesure. Un
+// clic ouvre la partie et y fait défiler l'écran.
+function Etapes({ etapes, onAller }) {
+  return (
+    <ol className="flex items-center gap-1 overflow-x-auto no-scrollbar mt-3 pt-3 border-t border-quai-border">
+      {etapes.map((e, i) => (
+        <li key={e.k} className="flex items-center gap-1 shrink-0">
+          {i > 0 && <span className={`w-3 h-px ${e.fait ? 'bg-emerald-500' : 'bg-quai-border'}`} aria-hidden="true" />}
+          <button type="button" onClick={() => onAller(e)}
+            className={`text-[11px] px-2 py-1 rounded-full border inline-flex items-center gap-1 whitespace-nowrap transition-colors ${e.fait ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-white text-quai-muted border-quai-border hover:border-quai-gold'}`}>
+            {e.fait && <Icon name="check-circle-2" size="sm" />}{e.l}
+          </button>
+        </li>
+      ))}
+    </ol>
   )
 }
 
@@ -141,10 +169,12 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, horsFile, 
   const bloque = d.blocages.length > 0
   const script = (p) => {
     const t = d.scripts?.[p]
-    if (!t) return `Emplacement du script (partie ${p}) : à rédiger par Loïck, dans Administration › Scripts.`
+    if (!t) return `Emplacement du script (partie ${p}) : à rédiger dans Mission Acquéreurs › Paramètres.`
     return t.replace(/\{civilite\}/g, c.civilite || '').replace(/\{prenom\}/g, c.prenom || '').replace(/\{nom\}/g, c.nom || '')
   }
-  const basculer = (k) => setOuv(o => ({ ...o, [k]: !o[k] }))
+  // Le projet et la suite donnée sont ouverts d'office : le premier clic doit
+  // donc les replier, pas les « ouvrir » une seconde fois.
+  const basculer = (k) => setOuv(o => ({ ...o, [k]: !(o[k] ?? (k.startsWith('p2') || k === 'p4')) }))
 
   const finDemo = (msg) => { toast.success(`Démonstration : ${msg}. Rien n’est enregistré.`); onSuivant() }
   const tentative = async (issue, canal = 'APPEL') => {
@@ -222,6 +252,14 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, horsFile, 
 
   const statutChoisi = s.statut_final
   const joint = s.issue === 'JOINT'
+  const etapes = [
+    { k: 'fiches', ancre: 'acq-fiches', l: 'Recherches', fait: Object.values(s.fiches).every(f => f.decision) },
+    { k: 'p0', ancre: 'acq-p0', l: 'Ouverture', fait: s.ouverture === 'OK' },
+    { k: 'p1', ancre: 'acq-p1', l: 'Coordonnées', fait: Object.values(s.coordonnees).every(x => x.etat) },
+    ...gardees.map(k => ({ k: 'p2' + k, ancre: 'acq-p2' + k, l: gardees.length > 1 ? `Projet ${k}` : 'Projet', fait: manques(s.fiches[k].projet).length === 0 })),
+    { k: 'p3', ancre: 'acq-p3', l: 'Vendre', fait: !!s.vendre.statut_logement },
+    { k: 'p4', ancre: 'acq-p4', l: 'Suite', fait: !!s.statut_final },
+  ]
   const manquesReq = gardees.length ? gardees.flatMap(k => manques(s.fiches[k].projet).map(m => gardees.length > 1 ? `${m} (recherche ${k})` : m)) : ['au moins une recherche gardée']
   const tel = c.tel_portable || c.tel_fixe
 
@@ -234,28 +272,35 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, horsFile, 
 
       </div>
 
-      {/* En-tête, toujours visible */}
-      <div className="bg-white border border-quai-border rounded-xl p-3 mb-2.5">
-        <div className="flex items-start gap-2 flex-wrap">
+      {/* En-tête : qui j'appelle, et le bouton pour l'appeler */}
+      <div className="bg-white border border-quai-border rounded-2xl p-3.5 mb-2.5">
+        <div className="flex items-center gap-3 flex-wrap">
+          <Initiales prenom={c.prenom} nom={c.nom} taille="lg" ton="marine" />
           <div className="min-w-0 flex-1">
-            <div className="font-semibold text-quai-navy">{c.civilite ? c.civilite + ' ' : ''}{c.prenom} {c.nom}</div>
-            <div className="text-xs text-quai-muted">
-              {tel ? <a href={`tel:${tel.replace(/\s/g, '')}`} className="text-quai-navy underline">{tel}</a> : 'Pas de téléphone'}
-              {c.email ? ` · ${c.email}` : ''}{c.commune ? ` · ${c.commune}` : ''}
-            </div>
+            <div className="font-display font-semibold text-xl text-quai-navy leading-tight">{c.civilite ? c.civilite + ' ' : ''}{c.prenom} {c.nom}</div>
+            <div className="text-xs text-quai-muted truncate">{[c.email, c.commune].filter(Boolean).join(' · ') || 'Pas d’e-mail connu'}</div>
           </div>
-          <div className="text-[11px] text-right text-quai-muted">
-            <div>{c.source === 'DELEGUE' ? 'Délégué' : 'Orphelin'}{c.anciens_conseillers ? ` · ancien conseiller : ${c.anciens_conseillers}` : ''}</div>
-            <div>{c.appels_ce_mois} appel{c.appels_ce_mois > 1 ? 's' : ''} ce mois sur 4</div>
-          </div>
+          {tel
+            ? <a href={`tel:${tel.replace(/\s/g, '')}`} className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl bg-quai-gold text-quai-navy font-semibold px-4 py-2.5 hover:bg-quai-goldlt transition-colors">
+                <Icon name="phone" size="sm" /> {tel}
+              </a>
+            : <Pastille ton="ambre">Pas de téléphone</Pastille>}
+        </div>
+        <div className="flex flex-wrap gap-1.5 mt-3">
+          <Pastille ton="or">{c.source === 'DELEGUE' ? 'Délégué' : 'Orphelin'}{c.anciens_conseillers ? ` · ancien conseiller : ${c.anciens_conseillers}` : ''}</Pastille>
+          <Pastille ton={c.appels_ce_mois >= 3 ? 'ambre' : 'neutre'}>{c.appels_ce_mois} appel{c.appels_ce_mois > 1 ? 's' : ''} ce mois sur 4</Pastille>
         </div>
         <div className="flex flex-wrap gap-1.5 mt-2">
-          {c.stop_tel ? <span className="badge bg-red-100 text-red-800">Stop tél.</span> : null}
-          {c.stop_mail ? <span className="badge bg-red-100 text-red-800">Stop mail</span> : null}
-          {d.appel_recent && <span className="badge bg-amber-100 text-amber-900">Appelé le {jj(d.appel_recent.le)} par {d.appel_recent.par} ({d.appel_recent.module})</span>}
-          {c.derniere_note_date && <span className="badge bg-quai-light text-quai-muted">Dernière note Modelo : {jj(c.derniere_note_date)}{c.derniere_note_auteur ? ` (${c.derniere_note_auteur})` : ''}</span>}
+          {c.stop_tel ? <Pastille ton="rouge">Stop tél.</Pastille> : null}
+          {c.stop_mail ? <Pastille ton="rouge">Stop mail</Pastille> : null}
+          {d.appel_recent && <Pastille ton="ambre">Appelé le {jj(d.appel_recent.le)} par {d.appel_recent.par} ({d.appel_recent.module})</Pastille>}
         </div>
-        {c.derniere_note_extrait && <p className="text-[11px] text-quai-muted mt-1.5 line-clamp-2">« {c.derniere_note_extrait} »</p>}
+        {(c.derniere_note_date || c.derniere_note_extrait) && (
+          <div className="mt-2.5 bg-quai-light rounded-lg px-3 py-2">
+            <div className="text-[11px] text-quai-muted">Dernière note Modelo{c.derniere_note_date ? ` · ${jj(c.derniere_note_date)}` : ''}{c.derniere_note_auteur ? ` · ${c.derniere_note_auteur}` : ''}</div>
+            {c.derniere_note_extrait && <p className="text-[13px] text-quai-text mt-0.5 line-clamp-3">« {c.derniere_note_extrait} »</p>}
+          </div>
+        )}
         {horsFile && <p className="text-[11px] text-amber-800 mt-1.5">Fiche ouverte hors de l’ordre de la file.</p>}
         {/* Comme dans l'opération : ce qui est déjà dans Modelo, et ce qui attend. */}
         {c.modelo_reporte_le
@@ -269,17 +314,35 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, horsFile, 
             </ul>
           </details>
         )}
-        {bloque && <div className="mt-2 rounded-lg bg-red-50 text-red-800 text-sm px-3 py-2">{d.blocages.map(b => <div key={b}>{b}</div>)}</div>}
+        {bloque && (
+          <div className="mt-2.5 rounded-lg bg-red-50 border border-red-200 text-red-800 text-sm px-3 py-2.5 flex gap-2">
+            <Icon name="phone-off" size="sm" className="shrink-0 mt-0.5" /><div>{d.blocages.map(b => <div key={b}>{b}</div>)}</div>
+          </div>
+        )}
+        {joint && <Etapes etapes={etapes} onAller={(e) => { setOuv(o => ({ ...o, [e.k]: true })); setTimeout(() => document.getElementById(e.ancre)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50) }} />}
       </div>
 
       {/* L'issue, en premier, comme dans l'opération anciens clients */}
-      <div className="bg-white border border-quai-border rounded-xl p-3 mb-2.5">
-        <div className="text-sm font-semibold text-quai-navy mb-1.5">Issue de l’appel</div>
-        {d.conseil_tentative && <p className="text-xs text-quai-muted mb-1.5">{d.conseil_tentative}</p>}
-        <Choix valeur={s.issue} onChange={v => maj(['issue'], v)}
-          options={ISSUES.filter(([v]) => v !== 'MAIL' || !c.stop_mail)} />
+      <div className="bg-white border border-quai-border rounded-xl p-3.5 mb-2.5">
+        <div className="font-display font-semibold text-quai-navy mb-0.5">Issue de l’appel</div>
+        <p className="text-xs text-quai-muted mb-2.5">{d.conseil_tentative || 'Le seul champ obligatoire. Le reste s’ouvre si la personne décroche.'}</p>
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-1.5">
+          {ISSUES.filter(([v]) => v !== 'MAIL' || !c.stop_mail).map(([v, l, teinte]) => (
+            <button key={v} type="button" onClick={() => maj(['issue'], s.issue === v ? null : v)}
+              className={`px-2.5 py-2.5 rounded-lg border text-xs font-medium transition-colors min-h-[3rem] ${
+                s.issue === v
+                  ? teinte === 'red' ? 'bg-red-600 text-white border-red-600'
+                    : teinte === 'emerald' ? 'bg-emerald-600 text-white border-emerald-600'
+                    : 'bg-quai-navy text-white border-quai-navy'
+                  : teinte === 'emerald' ? 'border-emerald-300 text-emerald-800 bg-emerald-50 hover:bg-emerald-100'
+                    : teinte === 'red' ? 'border-quai-border text-red-700 bg-white hover:border-red-300'
+                    : 'border-quai-border text-quai-navy bg-white hover:border-quai-gold'}`}>
+              {l}
+            </button>
+          ))}
+        </div>
         {s.issue === 'A_RAPPELER' && <Champ label="Rappeler le"><input type="datetime-local" className="input max-w-[14rem] mt-0.5" value={s.rappel_le} onChange={e => maj(['rappel_le'], e.target.value)} /></Champ>}
-        {s.issue === 'REPONDEUR' && d.scripts?.repondeur && <div className="border-l-4 border-quai-gold/60 bg-quai-light px-3 py-2 text-[13px] mt-2 whitespace-pre-line">{script('repondeur')}</div>}
+        {s.issue === 'REPONDEUR' && d.scripts?.repondeur && <div className="mt-2.5"><BlocScript>{script('repondeur')}</BlocScript></div>}
         {['SMS', 'MAIL'].includes(s.issue) && (
           <div className="mt-2">
             <span className="text-[11px] text-quai-muted">Texte {s.issue === 'SMS' ? 'du SMS' : 'du mail'} que vous avez envoyé (facultatif, il part dans la note Modelo)</span>
@@ -297,7 +360,7 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, horsFile, 
       </div>
 
       {/* Les recherches */}
-      <Partie titre={`${d.fiches.length} recherche${d.fiches.length > 1 ? 's' : ''} dans Modelo`} aide={joint ? 'une décision pour chacune' : 'ce que Modelo sait'}
+      <Partie ancre="acq-fiches" titre={`${d.fiches.length} recherche${d.fiches.length > 1 ? 's' : ''} dans Modelo`} aide={joint ? 'une décision pour chacune' : 'ce que Modelo sait'}
         ouverte={ouv.fiches} onBasculer={() => basculer('fiches')} faite={Object.values(s.fiches).every(f => f.decision)}>
         {d.fiches.map(f => {
           const x = s.fiches[f.id_fiche]
@@ -339,7 +402,7 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, horsFile, 
       </Partie>
 
       {joint && <>
-      <Partie titre="0. Ouverture" script={script('0')} ouverte={ouv.p0} onBasculer={() => basculer('p0')} faite={s.ouverture === 'OK'}>
+      <Partie num="0" ancre="acq-p0" titre="Ouverture" script={script('0')} ouverte={ouv.p0} onBasculer={() => basculer('p0')} faite={s.ouverture === 'OK'}>
         <div className="flex flex-wrap gap-2">
           <button className={s.ouverture === 'OK' ? 'btn-primary' : 'btn-secondary'} disabled={bloque}
             onClick={() => { maj(['ouverture'], 'OK'); setOuv(o => ({ ...o, p0: false, p1: true })) }}>Accepte de poursuivre</button>
@@ -347,7 +410,7 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, horsFile, 
         </div>
       </Partie>
 
-      <Partie titre="1. Coordonnées" aide="une fois pour la personne" script={script('1')} ouverte={ouv.p1} onBasculer={() => basculer('p1')}
+      <Partie num="1" ancre="acq-p1" titre="Coordonnées" aide="une fois pour la personne" script={script('1')} ouverte={ouv.p1} onBasculer={() => basculer('p1')}
         faite={Object.values(s.coordonnees).every(x => x.etat)}>
         {[['tel_portable', 'Portable', '06 12 34 56 78'], ['tel_fixe', 'Fixe', '04 76 00 00 00'], ['email', 'E-mail', 'nom@exemple.fr'], ['adresse', 'Adresse postale']].map(([k, l, ph]) => {
           const x = s.coordonnees[k]
@@ -380,7 +443,7 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, horsFile, 
         const set = (champ, v) => maj(['fiches', k, 'projet', champ], v)
         const fermeProjet = ['ABANDONNE', 'DEJA_ACHETE'].includes(p.etat_projet)
         return (
-          <Partie key={k} titre={`2. Projet d’achat`} aide={gardees.length > 1 ? `recherche n° ${k}` : 'sur la recherche gardée'} script={script('2.1')}
+          <Partie key={k} num="2" ancre={`acq-p2${k}`} titre="Projet d’achat" aide={gardees.length > 1 ? `recherche n° ${k}` : 'sur la recherche gardée'} script={script('2.1')}
             ouverte={ouv['p2' + k] ?? true} onBasculer={() => basculer('p2' + k)} faite={manques(p).length === 0}>
             <div className="space-y-3">
               <Champ label="État du projet"><Choix valeur={p.etat_projet} onChange={v => set('etat_projet', v)}
@@ -403,8 +466,8 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, horsFile, 
               </>}
             </div>
             {!fermeProjet && <>
-              <h4 className="text-sm font-semibold text-quai-navy mt-4 mb-1">2.2 Critères</h4>
-              {d.scripts?.['2.2'] && <div className="border-l-4 border-quai-gold/60 bg-quai-light px-3 py-2 text-[13px] mb-2 whitespace-pre-line">{script('2.2')}</div>}
+              <h4 className="font-display font-semibold text-quai-navy mt-5 mb-2 pt-4 border-t border-quai-border">2.2 Critères</h4>
+              {d.scripts?.['2.2'] && <BlocScript>{script('2.2')}</BlocScript>}
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                 <Champ label="Type de bien"><select className="input" value={p.type_bien || ''} onChange={e => set('type_bien', e.target.value)}>
                   {['', 'Appartement', 'Maison', 'Terrain', 'Immobilier Pro', 'Fonds de commerce', 'Parking', 'Autre'].map(t => <option key={t} value={t}>{t || '—'}</option>)}</select></Champ>
@@ -429,8 +492,8 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, horsFile, 
               </div>
               <p className="text-[11px] text-quai-muted mt-1">Indispensable = il refuse de visiter sans (champ de rapprochement Modelo). Le reste part dans les Précisions.</p>
 
-              <h4 className="text-sm font-semibold text-quai-navy mt-4 mb-1">2.3 Financement</h4>
-              {d.scripts?.['2.3'] && <div className="border-l-4 border-quai-gold/60 bg-quai-light px-3 py-2 text-[13px] mb-2 whitespace-pre-line">{script('2.3')}</div>}
+              <h4 className="font-display font-semibold text-quai-navy mt-5 mb-2 pt-4 border-t border-quai-border">2.3 Financement</h4>
+              {d.scripts?.['2.3'] && <BlocScript>{script('2.3')}</BlocScript>}
               <div className="space-y-2">
                 <Champ label="Mode"><Choix petit valeur={p.mode_financement} onChange={v => set('mode_financement', v)} options={[['Crédit', 'Crédit'], ['Comptant', 'Comptant']]} /></Champ>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -462,7 +525,7 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, horsFile, 
         )
       })}
 
-      <Partie titre="3. Vendre pour acheter" aide="une fois pour la personne" script={script('3')} ouverte={ouv.p3} onBasculer={() => basculer('p3')} faite={!!s.vendre.statut_logement}>
+      <Partie num="3" ancre="acq-p3" titre="Vendre pour acheter" aide="une fois pour la personne" script={script('3')} ouverte={ouv.p3} onBasculer={() => basculer('p3')} faite={!!s.vendre.statut_logement}>
         <div className="space-y-2">
           <Champ label="Logement actuel"><Choix petit valeur={s.vendre.statut_logement} onChange={v => maj(['vendre', 'statut_logement'], v)} options={[['PROPRIETAIRE', 'Propriétaire'], ['LOCATAIRE', 'Locataire'], ['HEBERGE', 'Hébergé']]} /></Champ>
           <Champ label="Depuis"><input className="input max-w-[12rem]" placeholder="2015" value={s.vendre.depuis || ''} onChange={e => maj(['vendre', 'depuis'], e.target.value)} /></Champ>
@@ -488,7 +551,7 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, horsFile, 
         </div>
       </Partie>
 
-      <Partie titre="4. Suite donnée" script={script('4')} ouverte={ouv.p4 ?? true} onBasculer={() => basculer('p4')} faite={!!statutChoisi}>
+      <Partie num="4" ancre="acq-p4" titre="Suite donnée" script={script('4')} ouverte={ouv.p4 ?? true} onBasculer={() => basculer('p4')} faite={!!statutChoisi}>
         <div className="space-y-2.5">
           <Choix valeur={statutChoisi} onChange={v => maj(['statut_final'], v)} options={STATUTS} />
           {statutChoisi === 'REQUALIFIE' && manquesReq.length > 0 && <p className="text-sm text-red-700">Requalifié impossible, il manque : {manquesReq.join(', ')}.</p>}

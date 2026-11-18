@@ -47,7 +47,7 @@ export default function AcqHub({ onRetour, libelleRetour = 'Mon espace', ongletI
           <Icon name="log-out" size="sm" />
         </button>
       </header>
-      <nav className="bg-white border-b border-quai-border flex gap-0.5 px-2 pt-1 shrink-0 overflow-x-auto scrollbar-none">
+      <nav className="bg-white border-b border-quai-border flex gap-0.5 px-2 pt-1 shrink-0 overflow-x-auto no-scrollbar">
         {onglets.map(o => (
           <button key={o.id} onClick={() => { setFiltre(''); setOnglet(o.id) }}
             className={`px-3 py-2 text-[13px] font-medium whitespace-nowrap inline-flex items-center gap-1.5 border-b-2 transition-colors ${
