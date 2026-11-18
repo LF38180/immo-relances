@@ -32,6 +32,13 @@ const jj = (s) => { if (!s) return ''; const d = new Date(String(s).replace(' ',
 const json = (s) => { try { return s ? JSON.parse(s) : {}; } catch { return {}; } };
 const initiales = (nom) => String(nom || '').split(/\s+/).map(x => x[0] || '').join('').toUpperCase();
 
+// Les codes de l'écran, en français lisible pour Modelo.
+const LOGEMENT = { PROPRIETAIRE: 'propriétaire', LOCATAIRE: 'locataire', HEBERGE: 'hébergé' };
+const REVENTE = { PAS_SORTIE: 'pas encore lancée', ESTIMEE: 'estimée', EN_VENTE: 'en vente', SOUS_OFFRE: 'sous offre',
+  SOUS_COMPROMIS: 'sous compromis', PRET_RELAIS: 'prêt relais' };
+const ACHAT = { RP: 'résidence principale', RS: 'résidence secondaire', INVESTISSEMENT: 'investissement' };
+const MOTIF = { ENVIE: 'envie', OBLIGATION: 'obligation', OPPORTUNITE: 'opportunité' };
+
 // Le bloc « Précisions sur la recherche » (cahier, section 7). Les anciennes
 // précisions sont gardées en dessous : rien de ce que Modelo savait n'est perdu.
 function blocPrecisions(fiche, contact, appel) {
@@ -40,9 +47,9 @@ function blocPrecisions(fiche, contact, appel) {
   const crit = (niv) => (p.criteres || []).filter(c => c.niveau === niv).map(c => c.valeur ? `${c.critere} : ${c.valeur}` : c.critere).join(', ');
   const FIN = { ACCORD: 'accord de principe', SIMULATION: 'simulation faite', COMPTANT: 'comptant', EN_COURS: 'en cours', NON: 'non validé' };
   const lignes = ['━━━ LE PROJET ━━━',
-    `PROJET : ${[p.type_achat, p.motivation && ('par ' + p.motivation.toLowerCase()), p.motivation_texte].filter(Boolean).join(' — ')}`,
+    `PROJET : ${[ACHAT[p.type_achat] || p.type_achat, p.motivation && ('par ' + (MOTIF[p.motivation] || p.motivation.toLowerCase())), p.motivation_texte].filter(Boolean).join(' — ')}`,
     `URGENCE : ${[p.urgence && `${p.urgence}/10`, p.passer_a_10 && `passerait à 10 si : ${p.passer_a_10}`, p.date_emmenagement && `emménagement ${p.date_emmenagement}`].filter(Boolean).join(' — ')}`,
-    `SITUATION : ${[v.statut_logement && v.statut_logement.toLowerCase(), v.depuis && `depuis ${v.depuis}`, v.doit_vendre && `doit vendre : ${v.doit_vendre.toLowerCase()}`, v.etat_revente && `revente : ${v.etat_revente.toLowerCase().replace(/_/g, ' ')}`].filter(Boolean).join(' — ')}`,
+    `SITUATION : ${[LOGEMENT[v.statut_logement], v.depuis && `depuis ${v.depuis}`, v.doit_vendre && `doit vendre : ${v.doit_vendre.toLowerCase()}`, v.etat_revente && `revente : ${REVENTE[v.etat_revente] || v.etat_revente}`].filter(Boolean).join(' — ')}`,
     `FINANCEMENT : ${[p.mode_financement, FIN[p.financement_valide], p.financement_nom, p.financement_date, p.financement_montant && `${Number(p.financement_montant).toLocaleString('fr-FR')} €`, p.apport && `apport ${Number(p.apport).toLocaleString('fr-FR')} €`, p.apport_revente && `dont revente ${Number(p.apport_revente).toLocaleString('fr-FR')} €`, p.mensualite && `mensualité ${p.mensualite} €`, p.banque_ou_courtier].filter(Boolean).join(' — ')}`,
     `DÉCIDEURS : ${p.decideurs || ''}`,
     `IMPORTANT : ${crit('IMPORTANT')}`,
@@ -51,7 +58,10 @@ function blocPrecisions(fiche, contact, appel) {
     `SECTEURS : ${Array.isArray(p.secteurs) ? p.secteurs.join(', ') : (p.secteurs || '')}`,
     `DÉJÀ VU : ${p.deja_vu || ''}`,
     ...(json(appel?.details).mandat ? [`MANDAT DE RECHERCHE : ${texteMandat(json(appel.details).mandat)}`] : []),
-    `MAJ : ${jj(appel?.horodatage)} ${initiales(appel?.madame_fichier)}`];
+    `MAJ : ${jj(appel?.horodatage)} ${initiales(appel?.madame_fichier)}`]
+    // Une rubrique sans rien derrière ses deux-points n'apprend rien à qui
+    // lit la fiche dans Modelo : on ne l'écrit pas.
+    .filter(l => !/^[^:━]+ : ?$/.test(l));
   if (fiche.precisions) lignes.push('', '─── Précisions précédentes ───', fiche.precisions);
   return lignes.join('\n');
 }
@@ -123,7 +133,10 @@ function lignesReport(jusquA) {
     const d = json(fin?.details);
     const co = d.coordonnees || {};
     const note = noteContact(c, appels);
-    const requal = c.statut === 'REQUALIFIE';
+    // La réattribution et la mise à jour des fiches ne partent que si CE lot
+    // contient l'appel abouti : après un report, une simple tentative sur un
+    // contact requalifié ne donne qu'une note (et `fin` n'existe pas).
+    const requal = c.statut === 'REQUALIFIE' && !!fin;
     const archiveTout = STATUTS_ARCHIVANT.includes(c.statut);
     const vendeur = d.vendre?.doit_vendre === 'OUI' && !/vendeur/i.test(c.type_contact || '');
     const fiches = db.prepare('SELECT * FROM acq_fiches WHERE id_contact = ? ORDER BY id_fiche').all(c.id_contact);

@@ -218,12 +218,83 @@ const t = (n, fn) => { try { fn(); console.log('  OK  ' + n) } catch (e) { conso
   r = await call('GET', '/admin/missions', tLilas);
   t('accueil des missions : réservé à l admin', () => assert.strictEqual(r.status, 403));
 
+  // --- Défauts trouvés à la relecture du 18/11, un test chacun ---
+  {
+    // 1. Une tentative sur un contact requalifié déjà reporté : le report ne plante plus.
+    db.prepare("UPDATE acq_appels SET horodatage = datetime('now','-40 days') WHERE id_contact = '11'").run();
+    db.prepare("UPDATE acq_contacts SET modelo_reporte_le = datetime('now','-39 days') WHERE id_contact = '11'").run();
+    let x = await call('POST', '/acquereurs/contacts/11/tentative', tLilas, { issue: 'REPONDEUR', cle: 'rev-1' });
+    t('tentative sur un contact requalifié : son statut ne bouge pas', () => { assert.strictEqual(x.status, 201); assert.strictEqual(x.body.statut, 'REQUALIFIE'); });
+    // (l'opposition du contact 18 a proposé un archivage : on le valide d'abord)
+    const valider = async () => { const av = await call('GET', '/acquereurs/admin/a-valider', tAdmin);
+      await call('POST', '/acquereurs/admin/valider', tAdmin, { fiches: av.body.fiches.map(f => ({ id_fiche: f.id_fiche, accepte: true })) }); };
+    await valider();
+    x = await call('GET', '/acquereurs/admin/report', tAdmin);
+    t('report après une simple tentative sur un requalifié : pas d erreur, note seule, pas de réattribution', () => {
+      assert.strictEqual(x.status, 200);
+      const l = x.body.lignes.filter(y => y.id_contact === '11');
+      assert.ok(l[0].note_contact.includes('Non joint')); assert.strictEqual(l[0].nego_contact_cible, ''); assert.strictEqual(l[0].precisions_apres, '');
+    });
+
+    // 2. « Joint, à rappeler » sans décision renvoyée : rien n'est effacé.
+    x = await call('POST', '/acquereurs/contacts/11/cloture', tLilas, { statut_final: 'A_RAPPELER', date_prochaine_action: '2030-01-10T10:00', joint: true,
+      fiches: { '101': { decision: null }, '102': { decision: null } } });
+    t('à rappeler sans décision : la décision et la requalification déjà saisies sont gardées', () => {
+      assert.strictEqual(x.status, 201);
+      const f = db.prepare("SELECT decision, requalif FROM acq_fiches WHERE id_fiche = '101'").get();
+      assert.strictEqual(f.decision, 'GARDER'); assert.ok(JSON.parse(f.requalif).budget_max);
+      assert.strictEqual(db.prepare("SELECT decision FROM acq_fiches WHERE id_fiche = '102'").get().decision, 'FUSIONNER');
+    });
+
+    // 6. Un rappel convenu resté sans réponse repart dans le circuit des sans-réponse.
+    db.prepare("UPDATE acq_contacts SET rappel_le = '2020-01-01T10:00' WHERE id_contact = '11'").run();
+    db.prepare("UPDATE acq_appels SET horodatage = datetime('now','-40 days') WHERE id_contact = '11'").run();
+    x = await call('POST', '/acquereurs/contacts/11/tentative', tLilas, { issue: 'PAS_DE_REPONSE', cle: 'rev-6' });
+    const f6 = (await call('GET', '/acquereurs/file', tLilas)).body;
+    t('rappel convenu sans réponse : il quitte la tête de file et attend 48 h', () => {
+      assert.strictEqual(x.body.statut, null); assert.ok(!f6.file.some(c => c.id_contact === '11')); assert.ok(f6.groupes.en_attente >= 1);
+    });
+
+    // 9. Validation : date illisible, archivage sans motif, décision inconnue.
+    x = await call('POST', '/acquereurs/contacts/11/cloture', tLilas, { statut_final: 'A_RAPPELER', date_prochaine_action: 'bientôt' });
+    t('date de rappel illisible : refusée', () => assert.strictEqual(x.status, 400));
+    x = await call('POST', '/acquereurs/contacts/11/cloture', tLilas, { statut_final: 'A_RAPPELER', date_prochaine_action: '2030-01-10T10:00', fiches: { '102': { decision: 'ARCHIVER' } } });
+    t('archivage sans motif : refusé même sur un rappel', () => { assert.strictEqual(x.status, 400); assert.ok(/motif/.test(x.body.error)); });
+    x = await call('POST', '/acquereurs/contacts/11/cloture', tLilas, { statut_final: 'A_RAPPELER', date_prochaine_action: '2030-01-10T10:00', fiches: { '102': { decision: 'SUPPRIMER' } } });
+    t('décision inconnue : refusée proprement', () => assert.strictEqual(x.status, 400));
+
+    // 8. Les mails : hors plafond, et jamais après une opposition.
+    for (const k of ['m1', 'm2', 'm3', 'm4', 'm5']) await call('POST', '/acquereurs/contacts/11/tentative', tLilas, { issue: 'PAS_DE_REPONSE', canal: 'MAIL', cle: 'rev-' + k });
+    x = await call('GET', '/acquereurs/contacts/11', tLilas);
+    t('cinq mails ne remplissent pas le plafond d appels', () => assert.ok(!x.body.blocages.some(b => /Plafond/.test(b)), JSON.stringify(x.body.blocages)));
+    x = await call('POST', '/acquereurs/contacts/18/tentative', tLilas, { issue: 'PAS_DE_REPONSE', canal: 'MAIL', cle: 'rev-m18' });
+    t('pas de mail à qui a demandé à ne plus être contacté', () => assert.strictEqual(x.status, 409));
+
+    // 7. Un faux numéro corrigé et remis dans la file y revient vraiment.
+    db.prepare("UPDATE acq_contacts SET exclu = NULL, tel_portable = '0600000013' WHERE id_contact = '13'").run();
+    await call('POST', '/acquereurs/contacts/13/tentative', tLilas, { issue: 'FAUX_NUMERO', cle: 'rev-7' });
+    await call('POST', '/acquereurs/admin/contacts/13/reintegrer', tAdmin, { tel_portable: '0611112222' });
+    const f7 = (await call('GET', '/acquereurs/file', tLilas)).body;
+    t('faux numéro corrigé : la personne est de nouveau proposée à l appel', () => assert.ok(f7.file.some(c => c.id_contact === '13')));
+
+    // 5. Retour Modelo sans date exploitable : on ne marque pas « reporté ».
+    await valider();
+    const r5 = await call('GET', '/acquereurs/admin/report', tAdmin);
+    const ids5 = [...new Set(r5.body.lignes.map(l => l.id_contact))];
+    x = await call('POST', '/acquereurs/admin/report/retour', tAdmin, { csv: ['id_contact;id_fiche;statut;motif_echec;jusqu_a', ...r5.body.lignes.map(l => [l.id_contact, l.id_fiche, 'reporté', '', ''].join(';'))].join('\n') });
+    t('retour sans date « jusqu_a » : rien n est marqué reporté, et on le dit', () => { assert.strictEqual(x.body.reportes, 0); assert.strictEqual(x.body.sans_date.length, ids5.length); });
+    x = await call('POST', '/acquereurs/admin/report/retour', tAdmin, { csv: ['id_contact;id_fiche;statut;motif_echec;jusqu_a', ...r5.body.lignes.map(l => [l.id_contact, l.id_fiche, 'reporté', '', '18/11/2030 10:00'].join(';'))].join('\n') });
+    t('retour avec une date reformatée par un tableur : comprise', () => assert.strictEqual(x.body.reportes, ids5.length));
+  }
+
   // Réimport : le travail de Lilas n'est pas écrasé.
   await call('POST', '/acquereurs/admin/import', tAdmin, { csv: CSV, madame_fichier: 'Lilas FERKOUS', ecrire: true });
-  t('réimport : statut, décisions et téléphone corrigé conservés', () => {
-    const c = db.prepare("SELECT statut FROM acq_contacts WHERE id_contact = '11'").get();
-    assert.strictEqual(c.statut, 'REQUALIFIE');
+  t('réimport : décisions et coordonnées corrigées conservées', () => {
     assert.strictEqual(db.prepare("SELECT decision FROM acq_fiches WHERE id_fiche = '102'").get().decision, 'FUSIONNER');
+    // Le téléphone et l'adresse corrigés pendant l'appel ne reviennent pas à ceux du fichier.
+    const c11 = db.prepare("SELECT tel_portable, commune FROM acq_contacts WHERE id_contact = '11'").get();
+    assert.strictEqual(c11.tel_portable, '0611111111'); assert.strictEqual(c11.commune, 'Meylan');
+    assert.strictEqual(db.prepare("SELECT tel_portable FROM acq_contacts WHERE id_contact = '13'").get().tel_portable, '0611112222');
   });
 
   db.close(); srv.kill();

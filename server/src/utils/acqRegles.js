@@ -21,10 +21,15 @@ const TENTATIVES_MAX = 4;
 // La personne s'est-elle opposée, dans N'IMPORTE QUEL module ? Le journal des
 // oppositions est commun avec l'opération anciens clients : on le lit par
 // identifiant Modelo et par téléphone.
-function opposee(contact) {
-  const tels = [cleTel(contact.tel_portable), cleTel(contact.tel_fixe)].filter(Boolean);
+function oppositions() {
   const lignes = db.prepare(`SELECT id_modelo, telephone FROM op_journal_opposition WHERE canal = 'TELEPHONE'`).all();
-  return lignes.some(l => l.id_modelo === contact.id_contact || (l.telephone && tels.includes(cleTel(l.telephone))));
+  return { ids: new Set(lignes.map(l => l.id_modelo)), tels: new Set(lignes.map(l => cleTel(l.telephone)).filter(Boolean)) };
+}
+// `journal` : le résultat de oppositions(), lu une fois quand on teste toute
+// une file (sinon une requête par contact, à chaque affichage).
+function opposee(contact, journal = oppositions()) {
+  return journal.ids.has(contact.id_contact)
+    || [cleTel(contact.tel_portable), cleTel(contact.tel_fixe)].some(t => t && journal.tels.has(t));
 }
 
 // Les appels des 15 derniers jours dans les autres modules, par téléphone.
@@ -61,8 +66,14 @@ function appelRecent(contact, carte) {
   return r || null;
 }
 
-// Ce qui interdit d'appeler maintenant. Liste vide = l'appel est permis.
-function blocages(contact, appelsCeMois, maintenant = new Date()) {
+// Ce qui interdit d'appeler. Liste vide = l'appel est permis.
+//
+// `maintenant` est le moment où l'appel a COMMENCÉ, pas celui où on enregistre
+// son résultat : un appel lancé à 12 h 55 et clos à 13 h 02 est un appel passé
+// dans la plage. `entrant` : c'est la personne qui rappelle — ni la plage, ni
+// le plafond, ni un stop ne s'appliquent à un appel qu'elle a passé elle-même.
+function blocages(contact, appelsCeMois, maintenant = new Date(), { entrant = false } = {}) {
+  if (entrant) return [];
   const b = [];
   if (contact.stop_tel) b.push('Stop téléphone : cette personne ne veut plus être appelée.');
   if (contact.statut === 'NE_PLUS_CONTACTER' || opposee(contact)) b.push('Cette personne a demandé à ne plus être contactée.');
@@ -72,6 +83,16 @@ function blocages(contact, appelsCeMois, maintenant = new Date()) {
   const p = R.plageAppelOk(maintenant);
   if (!p.ok && !ignorer) b.push(p.raison);
   return b;
+}
+
+// Le moment où l'appel a commencé, tel que l'écran l'a noté à l'ouverture de
+// la fiche. On ne le croit que s'il est plausible : dans le passé, et vieux de
+// quatre heures au plus. Sinon, maintenant.
+function debutAppel(valeur, maintenant = new Date()) {
+  const d = valeur ? new Date(valeur) : null;
+  if (!d || Number.isNaN(d.getTime())) return maintenant;
+  const age = maintenant.getTime() - d.getTime();
+  return age >= 0 && age <= 4 * 3600 * 1000 ? d : maintenant;
 }
 
 // La requalification n'est possible que si tout est là. Renvoie ce qui manque.
@@ -91,5 +112,5 @@ const prioriteModelo = (u) => { const n = Number(u); if (!n) return null;
   return n >= 9 ? 'Urgent' : n >= 7 ? 'Court terme' : n >= 4 ? 'Moyen terme' : 'Long terme'; };
 const budgetModelo = (b) => (Number(b) > 0 ? Math.round(Number(b) * 1.1) : null);
 
-module.exports = { STATUTS, STATUTS_FINAUX, TENTATIVES_MAX, opposee, appelsRecentsAilleurs, appelRecent,
-  blocages, manquesRequalif, prioriteModelo, budgetModelo };
+module.exports = { STATUTS, STATUTS_FINAUX, TENTATIVES_MAX, opposee, oppositions, appelsRecentsAilleurs, appelRecent,
+  blocages, debutAppel, manquesRequalif, prioriteModelo, budgetModelo };

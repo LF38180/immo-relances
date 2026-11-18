@@ -109,20 +109,42 @@ const lireBrouillon = (id) => { try { return JSON.parse(localStorage.getItem(cle
 const ecrireBrouillon = (id, v) => { try { localStorage.setItem(cleBrouillon(id), JSON.stringify(v)) } catch { /* stockage indisponible */ } }
 const effacerBrouillon = (id) => { try { localStorage.removeItem(cleBrouillon(id)) } catch { /* idem */ } }
 
+// L'état de départ d'une recherche à l'écran. Si elle a déjà été traitée, on
+// repart de ce qui est enregistré : sa décision, son motif, et son projet —
+// en remettant TOUS les critères dans la liste (seuls ceux qui avaient un
+// niveau sont stockés, les autres doivent rester proposables).
+function ficheVierge(f) {
+  const depuisModelo = (f.criteres_obligatoires || '').split(', ').map(x => DEPUIS_MODELO[x])
+  const stockes = Array.isArray(f.requalif?.criteres) ? f.requalif.criteres : []
+  const criteres = CRITERES.map(k => stockes.find(x => x.critere === k)
+    || { critere: k, valeur: '', niveau: !f.requalif && depuisModelo.includes(k) ? 'INDISPENSABLE' : '' })
+  const base = f.requalif
+    ? { ...f.requalif, secteurs: Array.isArray(f.requalif.secteurs) ? f.requalif.secteurs.join(', ') : (f.requalif.secteurs || '') }
+    : { etat_projet: null, type_bien: f.type_bien || '', budget_min: f.budget_min || '', budget_max: f.budget_max || '',
+        surface_min: f.surface_min || '', pieces: f.pieces_min || '', chambres: f.chambres_min || '', secteurs: f.communes || '' }
+  return { decision: f.decision || null, fusion_dans: f.fusion_dans || '', motif: f.motif_archivage || '', projet: { ...base, criteres } }
+}
+
 // Le dernier SMS envoyé, gardé sur l'appareil : on envoie souvent le même
 // (repris de l'opération anciens clients).
 const CLE_DERNIER_SMS = 'acq-dernier-sms'
 const dernierSms = () => { try { return localStorage.getItem(CLE_DERNIER_SMS) || '' } catch { return '' } }
 
-export default function AcqAppel({ id, position, onSuivant, onRetour, horsFile, revenir, demo }) {
+export default function AcqAppel({ id, position, onSuivant, onRetour, horsFile, revenir, demo, entrantInitial = false }) {
   const [d, setD] = useState(null)
   const [s, setS] = useState(null)       // la saisie
   const [ouv, setOuv] = useState({ fiches: true, p0: true })
   const [envoi, setEnvoi] = useState(false)
   const cle = useRef(null)
+  // L'heure d'ouverture de la fiche : c'est elle qui dit si l'appel a été
+  // passé dans la plage, pas l'heure où on clique « Enregistrer ».
+  const ouvertLe = useRef(null)
+  // C'est la personne qui rappelle (fiche ouverte depuis « Il vous rappelle ? ») :
+  // ni la plage ni le plafond ne s'appliquent à un appel qu'elle passe elle-même.
+  const [entrant, setEntrant] = useState(entrantInitial)
 
   useEffect(() => {
-    setD(null); setS(null); cle.current = `${id}-${Date.now()}`
+    setD(null); setS(null); cle.current = `${id}-${Date.now()}`; ouvertLe.current = new Date().toISOString()
     // Démonstration : les données arrivent toutes faites, rien n'est lu ni
     // écrit sur le serveur.
     ;(demo ? Promise.resolve({ data: demo }) : api.get(`/acquereurs/contacts/${id}`)).then(r => {
@@ -136,28 +158,34 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, horsFile, 
           email: { etat: null, avant: c.email || '', apres: '' },
           adresse: { etat: null, avant: { adresse: c.adresse || '', code_postal: c.code_postal || '', commune: c.commune || '' }, apres: { adresse: '', code_postal: '', commune: '' } },
         },
-        fiches: Object.fromEntries(r.data.fiches.map(f => [f.id_fiche, {
-          decision: null, fusion_dans: '', motif: '',
-          projet: f.requalif || {
-            etat_projet: null, type_bien: f.type_bien || '', budget_min: f.budget_min || '', budget_max: f.budget_max || '',
-            surface_min: f.surface_min || '', pieces: f.pieces_min || '', chambres: f.chambres_min || '',
-            secteurs: f.communes || '',
-            criteres: CRITERES.map(k => ({ critere: k, valeur: '', niveau: (f.criteres_obligatoires || '').split(', ').map(x => DEPUIS_MODELO[x]).includes(k) ? 'INDISPENSABLE' : '' })),
-          },
-        }])),
+        fiches: Object.fromEntries(r.data.fiches.map(f => [f.id_fiche, ficheVierge(f)])),
         vendre: {}, marine: {}, mandat: { etat: null, type: 'NON_PRECISE', date_acceptation: '', motif_refus: '' },
         statut_final: null, prochaine_action: null, date_prochaine_action: '',
       }
       // Le brouillon porte l'identifiant de sa fiche : on ne reprend jamais
       // celui d'une autre personne.
       const b = demo ? null : lireBrouillon(id)
-      setS(b && b._id === id ? b : { ...init, _id: id })
+      if (b && b._id === id) {
+        // Le brouillon est remis d'aplomb avec les fiches d'aujourd'hui : un
+        // réimport a pu en ajouter une (ou en retirer) depuis qu'il a été écrit.
+        const fiches = Object.fromEntries(r.data.fiches.map(f => [f.id_fiche, b.fiches?.[f.id_fiche] || ficheVierge(f)]))
+        setS({ ...init, ...b, fiches, coordonnees: { ...init.coordonnees, ...(b.coordonnees || {}) } })
+      } else setS({ ...init, _id: id })
     }).catch(() => setD({ erreur: true }))
   }, [id])
   // Au changement de fiche, `s` est encore celle d'avant pendant un rendu :
   // sans ce contrôle, la saisie de la personne précédente était recopiée
   // dans le brouillon de la suivante.
   useEffect(() => { if (s && s._id === id && !demo) ecrireBrouillon(id, s) }, [id, s, demo])
+  // Ce qui bloque l'appel change avec l'heure : une fiche ouverte à 9 h 58
+  // doit se débloquer à 10 h sans qu'on la referme.
+  useEffect(() => {
+    if (demo) return
+    const t = setInterval(() => {
+      api.get(`/acquereurs/contacts/${id}/blocages`).then(r => setD(prev => prev && prev.contact ? { ...prev, blocages: r.data.blocages } : prev)).catch(() => {})
+    }, 60000)
+    return () => clearInterval(t)
+  }, [id, demo])
 
   const c = d?.contact
   const gardees = useMemo(() => s ? Object.entries(s.fiches).filter(([, f]) => f.decision === 'GARDER').map(([k]) => k) : [], [s])
@@ -171,7 +199,7 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, horsFile, 
     o[chemin[chemin.length - 1]] = valeur
     return n
   })
-  const bloque = d.blocages.length > 0
+  const bloque = !entrant && d.blocages.length > 0
   const script = (p) => {
     const t = d.scripts?.[p]
     if (!t) return `Emplacement du script (partie ${p}) : à rédiger dans Mission Acquéreurs › Paramètres.`
@@ -192,7 +220,7 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, horsFile, 
     if (remplie && !window.confirm(`La fiche est remplie, mais l’issue choisie est « ${ISSUES.find(x => x[0] === s.issue)?.[1]} ». Enregistrer quand même ?`)) return
     setEnvoi(true)
     try {
-      await api.post(`/acquereurs/contacts/${id}/tentative`, { issue, canal, cle: cle.current + '-' + issue + canal, notes: s.notes || null,
+      await api.post(`/acquereurs/contacts/${id}/tentative`, { issue, canal, cle: cle.current + '-' + issue + canal, notes: s.notes || null, ouvert_le: ouvertLe.current,
         texte: canal !== 'APPEL' ? (s.texte || '').trim() || null : null })
       if (canal === 'SMS' && (s.texte || '').trim()) { try { localStorage.setItem(CLE_DERNIER_SMS, s.texte.trim()) } catch { /* stockage indisponible */ } }
       effacerBrouillon(id)
@@ -213,7 +241,7 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, horsFile, 
       const oubli = Object.values(s.fiches).filter(f => !f.decision).length
       if (oubli) return toast.error(`Décision manquante sur ${oubli} recherche${oubli > 1 ? 's' : ''}.`)
     }
-    const fiches = Object.fromEntries(Object.entries(s.fiches).map(([k, f]) => [k, {
+    const fiches = Object.fromEntries(Object.entries(s.fiches).filter(([, f]) => f.decision).map(([k, f]) => [k, {
       decision: f.decision, fusion_dans: f.fusion_dans || null, motif: f.motif,
       projet: f.decision === 'GARDER' ? { ...f.projet, secteurs: String(f.projet.secteurs || '').split(',').map(x => x.trim()).filter(Boolean),
         criteres: (f.projet.criteres || []).filter(x => x.niveau) } : null,
@@ -225,7 +253,7 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, horsFile, 
       await api.post(`/acquereurs/contacts/${id}/cloture`, {
         cle: cle.current + '-cloture', statut_final: s.statut_final, prochaine_action: s.prochaine_action,
         date_prochaine_action: s.date_prochaine_action || null, notes: s.notes || null, consentement_rappel: s.consentement_rappel,
-        joint: true, coordonnees, vendre: s.vendre, marine: s.marine, fiches,
+        joint: true, coordonnees, vendre: s.vendre, marine: s.marine, fiches, ouvert_le: ouvertLe.current, entrant,
         mandat: mandatVisible && mandat.etat ? mandat : null,
       })
       effacerBrouillon(id)
@@ -254,7 +282,7 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, horsFile, 
     if (demo) return finDemo('appel enregistré')
     setEnvoi(true)
     try {
-      await api.post(`/acquereurs/contacts/${id}/cloture`, { cle: cle.current + '-' + i, statut_final: i,
+      await api.post(`/acquereurs/contacts/${id}/cloture`, { cle: cle.current + '-' + i, statut_final: i, ouvert_le: ouvertLe.current, entrant,
         date_prochaine_action: i === 'A_RAPPELER' ? s.rappel_le : null, prochaine_action: i === 'A_RAPPELER' ? 'Rappel' : null, notes: s.notes || null })
       effacerBrouillon(id); toast.success('Appel enregistré'); onSuivant()
     } catch (e) { toast.error(e.messageLisible || e.message) } finally { setEnvoi(false) }
@@ -316,7 +344,17 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, horsFile, 
             {c.derniere_note_extrait && <p className="text-[13px] text-quai-text mt-0.5 line-clamp-3">« {c.derniere_note_extrait} »</p>}
           </div>
         )}
-        {horsFile && <p className="text-[11px] text-amber-800 mt-1.5">Fiche ouverte hors de l’ordre de la file.</p>}
+        {horsFile && (
+          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]">
+            <span className="text-amber-800">Fiche ouverte hors de l’ordre de la file.</span>
+            {!demo && (
+              <label className="inline-flex items-center gap-1.5 text-quai-navy cursor-pointer">
+                <input type="checkbox" checked={entrant} onChange={e => setEntrant(e.target.checked)} />
+                C’est la personne qui m’a rappelé (les horaires et le plafond ne s’appliquent pas)
+              </label>
+            )}
+          </div>
+        )}
         {/* Comme dans l'opération : ce qui est déjà dans Modelo, et ce qui attend. */}
         {c.modelo_reporte_le
           ? <p className="text-[11px] text-emerald-700 mt-1">Mise à jour Modelo faite le {new Date(String(c.modelo_reporte_le).replace(' ', 'T') + 'Z').toLocaleDateString('fr-FR')}{c.dernier_appel_le && c.dernier_appel_le > c.modelo_reporte_le ? ' · du nouveau depuis, à reporter' : ''}</p>
@@ -361,7 +399,7 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, horsFile, 
         {['SMS', 'MAIL'].includes(s.issue) && (
           <div className="mt-2">
             <span className="text-[11px] text-quai-muted">Texte {s.issue === 'SMS' ? 'du SMS' : 'du mail'} que vous avez envoyé (facultatif, il part dans la note Modelo)</span>
-            <textarea className="input min-h-[4rem] mt-0.5" value={s.texte} onChange={e => maj(['texte'], e.target.value)} />
+            <textarea className="input min-h-[4rem] mt-0.5" value={s.texte || ''} onChange={e => maj(['texte'], e.target.value)} />
             <div className="flex flex-wrap gap-1.5 mt-1">
               {d.scripts?.sms && <button type="button" className="btn-secondary btn-sm" onClick={() => maj(['texte'], script('sms'))}>Utiliser le modèle</button>}
               {s.issue === 'SMS' && dernierSms() && <button type="button" className="btn-secondary btn-sm" onClick={() => maj(['texte'], dernierSms())}>Reprendre mon dernier SMS</button>}

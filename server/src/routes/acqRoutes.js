@@ -36,7 +36,8 @@ router.get('/mon-acces', (req, res) => {
 
 // Les compteurs d'un contact, pour la file et l'écran.
 const SQL_COMPTEURS = `
-  (SELECT COUNT(*) FROM acq_appels a WHERE a.id_contact = c.id_contact AND strftime('%Y-%m', a.horodatage) = ?) AS appels_ce_mois,
+  -- Le plafond mensuel compte les appels et les SMS, pas les mails.
+  (SELECT COUNT(*) FROM acq_appels a WHERE a.id_contact = c.id_contact AND a.canal <> 'MAIL' AND strftime('%Y-%m', a.horodatage) = ?) AS appels_ce_mois,
   (SELECT COUNT(*) FROM acq_appels a WHERE a.id_contact = c.id_contact) AS appels_total,
   (SELECT MAX(a.horodatage) FROM acq_appels a WHERE a.id_contact = c.id_contact) AS dernier_appel_le,
   (SELECT a.issue FROM acq_appels a WHERE a.id_contact = c.id_contact ORDER BY a.horodatage DESC, a.id DESC LIMIT 1) AS derniere_issue,
@@ -56,7 +57,8 @@ function calculerFile(m) {
     WHERE ${where} AND c.exclu IS NULL`).all(R.moisCourant(), ...params);
   const recents = A.appelsRecentsAilleurs();
 
-  const ouverts = tous.filter(c => !A.STATUTS_FINAUX.includes(c.statut) && !c.stop_tel && !A.opposee(c));
+  const journal = A.oppositions();
+  const ouverts = tous.filter(c => !A.STATUTS_FINAUX.includes(c.statut) && !c.stop_tel && !A.opposee(c, journal));
   const plafonnes = ouverts.filter(c => c.appels_ce_mois >= R.PLAFOND_MENSUEL);
   const possibles = ouverts.filter(c => c.appels_ce_mois < R.PLAFOND_MENSUEL);
   const neuf = (c) => !c.appels_total;
@@ -72,11 +74,13 @@ function calculerFile(m) {
   // 4. Les autres jamais appelés, du plus récent au plus ancien : la dernière
   // note d'abord (elle dit quand on a parlé au client), sinon la période de
   // modification de la fiche.
-  const cleRecence = (c) => {
-    const per = db.prepare('SELECT MAX(modifiee_periode) p FROM acq_fiches WHERE id_contact = ?').get(c.id_contact).p || '';
-    return [ancien(c), per].sort().pop();
-  };
-  const autres = reste.filter(c => neuf(c) && !delegues.includes(c) && !vendeurs.includes(c))
+  const periodes = new Map(db.prepare('SELECT id_contact, MAX(modifiee_periode) p FROM acq_fiches GROUP BY id_contact').all().map(x => [x.id_contact, x.p || '']));
+  const cleRecence = (c) => [ancien(c), periodes.get(c.id_contact) || ''].sort().pop();
+  // Avec eux : les fiches déjà appelées, sans statut, dont le dernier appel
+  // n'est pas un sans-réponse — un faux numéro corrigé puis remis dans la
+  // file, par exemple. Sans cela, elles n'entraient dans aucun groupe.
+  const aReprendre = (c) => !neuf(c) && !['PAS_DE_REPONSE', 'REPONDEUR'].includes(c.derniere_issue);
+  const autres = reste.filter(c => (neuf(c) && !delegues.includes(c) && !vendeurs.includes(c)) || aReprendre(c))
     .map(c => ({ c, k: cleRecence(c) })).sort((a, b) => b.k.localeCompare(a.k)).map(x => x.c);
   // 5. Sans-réponse dont le délai est passé (48 h, puis 7 jours), l'autre
   // tranche horaire d'abord.
@@ -169,6 +173,13 @@ router.get('/contacts/:id', acces, (req, res) => {
   });
 });
 
+// Ce qui bloque l'appel, à cet instant : l'écran le redemande chaque minute,
+// pour qu'une fiche ouverte à 9 h 58 se débloque à 10 h.
+router.get('/contacts/:id/blocages', acces, (req, res) => {
+  const c = chargerContact(req, res); if (!c) return;
+  res.json({ blocages: A.blocages(c, c.appels_ce_mois) });
+});
+
 // --- Une tentative sans réponse (ou faux numéro), SMS, mail ----------------
 router.post('/contacts/:id/tentative', acces, (req, res) => {
   const c = chargerContact(req, res); if (!c) return;
@@ -177,21 +188,34 @@ router.post('/contacts/:id/tentative', acces, (req, res) => {
   const issue = canal === 'APPEL' ? b.issue : 'PAS_DE_REPONSE';
   if (!['PAS_DE_REPONSE', 'REPONDEUR', 'FAUX_NUMERO'].includes(issue)) return res.status(400).json({ error: 'Issue invalide' });
   if (b.cle) { const deja = db.prepare('SELECT id FROM acq_appels WHERE cle = ?').get(b.cle); if (deja) return res.json({ id: deja.id, deja: true }); }
-  const bl = A.blocages(c, c.appels_ce_mois);
-  if (canal === 'MAIL') { if (c.stop_mail) return res.status(409).json({ error: 'Stop mail : envoi de mail impossible.' }); }
-  else if (bl.length) return res.status(409).json({ error: bl[0], blocages: bl });
+  if (canal === 'MAIL') {
+    // Un mail n'est pas un appel : ni plage, ni plafond. Mais pas de mail à
+    // qui n'en veut pas, ni à qui a demandé à ne plus être contacté.
+    if (c.stop_mail) return res.status(409).json({ error: 'Stop mail : envoi de mail impossible.' });
+    if (c.statut === 'NE_PLUS_CONTACTER' || A.opposee(c)) return res.status(409).json({ error: 'Cette personne a demandé à ne plus être contactée.' });
+  } else {
+    const bl = A.blocages(c, c.appels_ce_mois, A.debutAppel(b.ouvert_le));
+    if (bl.length) return res.status(409).json({ error: bl[0], blocages: bl });
+  }
   const r = db.transaction(() => {
     // Le texte du SMS ou du mail, s'il a été noté : il part dans la note Modelo.
     const texte = canal !== 'APPEL' && String(b.texte || '').trim() ? String(b.texte).trim().slice(0, 2000) : null;
     const id = db.prepare(`INSERT INTO acq_appels (id_contact, madame_fichier, user_id, canal, issue, notes, details, cle)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(c.id_contact, req.moi.nom_complet, req.moi.id, canal, issue, b.notes || null,
       texte ? JSON.stringify({ texte }) : null, b.cle || null).lastInsertRowid;
-    // Faux numéro : la fiche sort de la file, à corriger côté admin.
-    // Quatrième tentative sans réponse : SANS_REPONSE, elle sort aussi.
+    // Le statut ne bouge que s'il n'est pas déjà acquis : un sans-réponse sur
+    // un contact requalifié qu'on rappelle ne défait pas sa requalification.
     let statut = c.statut;
-    if (issue === 'FAUX_NUMERO') statut = 'FAUX_NUMERO';
-    else if (c.sans_reponse_de_suite + 1 >= A.TENTATIVES_MAX) statut = 'SANS_REPONSE';
-    if (statut !== c.statut) db.prepare("UPDATE acq_contacts SET statut = ?, statut_le = datetime('now') WHERE id_contact = ?").run(statut, c.id_contact);
+    if (!A.STATUTS_FINAUX.includes(c.statut)) {
+      // Faux numéro : la fiche sort de la file, à corriger côté admin.
+      if (issue === 'FAUX_NUMERO') statut = 'FAUX_NUMERO';
+      // Quatrième tentative sans réponse : SANS_REPONSE, elle sort aussi.
+      else if (c.sans_reponse_de_suite + 1 >= A.TENTATIVES_MAX) statut = 'SANS_REPONSE';
+      // Un rappel convenu resté sans réponse redevient un sans-réponse
+      // ordinaire (48 h, puis 7 jours) : sinon il restait en tête de file.
+      else if (c.statut === 'A_RAPPELER') statut = null;
+    }
+    if (statut !== c.statut) db.prepare("UPDATE acq_contacts SET statut = ?, statut_le = datetime('now'), rappel_le = NULL WHERE id_contact = ?").run(statut, c.id_contact);
     return { id, statut };
   })();
   res.status(201).json(r);
@@ -204,9 +228,15 @@ router.post('/contacts/:id/cloture', acces, (req, res) => {
   if (b.cle) { const deja = db.prepare('SELECT id FROM acq_appels WHERE cle = ?').get(b.cle); if (deja) return res.json({ id: deja.id, deja: true }); }
   const statut = b.statut_final;
   if (!A.STATUTS.includes(statut)) return res.status(400).json({ error: 'Choisissez l’issue de l’appel.' });
-  const bl = A.blocages(c, c.appels_ce_mois);
+  // Une opposition, une erreur d'identité ou un décès s'enregistrent toujours :
+  // on ne refuse pas de noter que quelqu'un ne veut plus être appelé parce
+  // qu'il est 13 h 05.
+  const toujours = ['NE_PLUS_CONTACTER', 'ERREUR_IDENTITE', 'DECEDE'].includes(statut);
+  const bl = toujours ? [] : A.blocages(c, c.appels_ce_mois, A.debutAppel(b.ouvert_le), { entrant: b.entrant === true });
   if (bl.length) return res.status(409).json({ error: bl[0], blocages: bl });
   if (statut === 'A_RAPPELER' && !b.date_prochaine_action) return res.status(400).json({ error: 'Indiquez quand rappeler.' });
+  if (b.date_prochaine_action && !/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2})?$/.test(String(b.date_prochaine_action)))
+    return res.status(400).json({ error: 'Date de la prochaine action illisible.' });
 
   const fiches = db.prepare('SELECT id_fiche FROM acq_fiches WHERE id_contact = ?').all(c.id_contact).map(f => f.id_fiche);
   const dec = b.fiches || {};
@@ -217,12 +247,15 @@ router.post('/contacts/:id/cloture', acces, (req, res) => {
   if (!sansProjet) {
     const oublies = fiches.filter(id => !dec[id]?.decision);
     if (oublies.length) return res.status(400).json({ error: `Décision manquante sur ${oublies.length} recherche${oublies.length > 1 ? 's' : ''} (garder, fusionner ou archiver).` });
-    for (const id of fiches) {
-      const d = dec[id];
-      if (d.decision === 'FUSIONNER' && (!d.fusion_dans || !fiches.includes(d.fusion_dans) || dec[d.fusion_dans]?.decision !== 'GARDER'))
-        return res.status(400).json({ error: 'Une fiche fusionnée doit l’être dans une fiche gardée.' });
-      if (d.decision === 'ARCHIVER' && !String(d.motif || '').trim()) return res.status(400).json({ error: 'Le motif d’archivage est obligatoire.' });
-    }
+  }
+  // Une décision fournie est vérifiée quelle que soit l'issue.
+  for (const id of fiches) {
+    const d = dec[id];
+    if (!d?.decision) continue;
+    if (!['GARDER', 'FUSIONNER', 'ARCHIVER'].includes(d.decision)) return res.status(400).json({ error: 'Décision inconnue sur une recherche.' });
+    if (d.decision === 'FUSIONNER' && (!d.fusion_dans || !fiches.includes(String(d.fusion_dans)) || dec[d.fusion_dans]?.decision !== 'GARDER'))
+      return res.status(400).json({ error: 'Une fiche fusionnée doit l’être dans une fiche gardée.' });
+    if (d.decision === 'ARCHIVER' && !String(d.motif || '').trim()) return res.status(400).json({ error: 'Le motif d’archivage est obligatoire.' });
   }
   if (statut === 'REQUALIFIE') {
     const gardees = fiches.filter(id => dec[id]?.decision === 'GARDER');
@@ -250,7 +283,7 @@ router.post('/contacts/:id/cloture', acces, (req, res) => {
     if (!b.date_prochaine_action) return res.status(400).json({ error: 'Mandat de recherche accepté : indiquez la date du rendez-vous de signature.' });
   }
   const details = { coordonnees: b.coordonnees || {}, vendre: b.vendre || {}, marine: b.marine || {}, consentement_rappel: !!b.consentement_rappel,
-    ...(mandat ? { mandat } : {}) };
+    ...(mandat ? { mandat } : {}), ...(b.entrant === true ? { entrant: true } : {}) };
   const ecrire = db.transaction(() => {
     const issue = ['NE_PLUS_CONTACTER', 'ERREUR_IDENTITE', 'DECEDE'].includes(statut) ? statut : statut === 'A_RAPPELER' && !b.joint ? 'A_RAPPELER' : 'JOINT';
     const id = db.prepare(`INSERT INTO acq_appels (id_contact, madame_fichier, user_id, canal, issue, statut_final,
@@ -276,11 +309,18 @@ router.post('/contacts/:id/cloture', acces, (req, res) => {
     if (b.consentement_rappel) sets.push("consentement_rappel = 1", "consentement_le = datetime('now')");
     db.prepare(`UPDATE acq_contacts SET ${sets.join(', ')} WHERE id_contact = ?`).run(...vals, c.id_contact);
     for (const idf of fiches) {
-      const d = dec[idf]; if (!d) continue;
+      // Sans décision dans cet envoi, la fiche n'est pas touchée : un appel
+      // « joint, à rappeler » ne doit pas effacer ce qui avait été saisi.
+      const d = dec[idf]; if (!d?.decision) continue;
+      const avant = db.prepare('SELECT decision, fusion_dans, motif_archivage, requalif, archivage_valide FROM acq_fiches WHERE id_fiche = ?').get(idf);
+      const fusion = d.decision === 'FUSIONNER' ? String(d.fusion_dans) : null;
+      const motif = d.decision === 'ARCHIVER' ? String(d.motif).trim() : null;
+      // La validation de l'admin ne retombe que si la décision a changé.
+      const inchangee = avant.decision === d.decision && (avant.fusion_dans || null) === fusion && (avant.motif_archivage || null) === motif;
       db.prepare(`UPDATE acq_fiches SET decision = ?, fusion_dans = ?, motif_archivage = ?, requalif = ?,
-          decision_le = datetime('now'), decision_par = ?, archivage_valide = NULL WHERE id_fiche = ?`)
-        .run(d.decision || null, d.decision === 'FUSIONNER' ? d.fusion_dans : null, d.decision === 'ARCHIVER' ? String(d.motif).trim() : null,
-          d.projet ? JSON.stringify(d.projet) : null, req.moi.nom_complet, idf);
+          decision_le = datetime('now'), decision_par = ?, archivage_valide = ? WHERE id_fiche = ?`)
+        .run(d.decision, fusion, motif, d.decision === 'GARDER' && d.projet ? JSON.stringify(d.projet) : avant.requalif,
+          req.moi.nom_complet, inchangee ? avant.archivage_valide : null, idf);
     }
     // « Ne plus contacter » : écrit tout de suite dans le journal commun des
     // oppositions. La personne sort de toutes les files de tous les modules.
@@ -454,13 +494,25 @@ router.post('/admin/report/retour', admin, (req, res) => {
     parContact.get(id).push({ ...l, statut });
   }
   const maintenant = db.prepare("SELECT datetime('now') d").get().d;
-  let reportes = 0, echecs = 0; const motifs = [];
+  let reportes = 0, echecs = 0; const motifs = [], sansDate = [];
+  // « 2026-11-18 10:00:00 », « 2026-11-18T10:00 » ou « 18/11/2026 10:00 » (tableur).
+  const dateRetour = (v) => {
+    const t = String(v || '').trim(); let m;
+    if ((m = t.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2})(:\d{2})?$/))) return `${m[1]} ${m[2]}${m[3] || ':00'}`;
+    if ((m = t.match(/^(\d{2})\/(\d{2})\/(\d{4}) (\d{2}:\d{2})(:\d{2})?$/))) return `${m[3]}-${m[2]}-${m[1]} ${m[4]}${m[5] || ':00'}`;
+    return null;
+  };
   db.transaction(() => {
     for (const [id, ls] of parContact) {
       for (const l of ls) inserer.run(id, String(l.id_fiche || '').trim() || null, String(l.horodatage || '').trim() || maintenant,
         l.statut, String(l.motif_echec || '').trim() || null, req.moi.nom_complet);
       if (ls.every(l => l.statut === 'REPORTE')) {
-        const j = ls.map(l => String(l.jusqu_a || '').trim()).find(x => /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(x)) || maintenant;
+        // La date « jusqu_a » dit jusqu'où le fichier allait. Sans elle (colonne
+        // perdue, ou reformatée par un tableur), on ne devine pas : marquer
+        // « reporté à maintenant » ferait disparaître les appels passés depuis
+        // l'export. Le contact reste à reporter, et on le dit.
+        const j = ls.map(l => dateRetour(l.jusqu_a)).find(Boolean);
+        if (!j) { sansDate.push(id); continue; }
         db.prepare('UPDATE acq_contacts SET modelo_reporte_le = ? WHERE id_contact = ?').run(j, id);
         reportes++;
       } else { echecs++; const e = ls.find(l => l.statut === 'ECHEC'); motifs.push({ id_contact: id, motif: String(e.motif_echec || '').trim() || null }); }
@@ -468,7 +520,7 @@ router.post('/admin/report/retour', admin, (req, res) => {
     db.prepare('INSERT INTO acq_reports (par, jusqu_a, contacts, fiches) VALUES (?, ?, ?, ?)').run(req.moi.nom_complet, maintenant, reportes, lignes.length);
   })();
   journaliser({ id: req.moi.id, nom_complet: req.moi.nom_complet }, 'MODELO_RETOUR', { details: { module: 'acquereurs', reportes, echecs, inconnus: inconnus.size } });
-  res.json({ ok: true, reportes, echecs, inconnus: [...inconnus], motifs });
+  res.json({ ok: true, reportes, echecs, inconnus: [...inconnus], motifs, sans_date: sansDate });
 });
 
 // Ce qui part chez Marine et les estimations à caler (aucune fiche créée chez elles).

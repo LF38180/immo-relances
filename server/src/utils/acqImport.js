@@ -106,7 +106,8 @@ function importer(texte, { doublonsCsv = null, madameFichier, suiveursRepris = [
   const bilan = { ok: true, simulation, lignes: lignes.length, fiches: 0, contacts: parContact.size,
     nouveaux_contacts: 0, contacts_mis_a_jour: 0, dans_la_file: 0, fiches_dans_la_file: 0, exclus: {}, erreurs };
   const ecrire = db.transaction(() => {
-    const existe = db.prepare('SELECT id_contact, exclu_leve, statut FROM acq_contacts WHERE id_contact = ?');
+    const existe = db.prepare(`SELECT id_contact, exclu_leve, statut,
+      EXISTS (SELECT 1 FROM acq_appels a WHERE a.id_contact = acq_contacts.id_contact) AS travaille FROM acq_contacts WHERE id_contact = ?`);
     const insC = db.prepare(`INSERT INTO acq_contacts (id_contact, civilite, nom, prenom, societe, email, tel_portable, tel_fixe,
         adresse, code_postal, commune, stop_tel, stop_mail, type_contact, suivi_par, madame_fichier, exclu,
         acheteur_vendeur, nb_notes, derniere_note_date, derniere_note_auteur, derniere_note_extrait)
@@ -116,9 +117,17 @@ function importer(texte, { doublonsCsv = null, madameFichier, suiveursRepris = [
     // Mise à jour : les données Modelo, jamais le travail fait dans l'appli.
     // Un stop posé dans Modelo depuis s'applique ; un stop levé dans Modelo
     // ne lève pas celui posé ici.
+    // `@garder` = 1 : la fiche a déjà été travaillée (un appel, ou un numéro
+    // saisi pour la remettre dans la file). Ses coordonnées sont alors celles
+    // que l'agent a vérifiées au téléphone : le fichier ne les écrase pas.
     const majC = db.prepare(`UPDATE acq_contacts SET civilite = COALESCE(@civilite, civilite), nom = @nom, prenom = @prenom,
-        societe = @societe, email = @email, tel_portable = @tel_portable, tel_fixe = @tel_fixe,
-        adresse = @adresse, code_postal = @code_postal, commune = @commune,
+        societe = @societe,
+        email = CASE WHEN @garder = 1 THEN email ELSE @email END,
+        tel_portable = CASE WHEN @garder = 1 THEN tel_portable ELSE @tel_portable END,
+        tel_fixe = CASE WHEN @garder = 1 THEN tel_fixe ELSE @tel_fixe END,
+        adresse = CASE WHEN @garder = 1 THEN adresse ELSE @adresse END,
+        code_postal = CASE WHEN @garder = 1 THEN code_postal ELSE @code_postal END,
+        commune = CASE WHEN @garder = 1 THEN commune ELSE @commune END,
         stop_tel = MAX(stop_tel, @stop_tel), stop_mail = MAX(stop_mail, @stop_mail),
         type_contact = @type_contact, suivi_par = @suivi_par, acheteur_vendeur = MAX(acheteur_vendeur, @acheteur_vendeur),
         nb_notes = @nb_notes, derniere_note_date = @derniere_note_date, derniere_note_auteur = @derniere_note_auteur,
@@ -151,7 +160,8 @@ function importer(texte, { doublonsCsv = null, madameFichier, suiveursRepris = [
       else { bilan.dans_la_file++; bilan.fiches_dans_la_file += fiches.filter(f => sansAccent(f.type_recherche) !== 'location').length; }
       const ligne = { ...contact, madame_fichier: madameFichier, exclu };
       delete ligne.stop_brut;
-      if (existe.get(contact.id_contact)) { bilan.contacts_mis_a_jour++; majC.run(ligne); }
+      const deja = existe.get(contact.id_contact);
+      if (deja) { bilan.contacts_mis_a_jour++; majC.run({ ...ligne, garder: deja.travaille || deja.exclu_leve ? 1 : 0 }); }
       else { bilan.nouveaux_contacts++; insC.run(ligne); }
       for (const f of fiches) insF.run(f);
     }

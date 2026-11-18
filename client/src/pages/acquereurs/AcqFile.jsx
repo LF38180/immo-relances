@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, lazy, Suspense } from 'react'
 import api from '../../utils/api'
 import Icon from '../../components/ui/Icon'
-import { Pastille, Initiales, Titre } from './ui'
+import { Pastille, Initiales, Titre, StatutBadge } from './ui'
 
 const AcqAppel = lazy(() => import('./AcqAppel'))
 
@@ -58,12 +58,15 @@ export function MesContacts({ depart = '', onChoisir, onFermer }) {
           {!liste && <p className="p-4 text-sm text-quai-muted">Chargement…</p>}
           {liste && !visibles.length && <p className="p-4 text-sm text-quai-muted">Aucun contact ne correspond.</p>}
           {visibles.slice(0, 200).map(c => (
-            <button key={c.id_contact} onClick={() => onChoisir(c.id_contact)} className="w-full text-left px-4 py-2.5 hover:bg-quai-light">
-              <div className="text-sm text-quai-navy truncate">{c.civilite} {c.prenom} {c.nom}</div>
-              <div className="text-[11px] text-quai-muted">
+            <button key={c.id_contact} onClick={() => onChoisir(c.id_contact)} className="w-full text-left px-4 py-2.5 hover:bg-quai-light flex items-center gap-3 transition-colors">
+              <Initiales prenom={c.prenom} nom={c.nom} taille="sm" />
+              <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2"><span className="text-sm text-quai-navy font-medium truncate">{c.civilite} {c.prenom} {c.nom}</span><span className="ml-auto shrink-0"><StatutBadge statut={c.statut} /></span></div>
+              <div className="text-[11px] text-quai-muted truncate">
                 {[c.commune, c.nb_fiches > 1 ? `${c.nb_fiches} recherches` : null,
                   c.appels ? `${c.dernier_canal === 'SMS' ? 'SMS envoyé' : c.dernier_canal === 'MAIL' ? 'mail envoyé' : (STATUT_LIB[c.statut] || ISSUE_LIB[c.derniere_issue] || 'appelé')} le ${jour(c.dernier_le)}` : 'jamais appelé',
                   c.exclu_libelle ? `hors file : ${c.exclu_libelle}` : null].filter(Boolean).join(' · ')}
+              </div>
               </div>
             </button>
           ))}
@@ -89,9 +92,13 @@ function Effectues({ onChoisir, onFermer }) {
           {!l && <p className="p-4 text-sm text-quai-muted">Chargement…</p>}
           {l && !l.length && <p className="p-4 text-sm text-quai-muted">Aucun appel aujourd’hui.</p>}
           {(l || []).map(a => (
-            <button key={a.id} onClick={() => onChoisir(a.id_contact)} className="w-full text-left px-4 py-2.5 hover:bg-quai-light">
-              <div className="text-sm text-quai-navy">{heure(a.horodatage)} · {a.civilite} {a.prenom} {a.nom}</div>
-              <div className="text-[11px] text-quai-muted">{libelle(a)}{a.texte ? ` : « ${a.texte} »` : ''}</div>
+            <button key={a.id} onClick={() => onChoisir(a.id_contact)} className="w-full text-left px-4 py-2.5 hover:bg-quai-light flex items-center gap-3 transition-colors">
+              <span className="text-xs font-semibold text-quai-navy bg-quai-light border border-quai-border rounded-lg px-2 py-1 shrink-0 tabular-nums">{heure(a.horodatage)}</span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm text-quai-navy font-medium truncate">{a.civilite} {a.prenom} {a.nom}</span>
+                <span className="block text-[11px] text-quai-muted truncate">{libelle(a)}{a.texte ? ` : « ${a.texte} »` : ''}</span>
+              </span>
+              {a.statut_final && <StatutBadge statut={a.statut_final} />}
             </button>
           ))}
         </div>
@@ -166,15 +173,18 @@ export default function AcqFile() {
   useEffect(() => { rafraichirBarre() }, [rafraichirBarre, ouvert])
   // Ouvrir quelqu'un hors de l'ordre de la file (il rappelle, on le
   // retrouve) : l'appel en cours est mis de côté, son brouillon est gardé.
-  const ouvrirHorsFile = (id) => {
+  // `rappelEntrant` : la fiche a été trouvée par « Il vous rappelle ? » — c'est
+  // donc la personne qui appelle. Depuis « Mes contacts » ou « Effectués », non.
+  const [entrant, setEntrant] = useState(false)
+  const ouvrirHorsFile = (id, rappelEntrant = false) => {
     setFenetre(null); setRecherche('')
     if (ouvert && ouvert !== id) setPrecedent(ouvert)
-    setHorsFile(true); setOuvert(id)
+    setEntrant(rappelEntrant === true); setHorsFile(true); setOuvert(id)
   }
   const outils = (
     <>
-      {fenetre === 'contacts' && <MesContacts depart={recherche} onChoisir={ouvrirHorsFile} onFermer={() => { setFenetre(null); setRecherche('') }} />}
-      {fenetre === 'effectues' && <Effectues onChoisir={ouvrirHorsFile} onFermer={() => setFenetre(null)} />}
+      {fenetre === 'contacts' && <MesContacts depart={recherche} onChoisir={(id) => ouvrirHorsFile(id)} onFermer={() => { setFenetre(null); setRecherche('') }} />}
+      {fenetre === 'effectues' && <Effectues onChoisir={(id) => ouvrirHorsFile(id)} onFermer={() => setFenetre(null)} />}
     </>
   )
   const charger = useCallback(() => api.get('/acquereurs/file').then(r => setD(r.data)).catch(() => setD({ erreur: true })), [])
@@ -192,17 +202,20 @@ export default function AcqFile() {
       api.get('/acquereurs/file').then(r => {
         setD(r.data)
         // Le suivant de la liste mise à jour : celui qu'on vient de traiter en est sorti.
-        const prochain = r.data.file.find((c, i) => c.id_contact !== ouvert && i >= Math.max(0, idx - 1)) || r.data.file.find(c => c.id_contact !== ouvert)
+        // La fiche traitée a quitté la file : la suivante a pris sa place, au
+        // même rang. (Avant : « rang − 1 », on rouvrait la fiche d'avant.)
+        const reste = r.data.file.filter(c => c.id_contact !== ouvert)
+        const prochain = reste[Math.max(idx, 0)] || reste[0]
         setOuvert(prochain ? prochain.id_contact : null)
       })
     }
     return (
       <Suspense fallback={<div className="p-6 text-sm text-quai-muted animate-pulse">Chargement…</div>}>
         <Barre index={horsFile || idx < 0 ? null : idx} total={d?.file?.length || 0} horsFile={horsFile} faits={faits} plage={d?.plage}
-          contacts={contacts} onOuvrir={ouvrirHorsFile} onAFaire={() => { setOuvert(null); setHorsFile(false); setPrecedent(null); charger() }}
+          contacts={contacts} onOuvrir={(id) => ouvrirHorsFile(id, true)} onAFaire={() => { setOuvert(null); setHorsFile(false); setPrecedent(null); charger() }}
           onEffectues={() => setFenetre('effectues')} onContacts={() => setFenetre('contacts')} />
         <AcqAppel key={ouvert} id={ouvert} position={horsFile ? 'Hors de la file' : idx >= 0 ? `${idx + 1} / ${d.file.length}` : ''}
-          horsFile={horsFile}
+          horsFile={horsFile} entrantInitial={horsFile && entrant}
           revenir={precedent ? { libelle: 'Revenir à l’appel en cours', aller: () => { const p = precedent; setPrecedent(null); setHorsFile(false); setOuvert(p) } } : null}
           onSuivant={suivant} onRetour={() => { setOuvert(null); setHorsFile(false); setPrecedent(null); charger() }} />
         {outils}
@@ -220,7 +233,7 @@ export default function AcqFile() {
   const premier = d.file[0]
   return (
     <>
-    <Barre index={null} total={d.file.length} faits={faits} plage={null} contacts={contacts} onOuvrir={ouvrirHorsFile}
+    <Barre index={null} total={d.file.length} faits={faits} plage={null} contacts={contacts} onOuvrir={(id) => ouvrirHorsFile(id, true)}
       onAFaire={() => {}} onEffectues={() => setFenetre('effectues')} onContacts={() => setFenetre('contacts')} />
     <div className="p-3 max-w-3xl mx-auto pb-8">
       {outils}

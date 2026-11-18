@@ -182,6 +182,7 @@ function Report({ cle }) {
           <input type="file" accept=".csv,.txt" className="hidden" onChange={importerRetour} /></label>
         <p className="text-[11px] text-quai-muted mt-1">Le fichier de report, avec la colonne « statut » remplie : reporté ou échec (et « motif_echec »). Les contacts reportés sortent de la liste ; ceux en échec y restent.</p>
         {res && <div className="text-sm mt-2">{res.reportes} reporté(s), {res.echecs} en échec{res.inconnus.length ? `, ${res.inconnus.length} inconnu(s)` : ''}.
+          {res.sans_date?.length > 0 && <p className="text-xs text-amber-800 mt-1">{res.sans_date.length} contact(s) non marqué(s) : la colonne « jusqu_a » du fichier de retour est vide ou illisible. Demandez à Exploration Modelo de la laisser telle qu’elle était dans le fichier de report.</p>}
           {res.motifs.length > 0 && <ul className="text-xs text-red-700 mt-1">{res.motifs.map(m => <li key={m.id_contact}>n° {m.id_contact} : {m.motif || 'sans motif'}</li>)}</ul>}</div>}
       </div>
     </Bloc>
@@ -210,6 +211,7 @@ export function ReportBandeau({ onDetail }) {
     try {
       const r = await api.post('/acquereurs/admin/report/retour', { csv: await lireFichier(f) })
       toast.success(`${r.data.reportes} contact${r.data.reportes > 1 ? 's' : ''} reporté${r.data.reportes > 1 ? 's' : ''}, ${r.data.echecs} en échec${r.data.inconnus.length ? `, ${r.data.inconnus.length} inconnu(s)` : ''}`, { duration: 7000 })
+      if (r.data.sans_date?.length) toast.error(`${r.data.sans_date.length} contact(s) non marqué(s) : colonne « jusqu_a » vide ou illisible dans le retour.`, { duration: 9000 })
       charger()
     } catch (e) { err(e) } finally { setEnvoi(false) }
   }
