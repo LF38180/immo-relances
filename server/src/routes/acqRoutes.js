@@ -484,4 +484,7 @@ router.put('/admin/acces/:id', admin, (req, res) => {
   res.json({ ok: true });
 });
 
+// Pour la page d'accueil des missions (adminRoutes).
+router.calculerFile = calculerFile;
+
 module.exports = router;

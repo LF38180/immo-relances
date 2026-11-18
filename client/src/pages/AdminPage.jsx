@@ -20,10 +20,14 @@ function formatConnexion(iso) {
   return { relatif, absolu }
 }
 
-export default function AdminPage() {
+// `onglet` : n'afficher qu'une partie, sans la barre d'onglets (l'espace de
+// l'admin range ces parties par mission). `partie` : pour les paramètres,
+// 'estimes' ou 'courtage'.
+export default function AdminPage({ onglet = null, partie = null } = {}) {
   const { user } = useAuth()
   const estAdmin = user?.role === 'admin'
-  const [tab, setTab] = useState('users')
+  const [tabLibre, setTab] = useState('users')
+  const tab = onglet || tabLibre
   const [users, setUsers] = useState([])
   const [params, setParams] = useState({})
   const [newUser, setNewUser] = useState({ nom: '', prenom: '', email: '', password: '', role: 'agent' })
@@ -120,7 +124,7 @@ export default function AdminPage() {
     <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 md:p-6 pb-24 md:pb-6 bg-quai-light">
       <div className="max-w-4xl mx-auto">
         
-        <div className="flex overflow-x-auto border-b border-quai-border mb-6">
+        <div className={onglet ? 'hidden' : 'flex overflow-x-auto border-b border-quai-border mb-6'}>
           {[['users','Utilisateurs','users'],['params','Paramètres','settings'],['courtage','Suivi Marine','phone-call'],...(estAdmin ? [['fichiers','Fichiers','table'],['imports','Imports courtage','file-up'],['donnees','Données','database'],['activite','Activité','history']] : [])].map(([t, lbl, ic]) => (
             <button key={t} onClick={() => setTab(t)}
               className={`shrink-0 whitespace-nowrap px-4 py-3 text-sm font-medium border-b-2 transition-colors inline-flex items-center gap-2 ${tab === t ? 'border-quai-gold text-quai-navy' : 'border-transparent text-quai-muted hover:text-quai-navy'}`}>
@@ -232,6 +236,7 @@ export default function AdminPage() {
 
         {tab === 'params' && (
           <div>
+            <div className={partie === 'courtage' ? 'hidden' : ''}>
             <h2 className="font-semibold text-quai-navy mb-4">Paramètres de relance</h2>
             <div className="card space-y-4">
               <ParamField label="Rappel après « sans réponse » (jours)" cle="delai_sans_reponse_jours" params={params} setParams={setParams} type="number" />
@@ -252,10 +257,11 @@ export default function AdminPage() {
               <ParamField label="Délai avant recontact (jours)" cle="delai_recontact_jours" params={params} setParams={setParams} type="number" />
               <button onClick={saveParams} className="btn-primary">Sauvegarder les paramètres</button>
             </div>
+            </div>
 
-            {estAdmin && (
+            {estAdmin && partie !== 'estimes' && (
               <>
-                <h2 className="font-semibold text-quai-navy mt-8 mb-4">Paramètres courtage</h2>
+                <h2 className={`font-semibold text-quai-navy mb-4 ${partie === 'courtage' ? '' : 'mt-8'}`}>Paramètres courtage</h2>
                 <div className="card space-y-4">
                   <ParamField label="Délai de relance (jours)" cle="courtage_delai_relance_jours" params={params} setParams={setParams} type="number" min={1} />
                   <ParamField label="Tentatives avant Injoignable" cle="courtage_tentatives_max" params={params} setParams={setParams} type="number" min={1} />

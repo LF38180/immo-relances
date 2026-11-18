@@ -26,7 +26,9 @@ const GROUPES = [['Tous', ['', 'dans_file', 'jamais']], ['Statut', Object.keys(S
   ['Obtenu', ['vendeurs', 'est_prop', 'est_acc', 'marine', 'marine_ok']], ['Modelo', ['a_reporter', 'reporte']], ['Écartés', ['hors_file']]]
 const jour = (d) => d ? new Date(String(d).replace(' ', 'T') + (String(d).includes('T') ? '' : 'Z')).toLocaleDateString('fr-FR') : ''
 
-export default function AcqListing({ filtreInitial = '' }) {
+// `onOuvrir` : l'espace de l'admin ouvre la fiche en plein écran ; sans lui,
+// la fiche s'ouvre à la place du Listing.
+export default function AcqListing({ filtreInitial = '', onOuvrir = null }) {
   const [d, setD] = useState(null), [filtre, setFiltre] = useState(filtreInitial), [q, setQ] = useState(''), [ouvert, setOuvert] = useState(null)
   const charger = () => api.get('/acquereurs/admin/listing').then(r => setD(r.data)).catch(() => setD({ contacts: [], libelles: {} }))
   useEffect(() => { charger() }, [])
@@ -76,7 +78,7 @@ export default function AcqListing({ filtreInitial = '' }) {
       <ul className="bg-white border border-quai-border rounded-xl divide-y divide-quai-border mt-2">
         {visibles.slice(0, 300).map(c => (
           <li key={c.id_contact}>
-            <button onClick={() => setOuvert(c.id_contact)} className="w-full text-left px-3 py-2.5 hover:bg-quai-light">
+            <button onClick={() => onOuvrir ? onOuvrir(c.id_contact) : setOuvert(c.id_contact)} className="w-full text-left px-3 py-2.5 hover:bg-quai-light">
               <div className="flex items-baseline gap-2 flex-wrap">
                 <span className="text-sm text-quai-navy font-medium">{c.civilite} {c.prenom} {c.nom}</span>
                 <span className="text-[11px] text-quai-muted">{[c.tel_portable || c.tel_fixe, c.commune].filter(Boolean).join(' · ')}</span>

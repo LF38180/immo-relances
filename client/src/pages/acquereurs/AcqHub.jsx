@@ -13,10 +13,10 @@ const AcqAdmin = lazy(() => import('./AcqAdmin'))
 
 // Espace « Fichier Acquéreurs » (cahier des charges du 18/11/2026).
 // Cloisonné comme l'opération anciens clients : il ne mène nulle part ailleurs.
-export default function AcqHub({ onRetour, libelleRetour = 'Mon espace' }) {
+export default function AcqHub({ onRetour, libelleRetour = 'Mon espace', ongletInitial = 'accueil' }) {
   const { user, logout } = useAuth()
   const estAdmin = user?.role === 'admin'
-  const [onglet, setOnglet] = useState('accueil')
+  const [onglet, setOnglet] = useState(ongletInitial)
   // Une case du Suivi cliquée : le Listing s'ouvre filtré (comme l'opération).
   const [filtre, setFiltre] = useState('')
   const voir = (f) => { setFiltre(f); setOnglet('listing') }

@@ -161,6 +161,60 @@ router.get('/activite', requireRole('admin'), (req, res) => {
   res.json({ lignes, total: lignes.length, personnes, types });
 });
 
+// --- Accueil des missions (admin) ------------------------------------------
+// Une carte par mission, avec trois chiffres chacune : ce qui s'est fait
+// aujourd'hui, ce qui reste à appeler, ce que ça a donné. Lecture seule, des
+// compteurs uniquement. Chaque mission garde ses propres tables : rien n'est
+// mélangé, on additionne côte à côte.
+router.get('/missions', requireRole('admin'), (req, res) => {
+  const n = (sql, ...p) => db.prepare(sql).get(...p).n;
+  const noms = (sql) => db.prepare(sql).all().map(u => `${u.prenom} ${u.nom}`.trim());
+  const jour = "date('now', 'localtime')";
+  const today = new Date().toISOString().slice(0, 10);
+  const missions = [];
+
+  missions.push({ id: 'estimes', titre: 'Mission Estimés',
+    qui: noms("SELECT prenom, nom FROM users WHERE actif = 1 AND role = 'agent' ORDER BY prenom"),
+    chiffres: [
+      { n: n(`SELECT COUNT(*) n FROM relances WHERE type = 'appel' AND date(created_at, 'localtime') = ${jour}`), l: 'appels aujourd’hui' },
+      { n: n(`SELECT COUNT(*) n FROM contacts WHERE supprime_le IS NULL AND statut NOT IN ('pas_interesse','inactif')
+          AND (statut = 'a_contacter' OR (statut IN ('tente_sans_reponse','rappel_planifie','a_recontacter')
+            AND prochain_contact IS NOT NULL AND prochain_contact <= ?))`, today), l: 'à appeler' },
+      { n: n(`SELECT COUNT(*) n FROM relances WHERE issue = 'projet' AND strftime('%Y-%m', created_at, 'localtime') = strftime('%Y-%m', 'now', 'localtime')`), l: 'projets ce mois' },
+    ] });
+
+  const acq = require('./acqRoutes');
+  const moiAdmin = { id: req.user.id, nom_complet: '', role: 'admin', admin: true, acces: true };
+  missions.push({ id: 'acquereurs', titre: 'Mission Acquéreurs',
+    qui: noms("SELECT prenom, nom FROM users WHERE actif = 1 AND acces_acquereurs = 1 ORDER BY prenom"),
+    chiffres: [
+      { n: n(`SELECT COUNT(*) n FROM acq_appels WHERE date(horodatage, 'localtime') = ${jour}`), l: 'appels aujourd’hui' },
+      { n: acq.calculerFile(moiAdmin).file.length, l: 'à appeler' },
+      { n: n("SELECT COUNT(*) n FROM acq_contacts WHERE statut = 'REQUALIFIE'"), l: 'requalifiés' },
+    ] });
+
+  missions.push({ id: 'courtage', titre: 'Mission Courtage',
+    qui: noms("SELECT prenom, nom FROM users WHERE actif = 1 AND role = 'courtage' ORDER BY prenom"),
+    chiffres: [
+      { n: n(`SELECT COUNT(*) n FROM courtage_actions WHERE type IN ('relance','pas_de_reponse','mail_propose') AND date(created_at, 'localtime') = ${jour}`), l: 'relances aujourd’hui' },
+      { n: n(`SELECT COUNT(*) n FROM courtage_fiches WHERE statut NOT IN ('gagne','perdu','ne_plus_contacter','faux_numero')
+          AND prochaine_relance IS NOT NULL AND prochaine_relance <= date('now')`), l: 'à relancer' },
+      { n: n("SELECT COUNT(*) n FROM courtage_fiches WHERE statut IN ('simulation_faite','dossier_en_cours')"), l: 'dossiers en cours' },
+    ] });
+
+  // L'opération anciens clients, tant qu'elle a des fiches.
+  if (n('SELECT COUNT(*) n FROM op_contacts')) {
+    missions.push({ id: 'operation', titre: 'Opération anciens clients',
+      qui: [`${n("SELECT COUNT(DISTINCT conseiller) n FROM op_contacts WHERE a_dispatcher = 0 AND conseiller IS NOT NULL")} conseillers`],
+      chiffres: [
+        { n: n(`SELECT COUNT(*) n FROM op_appels WHERE date(horodatage, 'localtime') = ${jour}`), l: 'appels aujourd’hui' },
+        { n: require('../utils/opBilan').bilanOperation().fiches.jamais_appelees, l: 'jamais appelés' },
+        { n: require('../utils/opModelo').fichesAReporter().fiches.length, l: 'à reporter dans Modelo' },
+      ] });
+  }
+  res.json({ missions });
+});
+
 // Les personnes qu'un manager ou un admin peut suivre (sélecteurs de Supervision
 // et de la vue « par-dessus l'épaule »). La liste complète des comptes reste
 // réservée à l'admin : faute de cette route, l'écran Supervision d'un manager

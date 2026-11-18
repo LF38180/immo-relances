@@ -57,7 +57,7 @@ export default function BottomTabBar({ items, active, onSelect }) {
                 aria-current={isActive ? 'page' : undefined}
                 className={`flex-shrink-0 w-[5.25rem] flex flex-col items-center justify-center gap-0.5 py-2 min-h-[56px] text-[11px] transition ${isActive ? 'text-quai-gold font-semibold' : 'text-white/70'}`}>
                 <Icon name={item.icon} size="md" />
-                <span className="truncate max-w-full px-1">{item.label}</span>
+                <span className="truncate max-w-full px-1">{item.court || item.label}</span>
               </button>
             )
           })}

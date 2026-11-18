@@ -30,7 +30,7 @@ export default function AcqAccueil({ onCommencer, onAdmin, estAdmin }) {
 
       {d.texte
         ? <div className="bg-white border border-quai-border rounded-xl p-4 text-sm text-quai-text whitespace-pre-line leading-relaxed">{d.texte}</div>
-          : estAdmin && <p className="text-[11px] text-quai-muted text-center">Le texte de présentation se rédige dans Administration › Scripts › Page d’accueil.</p>}
+          : estAdmin && <p className="text-[11px] text-quai-muted text-center">Le texte de présentation se rédige dans Mission Acquéreurs › Paramètres › Scripts.</p>}
 
       <div>
         <Titre>Aujourd’hui</Titre>

@@ -179,7 +179,7 @@ const LIB_STATUT_COURTAGE = {
 
 // Vue courtage : l'architecture propre a Marine — ses boites mensuelles, puis le
 // contenu de la boite ouverte. Reprend les memes routes que son ecran a elle.
-function VueCourtage() {
+export function VueCourtage() {
   const [boites, setBoites] = useState(null)
   const [boite, setBoite] = useState(null)
   const [fiches, setFiches] = useState([])

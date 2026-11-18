@@ -199,6 +199,17 @@ const t = (n, fn) => { try { fn(); console.log('  OK  ' + n) } catch (e) { conso
     assert.ok(l); assert.strictEqual(l.auteur, 'Lilas FERKOUS'); assert.ok(l.nom);
   });
 
+  r = await call('GET', '/admin/missions', tAdmin);
+  t('accueil des missions : trois missions, trois chiffres chacune, noms des personnes', () => {
+    assert.strictEqual(r.status, 200);
+    assert.deepStrictEqual(r.body.missions.map(m => m.id), ['estimes', 'acquereurs', 'courtage']);
+    assert.ok(r.body.missions.every(m => m.chiffres.length === 3 && m.chiffres.every(c => Number.isInteger(c.n))));
+    assert.deepStrictEqual(r.body.missions[1].qui, ['Lilas FERKOUS']);
+    assert.strictEqual(r.body.missions[1].chiffres[2].n, 1);
+  });
+  r = await call('GET', '/admin/missions', tLilas);
+  t('accueil des missions : réservé à l admin', () => assert.strictEqual(r.status, 403));
+
   // Réimport : le travail de Lilas n'est pas écrasé.
   await call('POST', '/acquereurs/admin/import', tAdmin, { csv: CSV, madame_fichier: 'Lilas FERKOUS', ecrire: true });
   t('réimport : statut, décisions et téléphone corrigé conservés', () => {

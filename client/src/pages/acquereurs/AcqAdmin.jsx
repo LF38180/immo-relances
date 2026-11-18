@@ -19,7 +19,7 @@ function Acces({ users }) {
   return (
     <Bloc titre="Mission « Fichier Acquéreurs »">
       <div className="flex flex-wrap gap-1.5 mb-1">{avec.length ? avec.map(u => <span key={u.id} className="badge bg-quai-navy text-white">{u.prenom} {u.nom}</span>) : <span className="text-sm text-quai-muted">Personne pour l’instant.</span>}</div>
-      <p className="text-xs text-quai-muted">À cocher dans Immo Relances › Administration › Utilisateurs, colonne « Missions ».</p>
+      <p className="text-xs text-quai-muted">À cocher dans Utilisateurs, colonne « Missions ».</p>
     </Bloc>
   )
 }
@@ -31,7 +31,7 @@ function Import({ onFait, users }) {
   const [bilan, setBilan] = useState(null), [envoi, setEnvoi] = useState(false)
   const lancer = async (ecrire) => {
     if (!csv) return toast.error('Choisissez le fichier d’import.')
-    if (!nom) return toast.error('Donnez d’abord la mission à quelqu’un (Administration › Utilisateurs).')
+    if (!nom) return toast.error('Donnez d’abord la mission à quelqu’un (Utilisateurs, colonne Missions).')
     setEnvoi(true)
     try {
       const r = await api.post('/acquereurs/admin/import', { csv: csv.texte, doublons_csv: doublons?.texte || null, madame_fichier: nom, ecrire }, { timeout: 120000 })
@@ -197,20 +197,22 @@ function Scripts() {
   )
 }
 
-export default function AcqAdmin() {
+// `section` : 'import' | 'report' | 'parametres' pour n'afficher qu'une
+// partie (espace de l'admin, rangé par onglet). Sans elle : tout.
+export default function AcqAdmin({ section = null }) {
   const [cle, setCle] = useState(0)
   const [users, setUsers] = useState([])
   useEffect(() => { api.get('/acquereurs/admin/acces').then(r => setUsers(r.data.users)).catch(err) }, [])
   const rafraichir = () => setCle(k => k + 1)
   return (
     <div className="p-3 max-w-4xl mx-auto">
-      <Acces users={users} />
-      <Import onFait={rafraichir} users={users} />
-      <Valider cle={cle} onFait={rafraichir} />
-      <Report cle={cle} />
-      <Transmettre />
-      <Ecartes cle={cle} />
-      <Scripts />
+      {(!section || section === 'parametres') && <Acces users={users} />}
+      {(!section || section === 'import') && <Import onFait={rafraichir} users={users} />}
+      {(!section || section === 'report') && <Valider cle={cle} onFait={rafraichir} />}
+      {(!section || section === 'report') && <Report cle={cle} />}
+      {(!section || section === 'report') && <Transmettre />}
+      {(!section || section === 'import') && <Ecartes cle={cle} />}
+      {(!section || section === 'parametres') && <Scripts />}
     </div>
   )
 }

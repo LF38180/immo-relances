@@ -14,7 +14,7 @@ const NAV_ITEMS = [
   { id: 'admin',      label: 'Administration',  icon: 'settings',         roles: ['admin'] },
 ]
 
-export default function Layout({ page, onNavigate, children, extraNav = [] }) {
+export default function Layout({ page, onNavigate, children, extraNav = [], nav = null, titre = null }) {
   const { user, logout } = useAuth()
   const [collapsed, setCollapsed] = useState(false)
   // Les fichiers ouverts à la personne. Avec un seul (le cas de toujours), rien ne
@@ -38,7 +38,11 @@ export default function Layout({ page, onNavigate, children, extraNav = [] }) {
 
   // `extraNav` : entrées ajoutées selon les missions du compte (Fichier
   // Acquéreurs). Vide pour tous les autres : leur menu ne change pas.
-  const visibleNav = [...NAV_ITEMS.filter(n => n.roles.includes(user?.role)), ...extraNav]
+  // `nav` : un menu complet fourni de l'extérieur (l'espace de l'admin, rangé
+  // par mission). Une entrée { section: 'MISSIONS' } y pose un intertitre.
+  // Sans lui — Chrystelle, les managers — le menu est celui de toujours.
+  const menu = nav || [...NAV_ITEMS.filter(n => n.roles.includes(user?.role)), ...extraNav]
+  const visibleNav = menu.filter(n => !n.section)
 
   return (
     <div className="espace-agence flex h-ecran bg-quai-light overflow-hidden">
@@ -78,7 +82,9 @@ export default function Layout({ page, onNavigate, children, extraNav = [] }) {
 
         {/* Navigation */}
         <nav className="flex-1 p-2 space-y-0.5 overflow-y-auto">
-          {visibleNav.map(item => (
+          {menu.map(item => item.section ? (
+            !collapsed && <div key={item.section} className="px-3 pt-4 pb-1 text-[10px] uppercase tracking-wider text-white/40">{item.section}</div>
+          ) : (
             <button
               key={item.id}
               onClick={() => onNavigate(item.id)}
@@ -113,7 +119,7 @@ export default function Layout({ page, onNavigate, children, extraNav = [] }) {
         {/* Topbar */}
         <div className="bg-white border-b border-quai-border px-4 md:px-6 py-3 flex items-center justify-between flex-shrink-0">
           <h1 className="text-lg font-semibold text-quai-navy truncate min-w-0">
-            {NAV_ITEMS.find(n => n.id === page)?.label || 'ImmoRelances'}
+            {titre || NAV_ITEMS.find(n => n.id === page)?.label || 'ImmoRelances'}
           </h1>
           <div className="flex items-center gap-3 flex-shrink-0">
             {blocs.length > 1 && (

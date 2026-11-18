@@ -18,6 +18,7 @@ const ChangePasswordGate = lazy(() => import('./pages/ChangePasswordGate'))
 const OperationHub = lazy(() => import('./pages/operation/OperationHub'))
 const ChoixEspace = lazy(() => import('./pages/operation/ChoixEspace'))
 const AcqHub = lazy(() => import('./pages/acquereurs/AcqHub'))
+const EspaceAdmin = lazy(() => import('./pages/missions/EspaceAdmin'))
 
 function ChargementPage() {
   return (
@@ -77,6 +78,18 @@ function AppConnecte({ user, page, setPage }) {
   // Relances. Les missions « fichier » (Fichier Estimés, Fichier Acquéreurs,
   // courtage) vivent dans Immo Relances. Une personne qui n'a qu'un seul
   // module ouvert y va directement, sans écran de choix.
+  // L'admin a son propre espace, rangé par mission : accueil, trois missions,
+  // l'opération en quatrième carte tant qu'elle dure. Pas d'écran de choix.
+  if (user.role === 'admin') {
+    return (
+      <ErrorBoundary>
+        <Suspense fallback={<div className="min-h-screen flex"><ChargementPage /></div>}>
+          <EspaceAdmin operation={!!acces.participe} />
+        </Suspense>
+      </ErrorBoundary>
+    )
+  }
+
   const espaceAcq = !!acq.acces
   const espaceHabituel = user.role === 'courtage' ? 'courtage' : 'agence'
   // Ce que « Immo Relances » ouvre pour cette personne. Un conseiller n'a pas
