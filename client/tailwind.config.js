@@ -14,6 +14,10 @@ export default {
           border:  '#E2DDD6',  // bordure douce
           text:    '#1C1C1C',  // texte principal
           muted:   '#6B6660',  // texte secondaire
+          // Les deux couleurs des logos ImmoRelances (novembre 2026), pour les
+          // pictogrammes redessinés en CSS : elles doivent être celles des images.
+          encre:   '#080432',  // marine des logos
+          taupe:   '#B6A997',  // petit carré et mentions des logos
         }
       },
       fontFamily: {

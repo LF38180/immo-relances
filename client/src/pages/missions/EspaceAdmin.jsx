@@ -2,6 +2,7 @@ import { useState, lazy, Suspense } from 'react'
 import Layout from '../../components/Layout'
 import ErrorBoundary from '../../components/ErrorBoundary'
 import Icon from '../../components/ui/Icon'
+import Marque from '../../components/ui/Marque'
 import { ONGLETS } from './onglets'
 
 // L'espace de l'admin, rangé par MISSION (18/11/2026).
@@ -29,10 +30,11 @@ const AcqHub = lazy(() => import('../acquereurs/AcqHub'))
 const AcqAppel = lazy(() => import('../acquereurs/AcqAppel'))
 const OperationHub = lazy(() => import('../operation/OperationHub'))
 
+// `lettre` : le pictogramme du logo de la mission (E, A, C).
 const MISSIONS = {
-  estimes: { titre: 'Mission Estimés', court: 'Estimés', icon: 'phone' },
-  acquereurs: { titre: 'Mission Acquéreurs', court: 'Acquéreurs', icon: 'users' },
-  courtage: { titre: 'Mission Courtage', court: 'Courtage', icon: 'table' },
+  estimes: { titre: 'Mission Estimés', court: 'Estimés', icon: 'phone', lettre: 'E' },
+  acquereurs: { titre: 'Mission Acquéreurs', court: 'Acquéreurs', icon: 'users', lettre: 'A' },
+  courtage: { titre: 'Mission Courtage', court: 'Courtage', icon: 'table', lettre: 'C' },
 }
 const AUTRES = {
   utilisateurs: { titre: 'Utilisateurs', icon: 'user', onglet: 'users' },
@@ -180,19 +182,47 @@ export default function EspaceAdmin({ operation }) {
   const menu = [
     { id: 'accueil', label: 'Accueil', icon: 'layout-dashboard' },
     { section: 'Missions' },
-    ...Object.entries(MISSIONS).map(([id, m]) => ({ id, label: m.titre, court: m.court, icon: m.icon })),
+    ...Object.entries(MISSIONS).map(([id, m]) => ({ id, label: m.titre, court: m.court, icon: m.icon, lettre: m.lettre })),
     ...(operation ? [{ id: 'operation', label: 'Anciens clients', court: 'Anc. clients', icon: 'star' }] : []),
     { section: 'Toute l’appli' },
     ...Object.entries(AUTRES).map(([id, a]) => ({ id, label: a.titre, icon: a.icon })),
   ]
   const mission = MISSIONS[page]
-  const titre = page === 'accueil' ? 'Accueil' : mission?.titre || AUTRES[page]?.titre
+  const titre = page === 'accueil' ? 'Accueil' : page === 'plus' ? 'Plus'
+    : mission ? <span className="inline-flex items-center gap-2.5"><Marque lettre={mission.lettre} taille={28} />{mission.titre}</span>
+    : AUTRES[page]?.titre
+  // Sur téléphone, huit onglets dans la barre du bas, c'était trop : l'accueil,
+  // les trois missions, et « Plus » pour le reste.
+  const menuMobile = [
+    { id: 'accueil', label: 'Accueil', icon: 'layout-dashboard' },
+    ...Object.entries(MISSIONS).map(([id, m]) => ({ id, label: m.court, icon: m.icon, lettre: m.lettre })),
+    { id: 'plus', label: 'Plus', icon: 'plus' },
+  ]
+  const restes = [
+    ...(operation ? [['operation', 'Opération anciens clients', 'Le suivi, la répartition et le report Modelo', 'star']] : []),
+    ['utilisateurs', 'Utilisateurs et missions', 'Les comptes, et qui fait quoi', 'user'],
+    ['activite', 'Activité', 'Qui a fait quoi, et quand', 'history'],
+    ['donnees', 'Données et sauvegardes', 'Sauvegardes, corbeille', 'database'],
+  ]
 
   return (
-    <Layout page={page} onNavigate={aller} nav={menu} titre={titre}>
+    <Layout page={page} onNavigate={aller} nav={menu} navMobile={menuMobile} titre={titre}>
       <ErrorBoundary>
         <Suspense fallback={<Attente />}>
           {page === 'accueil' && <AccueilMissions onOuvrir={aller} />}
+          {page === 'plus' && (
+            <div className="flex-1 overflow-y-auto p-4 pb-24 bg-quai-light">
+              <div className="max-w-xl mx-auto space-y-2">
+                {restes.map(([id, l, aide, ic]) => (
+                  <button key={id} onClick={() => aller(id)} className="w-full bg-white border border-quai-border rounded-xl px-4 py-3.5 text-left hover:border-quai-gold flex items-center gap-3">
+                    <span className="w-10 h-10 rounded-lg bg-quai-light grid place-items-center shrink-0"><Icon name={ic} size="md" className="text-quai-navy" /></span>
+                    <span className="min-w-0 flex-1"><span className="block text-sm font-medium text-quai-navy">{l}</span><span className="block text-xs text-quai-muted">{aide}</span></span>
+                    <Icon name="chevron-right" size="sm" className="text-quai-muted" />
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           {AUTRES[page] && <AdminPage key={page} onglet={AUTRES[page].onglet} />}
           {mission && (
             <>

@@ -105,7 +105,7 @@ export default function AdminPage({ onglet = null, partie = null } = {}) {
   const basculerAcquereurs = async (u) => {
     try {
       await api.put(`/acquereurs/admin/acces/${u.id}`, { acces: !u.acces_acquereurs })
-      toast.success(u.acces_acquereurs ? 'Mission retirée' : 'Mission Fichier Acquéreurs donnée')
+      toast.success(u.acces_acquereurs ? 'Mission retirée' : 'Mission Acquéreurs donnée')
       api.get('/admin/users').then(r => setUsers(r.data)).catch(() => {})
     } catch (e) { toast.error(e.messageLisible || 'Modification impossible') }
   }
@@ -208,7 +208,7 @@ export default function AdminPage({ onglet = null, partie = null } = {}) {
                         {u.role === 'admin' ? <span className="text-xs text-quai-muted">toutes</span> : (
                           <label className="text-xs inline-flex items-center gap-1.5 whitespace-nowrap cursor-pointer">
                             <input type="checkbox" checked={!!u.acces_acquereurs} onChange={() => basculerAcquereurs(u)} />
-                            Fichier Acquéreurs
+                            Mission Acquéreurs
                           </label>
                         )}
                       </td>
@@ -354,7 +354,7 @@ const TYPES_ACTIVITE = {
   ATTRIBUTION: 'Attribution', OPPOSITION: 'Opposition', NPAI: 'Courrier revenu',
   EXCLUSION: 'Fiche exclue', VERIFICATION: 'Identité tranchée', AGENCE: 'Agence changée',
   APPEL_EFFACE: 'Appel effacé', IMPORT: 'Import', IMPORT_EXCLUS: 'Import des exclus',
-  APPEL_ACQUEREUR: 'Appel Fichier Acquéreurs', MODELO_RETOUR: 'Retour Modelo',
+  APPEL_ACQUEREUR: 'Appel Mission Acquéreurs', MODELO_RETOUR: 'Retour Modelo',
 }
 const ISSUES_LIBELLES = {
   JOINT: 'joint', REPONDEUR: 'répondeur', PAS_DE_REPONSE: 'pas de réponse', FAUX_NUMERO: 'faux numéro',

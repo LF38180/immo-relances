@@ -20,8 +20,9 @@ export default function AcqAccueil({ onCommencer, onAdmin, estAdmin }) {
   return (
     <div className="max-w-3xl mx-auto p-4 space-y-5">
       {/* Bandeau : le titre, la progression du fichier, l'action du jour */}
-      <section className="bg-quai-navy text-white rounded-2xl p-5">
-        <p className="text-quai-gold text-xs uppercase tracking-wider">Mission Acquéreurs</p>
+      <section className="bg-quai-encre text-white rounded-2xl p-5 overflow-hidden">
+        {/* Le logo de la mission, sur son marine d'origine (celui du bandeau). */}
+        <img src="/marque/mission-acquereurs-large-bleu.png" alt="Mission Acquéreurs" className="h-20 w-auto -ml-5 -mt-3" />
         <h1 className="font-display text-2xl font-semibold mt-1">Bonjour {user?.prenom}</h1>
         <p className="text-sm text-white/70 mt-1 leading-snug">On remet à jour les projets d’achat qui dorment dans Modelo, un appel à la fois.</p>
 

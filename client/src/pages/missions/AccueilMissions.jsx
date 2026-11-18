@@ -9,7 +9,7 @@ import { Titre } from '../acquereurs/ui'
 // carte donne la personne, trois chiffres du jour, et les mêmes cinq accès.
 // Le chiffre du milieu — ce qui reste à appeler — est celui qu'on regarde le
 // matin : il est mis en avant.
-const ICONES = { estimes: 'phone', acquereurs: 'users', courtage: 'table', operation: 'star' }
+const LOGOS = { estimes: '/marque/mission-estimes-large-bleu.png', acquereurs: '/marque/mission-acquereurs-large-bleu.png', courtage: '/marque/mission-courtage-large-bleu.png' }
 
 export default function AccueilMissions({ onOuvrir }) {
   const { user } = useAuth()
@@ -39,14 +39,17 @@ export default function AccueilMissions({ onOuvrir }) {
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {(d?.missions || []).map(m => (
             <section key={m.id} className="bg-white border border-quai-border rounded-2xl overflow-hidden flex flex-col hover:shadow-md transition-shadow">
-              <button onClick={() => onOuvrir(m.id)} className="text-left bg-quai-navy text-white px-4 py-3.5 flex items-center gap-3 group">
-                <span className="w-10 h-10 rounded-lg bg-white/10 grid place-items-center shrink-0"><Icon name={ICONES[m.id] || 'circle'} size="md" className="text-quai-gold" /></span>
-                <span className="min-w-0 flex-1">
-                  <span className="block font-display font-semibold text-lg leading-tight">{m.titre}</span>
-                  <span className="block text-xs text-white/60 truncate">{m.qui.length ? m.qui.join(', ') : 'Personne pour l’instant'}</span>
-                </span>
-                <Icon name="chevron-right" size="sm" className="text-white/40 group-hover:text-quai-gold shrink-0" />
+              {/* Le logo de la mission, sur son fond marine d'origine. */}
+              <button onClick={() => onOuvrir(m.id)} className="text-left text-white pr-4 flex items-center gap-2 group bg-quai-encre">
+                {LOGOS[m.id]
+                  ? <img src={LOGOS[m.id]} alt={m.titre} className="h-20 w-auto shrink-0" />
+                  : <span className="flex items-center gap-3 pl-4 py-3.5 min-w-0"><img src="/operation/sceau-badge.png" alt="" className="w-11 h-11 rounded shrink-0" /><span className="font-display font-semibold text-lg leading-tight">{m.titre}</span></span>}
+                <span className="flex-1" />
+                <Icon name="chevron-right" size="sm" className="text-white/40 group-hover:text-quai-taupe shrink-0" />
               </button>
+              <div className="px-4 py-2 text-xs text-quai-muted border-b border-quai-border truncate">
+                <Icon name="user" size="sm" className="inline mr-1 -mt-0.5 text-quai-taupe" />{m.qui.length ? m.qui.join(', ') : 'Personne pour l’instant'}
+              </div>
 
               <div className="grid grid-cols-3 divide-x divide-quai-border border-b border-quai-border">
                 {m.chiffres.map((c, i) => (

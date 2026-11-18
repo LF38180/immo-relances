@@ -1,3 +1,4 @@
+import Marque from './ui/Marque'
 import { useRef, useEffect, useState, useCallback } from 'react'
 import Icon from './ui/Icon'
 
@@ -8,7 +9,9 @@ import Icon from './ui/Icon'
  *
  * items : [{ id, label, icon }]  · active : id courant · onSelect(id)
  */
-export default function BottomTabBar({ items, active, onSelect }) {
+// `etale` : les onglets se partagent toute la largeur (barre courte de
+// l'admin). Sans lui, largeur fixe et défilement, comme toujours.
+export default function BottomTabBar({ items, active, onSelect, etale = false }) {
   const scrollerRef = useRef(null)
   const activeRef = useRef(null)
   const [fadeLeft, setFadeLeft] = useState(false)
@@ -55,8 +58,8 @@ export default function BottomTabBar({ items, active, onSelect }) {
               <button key={item.id} ref={isActive ? activeRef : null}
                 onClick={() => onSelect(item.id)} aria-label={item.label}
                 aria-current={isActive ? 'page' : undefined}
-                className={`flex-shrink-0 w-[5.25rem] flex flex-col items-center justify-center gap-0.5 py-2 min-h-[56px] text-[11px] transition ${isActive ? 'text-quai-gold font-semibold' : 'text-white/70'}`}>
-                <Icon name={item.icon} size="md" />
+                className={`${etale ? 'flex-1 min-w-0' : 'flex-shrink-0 w-[5.25rem]'} flex flex-col items-center justify-center gap-0.5 py-2 min-h-[56px] text-[11px] transition ${isActive ? 'text-quai-gold font-semibold' : 'text-white/70'}`}>
+                {item.lettre ? <Marque lettre={item.lettre} taille={22} clair /> : <Icon name={item.icon} size="md" />}
                 <span className="truncate max-w-full px-1">{item.court || item.label}</span>
               </button>
             )

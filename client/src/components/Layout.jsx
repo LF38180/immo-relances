@@ -4,6 +4,7 @@ import { blocCourant, choisirBloc } from '../utils/blocCourant'
 import { useAuth } from '../hooks/useAuth'
 import Icon from './ui/Icon'
 import BottomTabBar from './BottomTabBar'
+import Marque, { LogoImmoRelances } from './ui/Marque'
 
 const NAV_ITEMS = [
   { id: 'dashboard',  label: 'Tableau de bord', icon: 'layout-dashboard', roles: ['agent', 'manager', 'admin'] },
@@ -14,7 +15,7 @@ const NAV_ITEMS = [
   { id: 'admin',      label: 'Administration',  icon: 'settings',         roles: ['admin'] },
 ]
 
-export default function Layout({ page, onNavigate, children, extraNav = [], nav = null, titre = null }) {
+export default function Layout({ page, onNavigate, children, extraNav = [], nav = null, navMobile = null, titre = null }) {
   const { user, logout } = useAuth()
   const [collapsed, setCollapsed] = useState(false)
   // Les fichiers ouverts à la personne. Avec un seul (le cas de toujours), rien ne
@@ -51,7 +52,10 @@ export default function Layout({ page, onNavigate, children, extraNav = [], nav 
 
         {/* Logo */}
         <div className={`flex items-center justify-between border-b border-white/10 ${collapsed ? 'p-3' : 'p-4'}`}>
-          {!collapsed ? (
+          {nav ? (
+            /* L'espace de l'admin porte le logo de l'appli. */
+            <LogoImmoRelances compact={collapsed} />
+          ) : !collapsed ? (
             <div className="flex items-center gap-3">
               <img
                 src="https://img.netty.fr/logo/company55382byt/2/logo_web.png"
@@ -95,7 +99,7 @@ export default function Layout({ page, onNavigate, children, extraNav = [], nav 
                   : 'text-white/70 hover:bg-white/10 hover:text-white'
               }`}
             >
-              <Icon name={item.icon} size="md" className="flex-shrink-0" />
+              {item.lettre ? <Marque lettre={item.lettre} taille={22} clair={page !== item.id} /> : <Icon name={item.icon} size="md" className="flex-shrink-0" />}
               {!collapsed && <span className="truncate">{item.label}</span>}
             </button>
           ))}
@@ -140,7 +144,9 @@ export default function Layout({ page, onNavigate, children, extraNav = [], nav 
         <div key={bloc || 'tous'} className="contents">{children}</div>
 
         {/* Barre d'onglets basse défilable : MOBILE uniquement */}
-        <BottomTabBar items={visibleNav} active={page} onSelect={onNavigate} />
+        {/* `navMobile` : une barre plus courte sur téléphone (l'admin a huit
+            entrées : quatre, puis « Plus »). */}
+        <BottomTabBar items={navMobile || visibleNav} etale={!!navMobile} active={navMobile && !navMobile.some(n => n.id === page) ? 'plus' : page} onSelect={onNavigate} />
       </main>
     </div>
   )

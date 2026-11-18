@@ -17,7 +17,7 @@ const lireFichier = (f) => new Promise((ok, ko) => { const l = new FileReader();
 function Acces({ users }) {
   const avec = users.filter(u => u.acces_acquereurs)
   return (
-    <Bloc titre="Mission « Fichier Acquéreurs »">
+    <Bloc titre="Qui a la Mission Acquéreurs">
       <div className="flex flex-wrap gap-1.5 mb-1">{avec.length ? avec.map(u => <span key={u.id} className="badge bg-quai-navy text-white">{u.prenom} {u.nom}</span>) : <span className="text-sm text-quai-muted">Personne pour l’instant.</span>}</div>
       <p className="text-xs text-quai-muted">À cocher dans Utilisateurs, colonne « Missions ».</p>
     </Bloc>

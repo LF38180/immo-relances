@@ -126,14 +126,14 @@ function AppConnecte({ user, page, setPage }) {
 
   // Deux modules : l'opération et Immo Relances. On demande, une fois par session.
   const second = immoRelances === 'courtage'
-    ? { id: 'immo', titre: 'Mon espace courtage', aide: 'Vos fiches de courtage, comme d’habitude', icon: 'table' }
+    ? { id: 'immo', titre: 'Mon espace courtage', aide: 'Vos fiches de courtage, comme d’habitude', image: '/marque/mission-courtage-carre-bleu.png' }
     : immoRelances === 'acquereurs'
-      ? { id: 'immo', titre: 'Immo Relances', aide: `Fichier Acquéreurs · ${acq.contacts} personne${acq.contacts > 1 ? 's' : ''}`, icon: 'users' }
+      ? { id: 'immo', titre: 'Immo Relances', aide: `Mission Acquéreurs · ${acq.contacts} personne${acq.contacts > 1 ? 's' : ''}`, image: '/marque/mission-acquereurs-carre-bleu.png' }
       : user.role === 'admin'
         ? { id: 'immo', titre: 'Immo Relances', aide: 'Tableau de bord, contacts, supervision, administration', icon: 'layout-dashboard' }
         : user.role === 'manager'
-          ? { id: 'immo', titre: 'Immo Relances', aide: 'Tableau de bord et supervision de l’agence', icon: 'layout-dashboard' }
-          : { id: 'immo', titre: 'Immo Relances', aide: espaceAcq ? 'Vos relances et le Fichier Acquéreurs' : 'Vos sessions d’appels habituelles', icon: 'phone-call' }
+          ? { id: 'immo', titre: 'Immo Relances', aide: 'Tableau de bord et supervision de l’agence', image: '/marque/immorelances-carre-bleu.png' }
+          : { id: 'immo', titre: 'Immo Relances', aide: espaceAcq ? 'Vos relances et la Mission Acquéreurs' : 'Vos sessions d’appels habituelles', image: '/marque/immorelances-carre-bleu.png' }
 
   const aideOperation = acces.pilote && acces.fiches > 0
     ? `${acces.fiches} personne${acces.fiches > 1 ? 's' : ''} à rappeler, et le suivi de l’équipe`
@@ -208,7 +208,7 @@ function EspaceAgence({ page, setPage, onRetour, acq }) {
     <>
       {onRetour && <RetourOperation onRetour={onRetour} />}
       <Layout page={page} onNavigate={setPage}
-        extraNav={acq ? [{ id: 'acquereurs', label: 'Fichier Acquéreurs', icon: 'users' }] : []}>
+        extraNav={acq ? [{ id: 'acquereurs', label: 'Mission Acquéreurs', icon: 'users' }] : []}>
         <Suspense fallback={<ChargementPage />}>
           {renderPage()}
         </Suspense>
