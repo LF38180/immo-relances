@@ -153,6 +153,11 @@ const compter = (sql, ...a) => { const d = base(); const n = d.prepare(sql).get(
       partielle.status === 200 && apresP.prenom === 'Zoé' && apresP.tags === '["vip"]' && apresP.date_estimation === '2026-03-01'
       && apresP.statut === 'tente_sans_reponse' && apresP.prochain_contact === dans(3), { tags: apresP.tags, d: apresP.date_estimation, s: apresP.statut });
 
+    // --- Règle du 18/11 : 7 jours dès le deuxième sans-réponse d'affilée ---
+    await req('POST', '/api/relances', agent, { contact_id: file0.contacts[1].id, issue: 'sans_reponse', notes: 'deuxième essai' });
+    test('deuxième sans-réponse d affilée : rappel à 7 jours, plus à 3',
+      base().prepare('SELECT prochain_contact p FROM contacts WHERE id = ?').get(file0.contacts[1].id).p === dans(7));
+
     // --- Fiche périmée : le rappel planifié n'est pas écrasé ---
     const idRappel = file0.contacts[2].id;
     const ancienne = (await req('GET', '/api/contacts/' + id1, agent)).body;

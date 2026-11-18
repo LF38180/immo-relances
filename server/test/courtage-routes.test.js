@@ -70,14 +70,17 @@ setTimeout(async () => {
     const tt = await req('POST', '/api/courtage/fiches/' + f2 + '/trop-tot', marine, {});
     test('trop-tot decale a J+7', tt.status === 200 && tt.body.prochaine_relance === j7, tt.body.prochaine_relance);
 
-    // Pas de reponse x2 -> injoignable, retour demain.
-    const demain = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+    // Pas de reponse x2 -> injoignable. Regle du 18/11 : 48 h apres le
+    // premier, 7 jours des le deuxieme d'affilee.
+    const dansJ = (n) => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
     const p1 = await req('POST', '/api/courtage/fiches/' + f1 + '/pas-de-reponse', marine, {});
     test('pas-de-reponse 1 : tentatives=1, statut inchange', p1.body.tentatives === 1 && p1.body.statut === 'en_relance', JSON.stringify(p1.body));
+    const f1p1 = await req('GET', '/api/courtage/fiches/' + f1, marine);
+    test('pas-de-reponse 1 : prochaine_relance a 48 h', f1p1.body.prochaine_relance === dansJ(2), f1p1.body.prochaine_relance);
     const p2 = await req('POST', '/api/courtage/fiches/' + f1 + '/pas-de-reponse', marine, {});
     test('pas-de-reponse 2 : statut injoignable', p2.body.tentatives === 2 && p2.body.statut === 'injoignable', JSON.stringify(p2.body));
     const f1apres = await req('GET', '/api/courtage/fiches/' + f1, marine);
-    test('pas-de-reponse : prochaine_relance = demain', f1apres.body.prochaine_relance === demain, f1apres.body.prochaine_relance);
+    test('pas-de-reponse 2 d affilee : prochaine_relance a 7 jours', f1apres.body.prochaine_relance === dansJ(7), f1apres.body.prochaine_relance);
 
     // Mail modele : mailto avec destinataire, prenom, ref bien.
     const mm = await req('GET', '/api/courtage/mail-modele/' + f1, marine);

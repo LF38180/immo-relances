@@ -232,7 +232,15 @@ router.post('/fiches/:id/pas-de-reponse', ecriture, (req, res) => {
     action(fiche.id, 'statut', { statut_avant: fiche.statut, statut_apres: 'injoignable' });
     statut = 'injoignable';
   }
-  const demain = dansNJours(1);
+  // Règle de Loïck (18/11, tous modules) : 48 h après un premier
+  // sans-réponse, 7 jours dès le deuxième d'affilée (celui-ci compris). La
+  // série repart à zéro après une relance aboutie ; le compteur
+  // tentatives_sans_reponse, lui, ne se remet jamais à zéro.
+  const deSuite = 1 + db.prepare(`SELECT COUNT(*) n FROM courtage_actions
+    WHERE fiche_id = ? AND type = 'pas_de_reponse'
+      AND id > COALESCE((SELECT MAX(id) FROM courtage_actions WHERE fiche_id = ? AND type = 'relance'), 0)`)
+    .get(fiche.id, fiche.id).n;
+  const demain = dansNJours(deSuite >= 2 ? 7 : 2);
   // Commentaire optionnel ("repondeur", "rappelle ce soir") : trace l'appel dans l'historique.
   const commentaire = (req.body || {}).commentaire;
   action(fiche.id, 'pas_de_reponse', {

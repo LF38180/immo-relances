@@ -80,7 +80,15 @@ router.post('/', (req, res) => {
   const setParams = [];
   if (issue === 'sans_reponse') {
     contactStatut = 'tente_sans_reponse';
-    prochainContact = dansNJours(B.delaiDuBloc(fiche.bloc_id, 'delai_sans_reponse_jours', param('delai_sans_reponse_jours', 3)));
+    // Règle de Loïck (18/11, tous modules) : jamais avant 48 h, et 7 jours
+    // dès le deuxième sans-réponse d'affilée (cet appel compris). Le délai
+    // réglé par fichier (3 jours par défaut) reste celui du premier.
+    const deSuite = db.prepare(`SELECT COUNT(*) n FROM relances
+      WHERE contact_id = ? AND statut IN ('tente_sans_reponse','message_laisse')
+        AND id > COALESCE((SELECT MAX(id) FROM relances WHERE contact_id = ?
+          AND statut NOT IN ('tente_sans_reponse','message_laisse')), 0)`).get(contact_id, contact_id).n;
+    const premier = Math.max(2, Number(B.delaiDuBloc(fiche.bloc_id, 'delai_sans_reponse_jours', param('delai_sans_reponse_jours', 3))) || 0);
+    prochainContact = dansNJours(deSuite >= 2 ? Math.max(7, premier) : premier);
   } else if (issue === 'projet') {
     contactStatut = 'rdv_obtenu';
   } else if (issue === 'rappel') {
