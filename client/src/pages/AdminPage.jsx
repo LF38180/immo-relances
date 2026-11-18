@@ -348,6 +348,7 @@ const TYPES_ACTIVITE = {
   ATTRIBUTION: 'Attribution', OPPOSITION: 'Opposition', NPAI: 'Courrier revenu',
   EXCLUSION: 'Fiche exclue', VERIFICATION: 'Identité tranchée', AGENCE: 'Agence changée',
   APPEL_EFFACE: 'Appel effacé', IMPORT: 'Import', IMPORT_EXCLUS: 'Import des exclus',
+  APPEL_ACQUEREUR: 'Appel Fichier Acquéreurs', MODELO_RETOUR: 'Retour Modelo',
 }
 const ISSUES_LIBELLES = {
   JOINT: 'joint', REPONDEUR: 'répondeur', PAS_DE_REPONSE: 'pas de réponse', FAUX_NUMERO: 'faux numéro',
@@ -358,6 +359,7 @@ function detailActivite(l) {
   try { d = l.details ? JSON.parse(l.details) : {} } catch { return l.details || '' }
   switch (l.type) {
     case 'APPEL': return [ISSUES_LIBELLES[d.issue] || d.issue, d.rappel_le && `rappel ${d.rappel_le.replace('T', ' ')}`, d.hors_cadre && 'hors cadre'].filter(Boolean).join(' · ')
+    case 'APPEL_ACQUEREUR': return [d.issue === 'MAIL' ? 'mail envoyé' : (ISSUES_LIBELLES[d.issue] || d.issue), d.statut && d.statut.toLowerCase().replace(/_/g, ' '), d.rappel_le && `rappel ${String(d.rappel_le).replace('T', ' ')}`].filter(Boolean).join(' · ')
     case 'MAJ_FICHE': {
       if (d.efface) return `appel ${d.efface.id} effacé (${ISSUES_LIBELLES[d.efface.issue] || d.efface.issue})`
       const cles = Object.keys(d).filter(k => !['id_modelo', 'appel_id'].includes(k))

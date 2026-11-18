@@ -7,6 +7,7 @@ import ErrorBoundary from '../../components/ErrorBoundary'
 const AcqFile = lazy(() => import('./AcqFile'))
 const AcqAccueil = lazy(() => import('./AcqAccueil'))
 const AcqDemo = lazy(() => import('./AcqDemo'))
+const AcqListing = lazy(() => import('./AcqListing'))
 const AcqSuivi = lazy(() => import('./AcqSuivi'))
 const AcqAdmin = lazy(() => import('./AcqAdmin'))
 
@@ -16,6 +17,9 @@ export default function AcqHub({ onRetour, libelleRetour = 'Mon espace' }) {
   const { user, logout } = useAuth()
   const estAdmin = user?.role === 'admin'
   const [onglet, setOnglet] = useState('accueil')
+  // Une case du Suivi cliquée : le Listing s'ouvre filtré (comme l'opération).
+  const [filtre, setFiltre] = useState('')
+  const voir = (f) => { setFiltre(f); setOnglet('listing') }
   const [acces, setAcces] = useState(null)
   useEffect(() => { api.get('/acquereurs/mon-acces').then(r => setAcces(r.data)).catch(() => {}) }, [])
 
@@ -23,7 +27,7 @@ export default function AcqHub({ onRetour, libelleRetour = 'Mon espace' }) {
     { id: 'accueil', label: 'Accueil', icon: 'file-text' },
     { id: 'file', label: 'Mes appels', icon: 'phone' },
     { id: 'suivi', label: 'Suivi', icon: 'layout-dashboard' },
-    ...(estAdmin ? [{ id: 'admin', label: 'Administration', icon: 'settings' }, { id: 'demo', label: 'Démonstration', icon: 'play' }] : []),
+    ...(estAdmin ? [{ id: 'listing', label: 'Listing', icon: 'table' }, { id: 'admin', label: 'Administration', icon: 'settings' }, { id: 'demo', label: 'Démonstration', icon: 'play' }] : []),
   ]
   return (
     <div className="h-ecran flex flex-col bg-quai-light">
@@ -45,7 +49,7 @@ export default function AcqHub({ onRetour, libelleRetour = 'Mon espace' }) {
       </header>
       <nav className="bg-white border-b border-quai-border flex gap-0.5 px-2 pt-1 shrink-0 overflow-x-auto scrollbar-none">
         {onglets.map(o => (
-          <button key={o.id} onClick={() => setOnglet(o.id)}
+          <button key={o.id} onClick={() => { setFiltre(''); setOnglet(o.id) }}
             className={`px-3 py-2 text-[13px] font-medium whitespace-nowrap inline-flex items-center gap-1.5 border-b-2 transition-colors ${
               onglet === o.id ? 'border-quai-gold text-quai-navy' : 'border-transparent text-quai-muted'}`}>
             <Icon name={o.icon} size="sm" /> {o.label}
@@ -57,7 +61,8 @@ export default function AcqHub({ onRetour, libelleRetour = 'Mon espace' }) {
           <Suspense fallback={<div className="p-6 text-sm text-quai-muted animate-pulse">Chargement…</div>}>
             {onglet === 'accueil' && <AcqAccueil estAdmin={estAdmin} onCommencer={() => setOnglet('file')} onAdmin={() => setOnglet('admin')} />}
             {onglet === 'file' && <AcqFile />}
-            {onglet === 'suivi' && <AcqSuivi />}
+            {onglet === 'suivi' && <AcqSuivi onVoir={estAdmin ? voir : null} />}
+            {onglet === 'listing' && estAdmin && <AcqListing filtreInitial={filtre} />}
             {onglet === 'admin' && estAdmin && <AcqAdmin />}
             {onglet === 'demo' && estAdmin && <AcqDemo />}
           </Suspense>

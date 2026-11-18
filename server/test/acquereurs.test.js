@@ -185,6 +185,20 @@ const t = (n, fn) => { try { fn(); console.log('  OK  ' + n) } catch (e) { conso
   r = await call('GET', '/acquereurs/suivi', tLilas);
   t('suivi : requalifiés, vendeurs, estimations', () => { assert.strictEqual(r.body.requalifies, 1); assert.strictEqual(r.body.vendeurs, 1); assert.strictEqual(r.body.estimations_acceptees, 1); });
 
+  r = await call('GET', '/acquereurs/admin/listing', tAdmin);
+  t('listing : requalifié, vendeur, estimation, reporté', () => {
+    const c = r.body.contacts.find(x => x.id_contact === '11');
+    assert.strictEqual(c.statut, 'REQUALIFIE'); assert.strictEqual(c.vendeur, 1); assert.strictEqual(c.estimation_acceptee, 1);
+    assert.ok(c.modelo_reporte_le); assert.strictEqual(c.a_reporter, 0);
+  });
+  r = await call('GET', '/acquereurs/admin/listing', tLilas);
+  t('listing réservé à l admin', () => assert.strictEqual(r.status, 403));
+  r = await call('GET', '/admin/activite', tAdmin);
+  t('activité : les appels du Fichier Acquéreurs y figurent, avec le nom', () => {
+    const l = r.body.lignes.find(x => x.type === 'APPEL_ACQUEREUR');
+    assert.ok(l); assert.strictEqual(l.auteur, 'Lilas FERKOUS'); assert.ok(l.nom);
+  });
+
   // Réimport : le travail de Lilas n'est pas écrasé.
   await call('POST', '/acquereurs/admin/import', tAdmin, { csv: CSV, madame_fichier: 'Lilas FERKOUS', ecrire: true });
   t('réimport : statut, décisions et téléphone corrigé conservés', () => {

@@ -257,6 +257,10 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, horsFile, 
         </div>
         {c.derniere_note_extrait && <p className="text-[11px] text-quai-muted mt-1.5 line-clamp-2">« {c.derniere_note_extrait} »</p>}
         {horsFile && <p className="text-[11px] text-amber-800 mt-1.5">Fiche ouverte hors de l’ordre de la file.</p>}
+        {/* Comme dans l'opération : ce qui est déjà dans Modelo, et ce qui attend. */}
+        {c.modelo_reporte_le
+          ? <p className="text-[11px] text-emerald-700 mt-1">Mise à jour Modelo faite le {new Date(String(c.modelo_reporte_le).replace(' ', 'T') + 'Z').toLocaleDateString('fr-FR')}{c.dernier_appel_le && c.dernier_appel_le > c.modelo_reporte_le ? ' · du nouveau depuis, à reporter' : ''}</p>
+          : c.appels_total > 0 && <p className="text-[11px] text-quai-muted mt-1">Pas encore reporté dans Modelo.</p>}
         {d.appels.length > 0 && (
           <details className="mt-1.5">
             <summary className="text-[11px] text-quai-navy cursor-pointer">Historique dans l’appli ({d.appels.length})</summary>

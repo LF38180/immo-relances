@@ -3,17 +3,18 @@ import api from '../../utils/api'
 
 // Tableau de bord (cahier, section 6). Pas de compteur « affaires conclues » :
 // le délai se compte en mois, un compteur bloqué à zéro démobilise.
-export default function AcqSuivi() {
+export default function AcqSuivi({ onVoir }) {
   const lundi = (() => { const d = new Date(); const j = (d.getDay() + 6) % 7; d.setDate(d.getDate() - j); return d.toLocaleDateString('fr-CA') })()
   const [debut, setDebut] = useState(lundi)
   const [d, setD] = useState(null)
   useEffect(() => { api.get('/acquereurs/suivi', { params: { debut } }).then(r => setD(r.data)).catch(() => setD(null)) }, [debut])
+  // Troisième valeur : le filtre du Listing que la case ouvre (admin).
   const cases = d ? [
     ['Appels passés', d.appels], ['Personnes traitées', d.traites], ['Personnes jointes', d.joints],
-    ['Requalifiés', d.requalifies], ['Archivés (abandon, déjà acheté, ne plus contacter)', d.archives],
-    ['Vendeurs repérés', d.vendeurs], ['Estimations proposées', d.estimations_proposees],
-    ['Estimations acceptées', d.estimations_acceptees], ['Orientés vers Marine', d.marine],
-    ['Jamais appelés (au total)', d.restants],
+    ['Requalifiés', d.requalifies, 'REQUALIFIE'], ['Archivés (abandon, déjà acheté, ne plus contacter)', d.archives],
+    ['Vendeurs repérés', d.vendeurs, 'vendeurs'], ['Estimations proposées', d.estimations_proposees, 'est_prop'],
+    ['Estimations acceptées', d.estimations_acceptees, 'est_acc'], ['Orientés vers Marine', d.marine, 'marine'],
+    ['Jamais appelés (au total)', d.restants, 'jamais'],
   ] : []
   return (
     <div className="p-3 max-w-3xl mx-auto">
@@ -25,12 +26,17 @@ export default function AcqSuivi() {
       </div>
       {!d ? <p className="text-sm text-quai-muted">Chargement…</p> : (
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-          {cases.map(([l, n]) => (
-            <div key={l} className="bg-white border border-quai-border rounded-xl p-3">
-              <div className="text-2xl font-bold text-quai-navy">{n}</div>
-              <div className="text-xs text-quai-muted leading-snug">{l}</div>
-            </div>
-          ))}
+          {cases.map(([l, n, f]) => {
+            const clic = onVoir && f
+            const Tag = clic ? 'button' : 'div'
+            return (
+              <Tag key={l} onClick={clic ? () => onVoir(f) : undefined}
+                className={`text-left bg-white border border-quai-border rounded-xl p-3 ${clic ? 'hover:border-quai-gold' : ''}`}>
+                <div className="text-2xl font-bold text-quai-navy">{n}</div>
+                <div className="text-xs text-quai-muted leading-snug">{l}{clic && <span className="text-quai-navy"> · voir</span>}</div>
+              </Tag>
+            )
+          })}
         </div>
       )}
     </div>

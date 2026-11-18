@@ -131,7 +131,12 @@ router.get('/activite', requireRole('admin'), (req, res) => {
     UNION ALL
     SELECT o.horodatage, o.agent, 'OPPOSITION', o.id_modelo,
            json_object('canal', o.canal, 'origine', o.origine)
-      FROM op_journal_opposition o`;
+      FROM op_journal_opposition o
+    UNION ALL
+    -- Fichier Acquéreurs (18/11) : les appels de Madame Fichier.
+    SELECT q.horodatage, q.madame_fichier, 'APPEL_ACQUEREUR', q.id_contact,
+           json_object('issue', CASE WHEN q.canal = 'SMS' THEN 'SMS' WHEN q.canal = 'MAIL' THEN 'MAIL' ELSE q.issue END, 'statut', q.statut_final, 'rappel_le', q.date_prochaine_action)
+      FROM acq_appels q`;
 
   const conditions = []; const params = [];
   if (depuis) { conditions.push("date(e.le, 'localtime') >= ?"); params.push(depuis); }
@@ -141,9 +146,11 @@ router.get('/activite', requireRole('admin'), (req, res) => {
   const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
 
   const lignes = db.prepare(`
-    SELECT e.le, e.auteur, e.type, e.id_modelo, e.details, c.nom, c.prenom, c.conseiller
+    SELECT e.le, e.auteur, e.type, e.id_modelo, e.details,
+      COALESCE(q.nom, c.nom) AS nom, COALESCE(q.prenom, c.prenom) AS prenom, c.conseiller
     FROM (${union}) e
-    LEFT JOIN op_contacts c ON c.id_modelo = e.id_modelo
+    LEFT JOIN op_contacts c ON c.id_modelo = e.id_modelo AND e.type <> 'APPEL_ACQUEREUR'
+    LEFT JOIN acq_contacts q ON q.id_contact = e.id_modelo AND e.type = 'APPEL_ACQUEREUR'
     ${where}
     ORDER BY e.le DESC
     LIMIT ?`).all(...params, limite);

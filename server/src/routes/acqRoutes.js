@@ -362,6 +362,32 @@ router.post('/admin/contacts/:id/reintegrer', admin, (req, res) => {
   res.json({ ok: true });
 });
 
+// Le Listing : chaque contact avec ce qu'on en sait, pour filtrer et exporter
+// (comme le Listing de l'opération anciens clients).
+router.get('/admin/listing', admin, (req, res) => {
+  const lignes = db.prepare(`SELECT c.*, ${SQL_COMPTEURS},
+      (SELECT a.details FROM acq_appels a WHERE a.id_contact = c.id_contact AND a.statut_final IS NOT NULL ORDER BY a.horodatage DESC LIMIT 1) AS details_fin,
+      (SELECT COUNT(*) FROM acq_fiches f WHERE f.id_contact = c.id_contact AND f.decision = 'GARDER') AS fiches_gardees,
+      (SELECT COUNT(*) FROM acq_fiches f WHERE f.id_contact = c.id_contact AND f.decision IN ('ARCHIVER','FUSIONNER')) AS fiches_archivees,
+      (SELECT MAX(f.budget_max) FROM acq_fiches f WHERE f.id_contact = c.id_contact) AS budget_max,
+      (SELECT GROUP_CONCAT(DISTINCT f.type_bien) FROM acq_fiches f WHERE f.id_contact = c.id_contact) AS types_bien,
+      EXISTS (SELECT 1 FROM acq_appels a WHERE a.id_contact = c.id_contact AND a.horodatage > COALESCE(c.modelo_reporte_le, '')) AS a_reporter
+    FROM acq_contacts c ORDER BY c.nom, c.prenom`).all(R.moisCourant());
+  res.json({ libelles: I.LIBELLES_EXCLUSION, contacts: lignes.map(l => {
+    const d = json(l.details_fin) || {};
+    return { id_contact: l.id_contact, civilite: l.civilite, nom: l.nom, prenom: l.prenom, tel_portable: l.tel_portable,
+      tel_fixe: l.tel_fixe, email: l.email, commune: l.commune, madame_fichier: l.madame_fichier, source: l.source,
+      statut: l.statut, statut_le: l.statut_le, rappel_le: l.rappel_le, exclu: l.exclu, stop_tel: l.stop_tel, stop_mail: l.stop_mail,
+      anciens_conseillers: l.anciens_conseillers, nb_fiches: l.nb_fiches, fiches_gardees: l.fiches_gardees, fiches_archivees: l.fiches_archivees,
+      budget_max: l.budget_max, types_bien: l.types_bien,
+      appels: l.appels_total, appels_ce_mois: l.appels_ce_mois, dernier_appel_le: l.dernier_appel_le, derniere_issue: l.derniere_issue,
+      vendeur: d.vendre?.doit_vendre === 'OUI' ? 1 : 0, estimation_proposee: d.vendre?.estimation_proposee ? 1 : 0,
+      estimation_acceptee: d.vendre?.estimation_acceptee ? 1 : 0, date_rdv_estimation: d.vendre?.date_rdv_estimation || null,
+      marine_proposee: d.marine?.proposee ? 1 : 0, marine_accord: d.marine?.accord ? 1 : 0,
+      consentement_rappel: l.consentement_rappel, modelo_reporte_le: l.modelo_reporte_le, a_reporter: l.a_reporter ? 1 : 0 };
+  }) });
+});
+
 router.get('/admin/a-valider', admin, (req, res) => res.json({ fiches: M.archivagesEnAttente() }));
 router.post('/admin/valider', admin, (req, res) => {
   const items = Array.isArray(req.body?.fiches) ? req.body.fiches : [];
