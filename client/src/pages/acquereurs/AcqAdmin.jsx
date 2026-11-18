@@ -37,16 +37,37 @@ function Fichier({ label, fichier, onChoisir, facultatif }) {
     </label>
   )
 }
+// Télécharger le fichier de report. Si un fichier déjà téléchargé attend son
+// retour, on demande avant d'en produire un second : deux fichiers envoyés à
+// Exploration Modelo, ce sont des notes en double dans Modelo.
+async function telechargerReport() {
+  try {
+    const e = (await api.get('/acquereurs/admin/report/etat')).data
+    if (e.en_attente_de_retour && !window.confirm(`Un fichier a déjà été téléchargé le ${jj(e.telechargement.le)}${e.telechargement.par ? ` par ${e.telechargement.par}` : ''} (${e.telechargement.lignes} lignes), et son retour n’a pas encore été importé.\n\nLe nouveau fichier contiendra les mêmes appels, plus ceux passés depuis. N’envoyez à Exploration Modelo que le dernier.\n\nTélécharger quand même ?`)) return false
+    const r = await api.get('/acquereurs/admin/report', { params: { format: 'csv' }, responseType: 'blob' })
+    const nom = /filename="([^"]+)"/.exec(r.headers?.['content-disposition'] || '')?.[1] || `Report_Modelo_Acquereurs_${new Date().toLocaleDateString('fr-CA')}.csv`
+    const url = URL.createObjectURL(r.data); const a = document.createElement('a')
+    a.href = url; a.download = nom; a.click(); URL.revokeObjectURL(url)
+    return true
+  } catch (e) { err(e); return false }
+}
+const messageRetour = (d) => {
+  toast.success(`${d.reportes} contact${d.reportes > 1 ? 's' : ''} reporté${d.reportes > 1 ? 's' : ''}, ${d.echecs} en échec${d.inconnus.length ? `, ${d.inconnus.length} inconnu(s)` : ''}`, { duration: 7000 })
+  if (d.sans_date?.length) toast.error(`${d.sans_date.length} contact(s) non marqué(s) : colonne « jusqu_a » vide ou illisible dans le retour.`, { duration: 9000 })
+  if (d.date_future?.length) toast.error(`${d.date_future.length} contact(s) non marqué(s) : la date « jusqu_a » du retour est dans le futur.`, { duration: 9000 })
+}
 const lireFichier = (f) => new Promise((ok, ko) => { const l = new FileReader(); l.onload = () => ok(l.result); l.onerror = ko; l.readAsText(f, 'utf-8') })
 
 // Qui a la mission : se coche dans Immo Relances › Administration ›
 // Utilisateurs, avec les autres réglages du compte. Ici, on ne fait que lire.
-function Acces({ users }) {
+function Acces({ users, onUtilisateurs }) {
   const avec = users.filter(u => u.acces_acquereurs)
   return (
     <Bloc titre="Qui a la mission" icon="users" aide="Les personnes qui appellent pour la Mission Acquéreurs.">
       <div className="flex flex-wrap gap-1.5 mb-1">{avec.length ? avec.map(u => <span key={u.id} className="badge bg-quai-navy text-white">{u.prenom} {u.nom}</span>) : <span className="text-sm text-quai-muted">Personne pour l’instant.</span>}</div>
-      <p className="text-xs text-quai-muted">À cocher dans Utilisateurs, colonne « Missions ».</p>
+      {onUtilisateurs
+        ? <button className="btn-secondary btn-sm mt-1.5 inline-flex items-center gap-1.5" onClick={onUtilisateurs}><Icon name="user" size="sm" /> Donner ou retirer la mission</button>
+        : <p className="text-xs text-quai-muted">À cocher dans Utilisateurs, colonne « Missions ».</p>}
     </Bloc>
   )
 }
@@ -55,15 +76,15 @@ function Import({ onFait, users }) {
   const enMission = users.filter(u => u.acces_acquereurs).map(u => `${u.prenom} ${u.nom}`)
   const [csv, setCsv] = useState(null), [doublons, setDoublons] = useState(null), [choix, setNom] = useState('')
   const nom = choix || enMission[0] || ''
-  const [bilan, setBilan] = useState(null), [envoi, setEnvoi] = useState(false)
+  const [bilan, setBilan] = useState(null), [envoi, setEnvoi] = useState(false), [refus, setRefus] = useState(null)
   const lancer = async (ecrire) => {
     if (!csv) return toast.error('Choisissez le fichier d’import.')
     if (!nom) return toast.error('Donnez d’abord la mission à quelqu’un (Utilisateurs, colonne Missions).')
-    setEnvoi(true)
+    setEnvoi(true); setRefus(null)
     try {
       const r = await api.post('/acquereurs/admin/import', { csv: csv.texte, doublons_csv: doublons?.texte || null, madame_fichier: nom, ecrire }, { timeout: 120000 })
       setBilan(r.data); if (ecrire) { toast.success('Import enregistré'); onFait?.() }
-    } catch (e) { err(e) } finally { setEnvoi(false) }
+    } catch (e) { setBilan(null); setRefus(e.response?.data?.error || e.messageLisible || e.message) } finally { setEnvoi(false) }
   }
   return (
     <Bloc titre="Importer l’extraction Modelo" icon="file-up" aide="Le fichier préparé par Exploration Modelo : une ligne par fiche acquéreur. On vérifie d’abord, on enregistre ensuite.">
@@ -76,18 +97,25 @@ function Import({ onFait, users }) {
             {enMission.map(n => <option key={n} value={n}>{n}</option>)}
           </select></label>
       </div>
-      <div className="flex gap-2 mt-3">
-        <button className="btn-secondary" disabled={envoi} onClick={() => lancer(false)}>Vérifier sans enregistrer</button>
+      <div className="flex flex-wrap gap-2 mt-3">
+        <button className="btn-secondary" disabled={envoi} onClick={() => lancer(false)}>{envoi ? 'Lecture du fichier…' : 'Vérifier sans enregistrer'}</button>
         <button className="btn-primary" disabled={envoi || !bilan || bilan.simulation === false} onClick={() => lancer(true)}>Enregistrer l’import</button>
       </div>
+      {refus && (
+        <div className="mt-3 text-sm rounded-xl border px-3 py-2.5 bg-red-50 border-red-200 text-red-800">
+          <p className="font-medium">Fichier refusé, rien n’a été enregistré.</p><p className="mt-0.5">{refus}</p>
+        </div>
+      )}
       {bilan && (
         <div className={`mt-3 text-sm rounded-xl border px-3 py-2.5 ${bilan.simulation ? 'bg-amber-50 border-amber-200' : 'bg-emerald-50 border-emerald-200'}`}>
           <p className={`font-medium ${bilan.simulation ? 'text-amber-900' : 'text-emerald-900'}`}>{bilan.simulation ? 'Vérification : rien n’est encore enregistré.' : 'Import enregistré.'}</p>
           <ul className="mt-1 space-y-0.5">
+            {bilan.lignes_physiques != null && bilan.lignes_physiques !== bilan.lignes && <li className="text-red-700 font-medium">Attention : le fichier compte {bilan.lignes_physiques} lignes, {bilan.lignes} seulement ont été lues (retours à la ligne dans une cellule, ou fichier abîmé). À vérifier avant d’enregistrer.</li>}
             <li>{bilan.fiches} fiches, {bilan.contacts} personnes ({bilan.nouveaux_contacts} nouvelles, {bilan.contacts_mis_a_jour} mises à jour)</li>
             <li className="font-semibold">Dans la file : {bilan.dans_la_file} personnes, {bilan.fiches_dans_la_file} fiches d’achat</li>
             {Object.entries(bilan.exclus_libelles || {}).map(([k, v]) => <li key={k} className="text-quai-muted">Hors file : {k} : {v}</li>)}
             {bilan.erreurs?.length > 0 && <li className="text-red-700">{bilan.erreurs.length} ligne(s) ignorée(s) : {bilan.erreurs.slice(0, 3).join(' ')}</li>}
+            {bilan.sortis_de_la_file?.length > 0 && <li className="text-amber-900 font-medium">{bilan.sortis_de_la_file.length} personne(s) déjà appelée(s) sortent de la file avec ce fichier : {bilan.sortis_de_la_file.slice(0, 8).map(c => `${c.prenom || ''} ${c.nom || ''} (${c.motif}${c.rappel_le ? ', rappel prévu' : ''})`).join(' ; ')}{bilan.sortis_de_la_file.length > 8 ? '…' : ''}</li>}
           </ul>
         </div>
       )}
@@ -99,7 +127,7 @@ function Ecartes({ cle }) {
   const [d, setD] = useState(null), [tel, setTel] = useState({})
   const charger = useCallback(() => api.get('/acquereurs/admin/contacts').then(r => setD(r.data)).catch(err), [])
   useEffect(() => { charger() }, [charger, cle])
-  if (!d) return null
+  if (!d) return <Bloc titre="Personnes hors de la file" icon="phone-off"><p className="text-sm text-quai-muted animate-pulse">Chargement…</p></Bloc>
   const ecartes = d.contacts.filter(c => c.exclu || c.statut === 'FAUX_NUMERO')
   const parMotif = ecartes.reduce((m, c) => { const k = c.exclu ? (d.libelles[c.exclu] || c.exclu) : 'Faux numéro'; (m[k] = m[k] || []).push(c); return m }, {})
   const reintegrer = (c) => api.post(`/acquereurs/admin/contacts/${c.id_contact}/reintegrer`, { tel_portable: tel[c.id_contact] || null }).then(() => { toast.success('Remis dans la file'); charger() }).catch(err)
@@ -112,7 +140,7 @@ function Ecartes({ cle }) {
             {liste.map(c => (
               <li key={c.id_contact} className="py-1.5 flex flex-wrap items-center gap-2">
                 <span className="flex-1 min-w-[10rem]">{c.prenom} {c.nom} <span className="text-[11px] text-quai-muted">n° {c.id_contact}{c.suivi_par ? ` · suivi par ${c.suivi_par}` : ''}{c.tel_portable ? ` · ${c.tel_portable}` : ''}</span></span>
-                {['SANS_TELEPHONE', null].includes(c.exclu) && <input className="input max-w-[10rem]" placeholder="Nouveau portable" value={tel[c.id_contact] || ''} onChange={e => setTel(t => ({ ...t, [c.id_contact]: e.target.value }))} />}
+                {['SANS_TELEPHONE', null].includes(c.exclu) && <input className="input max-w-[10rem]" placeholder="Nouveau portable" aria-label="Nouveau portable" type="tel" inputMode="tel" value={tel[c.id_contact] || ''} onChange={e => setTel(t => ({ ...t, [c.id_contact]: e.target.value }))} />}
                 {!['STOP_TEL', 'OPPOSITION'].includes(c.exclu) && <button className="btn-secondary btn-sm" onClick={() => reintegrer(c)}>Remettre dans la file</button>}
               </li>
             ))}
@@ -127,7 +155,7 @@ function Valider({ cle, onFait }) {
   const [f, setF] = useState(null), [choix, setChoix] = useState({})
   const charger = useCallback(() => api.get('/acquereurs/admin/a-valider').then(r => { setF(r.data.fiches); setChoix(Object.fromEntries(r.data.fiches.map(x => [x.id_fiche, true]))) }).catch(err), [])
   useEffect(() => { charger() }, [charger, cle])
-  if (!f) return null
+  if (!f) return <Bloc titre="Archivages à valider" icon="file-check"><p className="text-sm text-quai-muted animate-pulse">Chargement…</p></Bloc>
   const valider = () => api.post('/acquereurs/admin/valider', { fiches: f.map(x => ({ id_fiche: x.id_fiche, accepte: !!choix[x.id_fiche] })) })
     .then(() => { toast.success('Validation enregistrée'); charger(); onFait?.() }).catch(err)
   const motif = (x) => x.decision === 'FUSIONNER' ? `doublon de la recherche n° ${x.fusion_dans}` : x.decision === 'ARCHIVER' ? x.motif_archivage : ({ ABANDONNE: 'projet abandonné', DEJA_ACHETE: 'a déjà acheté', DECEDE: 'décédé', NE_PLUS_CONTACTER: 'ne veut plus être contacté' })[x.statut_contact]
@@ -137,10 +165,10 @@ function Valider({ cle, onFait }) {
         <p className="text-xs text-quai-muted mb-2">Décochez une fiche pour refuser son archivage : elle reste active dans Modelo.</p>
         <ul className="divide-y divide-quai-border text-sm">
           {f.map(x => (
-            <li key={x.id_fiche} className="py-1.5 flex items-center gap-2">
-              <input type="checkbox" checked={!!choix[x.id_fiche]} onChange={e => setChoix(c => ({ ...c, [x.id_fiche]: e.target.checked }))} />
+            <li key={x.id_fiche}><label className="py-2 flex items-center gap-2.5 cursor-pointer">
+              <input type="checkbox" className="w-5 h-5 shrink-0" checked={!!choix[x.id_fiche]} onChange={e => setChoix(c => ({ ...c, [x.id_fiche]: e.target.checked }))} />
               <span className="flex-1">{x.prenom} {x.nom} · recherche n° {x.id_fiche} ({x.type_bien}) <span className="text-quai-muted">: {motif(x)} · par {x.decision_par || '?'}</span></span>
-            </li>
+            </label></li>
           ))}
         </ul>
         <button className="btn-primary mt-2" onClick={valider}>Valider ({Object.values(choix).filter(Boolean).length} archivées, {Object.values(choix).filter(v => !v).length} refusées)</button>
@@ -150,40 +178,58 @@ function Valider({ cle, onFait }) {
 }
 
 function Report({ cle }) {
-  const [d, setD] = useState(null), [bloque, setBloque] = useState(null)
-  const charger = useCallback(() => api.get('/acquereurs/admin/report').then(r => { setD(r.data); setBloque(null) }).catch(e => { if (e.response?.status === 409) { setBloque(e.response.data.error); setD(null) } else err(e) }), [])
+  const [d, setD] = useState(null), [bloque, setBloque] = useState(null), [etat, setEtat] = useState(null)
+  const charger = useCallback(() => {
+    api.get('/acquereurs/admin/report').then(r => { setD(r.data); setBloque(null) }).catch(e => { if (e.response?.status === 409) { setBloque(e.response.data.error); setD(null) } else err(e) })
+    api.get('/acquereurs/admin/report/etat').then(r => setEtat(r.data)).catch(() => {})
+  }, [])
   useEffect(() => { charger() }, [charger, cle])
-  const telecharger = async () => {
-    try {
-      const r = await api.get('/acquereurs/admin/report', { params: { format: 'csv' }, responseType: 'blob' })
-      const url = URL.createObjectURL(r.data); const a = document.createElement('a')
-      a.href = url; a.download = `Report_Modelo_Acquereurs_${d.jusqu_a.slice(0, 10)}.csv`; a.click(); URL.revokeObjectURL(url)
-    } catch (e) { err(e) }
-  }
+  const telecharger = async () => { if (await telechargerReport()) charger() }
   const [res, setRes] = useState(null)
   const importerRetour = async (ev) => {
     const f = ev.target.files?.[0]; ev.target.value = ''
     if (!f) return
     try {
       const r = await api.post('/acquereurs/admin/report/retour', { csv: await lireFichier(f) })
-      setRes(r.data); toast.success(`${r.data.reportes} contact${r.data.reportes > 1 ? 's' : ''} reporté${r.data.reportes > 1 ? 's' : ''}, ${r.data.echecs} en échec`, { duration: 6000 }); charger()
+      setRes(r.data); messageRetour(r.data); charger()
     } catch (e) { err(e) }
   }
   return (
     <Bloc titre="Report dans Modelo" icon="file-down" aide="Comme pour l’opération anciens clients : je télécharge le fichier, je le donne à Exploration Modelo, puis j’importe son retour.">
-      {bloque ? <p className="text-sm text-amber-800">{bloque}</p> : !d ? null : d.fiches === 0 ? <p className="text-sm text-quai-muted">Rien à reporter.</p> : <>
+      {bloque ? <p className="text-sm text-amber-800">{bloque}</p> : !d ? <p className="text-sm text-quai-muted animate-pulse">Chargement…</p> : d.fiches === 0 ? <p className="text-sm text-quai-muted">Rien à reporter.</p> : <>
         <p className="text-sm">{d.contacts} personnes, {d.fiches} lignes (une par fiche acquéreur), jusqu’au {jj(d.jusqu_a)}.</p>
+        {/* Ce que ce fichier change dans Modelo, à relire avant de l'envoyer. */}
+        {(d.reattributions?.length > 0 || d.archivages > 0) && (
+          <details className="mt-2 rounded-lg bg-quai-light border border-quai-border px-3 py-2 text-sm">
+            <summary className="cursor-pointer text-quai-navy">Ce fichier demande {d.reattributions.length} réattribution{d.reattributions.length > 1 ? 's' : ''} de négociateur et {d.archivages} archivage{d.archivages > 1 ? 's' : ''} validé{d.archivages > 1 ? 's' : ''}</summary>
+            <ul className="mt-1.5 text-xs text-quai-muted space-y-0.5">
+              {d.reattributions.map(r => <li key={r.id_contact}>{r.prenom} {r.nom} (n° {r.id_contact}) : suivi par {r.vers}, sur le contact et sur ses recherches gardées</li>)}
+            </ul>
+          </details>
+        )}
         <div className="flex flex-wrap gap-2 mt-2">
           <button className="btn-primary inline-flex items-center gap-1.5" onClick={telecharger}><Icon name="download" size="sm" /> Télécharger le fichier pour Exploration Modelo</button>
         </div>
       </>}
+      {etat?.telechargement && (
+        <p className={`text-xs mt-2 ${etat.en_attente_de_retour ? 'text-amber-800' : 'text-quai-muted'}`}>
+          Dernier fichier téléchargé le {jj(etat.telechargement.le)}{etat.telechargement.par ? ` par ${etat.telechargement.par}` : ''} ({etat.telechargement.lignes} lignes){etat.en_attente_de_retour ? ' : son retour n’a pas encore été importé.' : '.'}
+        </p>
+      )}
       <div className="mt-3 pt-3 border-t border-quai-border">
         <label className="btn-secondary inline-flex items-center gap-1.5 cursor-pointer"><Icon name="upload" size="sm" /> Importer le retour d’Exploration Modelo
           <input type="file" accept=".csv,.txt" className="hidden" onChange={importerRetour} /></label>
         <p className="text-[11px] text-quai-muted mt-1">Le fichier de report, avec la colonne « statut » remplie : reporté ou échec (et « motif_echec »). Les contacts reportés sortent de la liste ; ceux en échec y restent.</p>
         {res && <div className="text-sm mt-2">{res.reportes} reporté(s), {res.echecs} en échec{res.inconnus.length ? `, ${res.inconnus.length} inconnu(s)` : ''}.
           {res.sans_date?.length > 0 && <p className="text-xs text-amber-800 mt-1">{res.sans_date.length} contact(s) non marqué(s) : la colonne « jusqu_a » du fichier de retour est vide ou illisible. Demandez à Exploration Modelo de la laisser telle qu’elle était dans le fichier de report.</p>}
-          {res.motifs.length > 0 && <ul className="text-xs text-red-700 mt-1">{res.motifs.map(m => <li key={m.id_contact}>n° {m.id_contact} : {m.motif || 'sans motif'}</li>)}</ul>}</div>}
+          {res.date_future?.length > 0 && <p className="text-xs text-amber-800 mt-1">{res.date_future.length} contact(s) non marqué(s) : la date « jusqu_a » est dans le futur.</p>}</div>}
+        {/* Les échecs restent affichés tant qu'ils ne sont pas repassés. */}
+        {etat?.echecs?.length > 0 && (
+          <div className="mt-3 rounded-lg bg-red-50 border border-red-200 px-3 py-2">
+            <p className="text-sm font-medium text-red-800">{etat.echecs.length} échec{etat.echecs.length > 1 ? 's' : ''} au dernier retour : ces personnes restent à reporter</p>
+            <ul className="text-xs text-red-800 mt-1 space-y-0.5">{etat.echecs.map(m => <li key={m.id_contact}>{m.prenom} {m.nom} (n° {m.id_contact}) : {m.motif || 'sans motif'}</li>)}</ul>
+          </div>
+        )}
       </div>
     </Bloc>
   )
@@ -197,21 +243,15 @@ export function ReportBandeau({ onDetail }) {
   const charger = useCallback(() => api.get('/acquereurs/admin/report').then(r => { setD(r.data); setBloque(null) })
     .catch(e => { if (e.response?.status === 409) { setBloque(e.response.data); setD(null) } else err(e) }), [])
   useEffect(() => { charger() }, [charger])
-  const telecharger = async () => {
-    try {
-      const r = await api.get('/acquereurs/admin/report', { params: { format: 'csv' }, responseType: 'blob' })
-      const url = URL.createObjectURL(r.data); const a = document.createElement('a')
-      a.href = url; a.download = `Report_Modelo_Acquereurs_${d.jusqu_a.slice(0, 10)}.csv`; a.click(); URL.revokeObjectURL(url)
-    } catch (e) { err(e) }
-  }
+  const telecharger = async () => { if (await telechargerReport()) charger() }
   const importer = async (ev) => {
     const f = ev.target.files?.[0]; ev.target.value = ''
     if (!f) return
     setEnvoi(true)
     try {
       const r = await api.post('/acquereurs/admin/report/retour', { csv: await lireFichier(f) })
-      toast.success(`${r.data.reportes} contact${r.data.reportes > 1 ? 's' : ''} reporté${r.data.reportes > 1 ? 's' : ''}, ${r.data.echecs} en échec${r.data.inconnus.length ? `, ${r.data.inconnus.length} inconnu(s)` : ''}`, { duration: 7000 })
-      if (r.data.sans_date?.length) toast.error(`${r.data.sans_date.length} contact(s) non marqué(s) : colonne « jusqu_a » vide ou illisible dans le retour.`, { duration: 9000 })
+      messageRetour(r.data)
+      if (r.data.echecs) onDetail?.()
       charger()
     } catch (e) { err(e) } finally { setEnvoi(false) }
   }
@@ -226,56 +266,123 @@ export function ReportBandeau({ onDetail }) {
             : !d ? 'Chargement…'
             : n ? <><b className="text-quai-navy">{n}</b> contact{n > 1 ? 's' : ''} avec du nouveau à reporter ({d.fiches} ligne{d.fiches > 1 ? 's' : ''}).</>
             : 'Tout est reporté.'}
-          {' '}Téléchargez, donnez le fichier à Exploration Modelo, puis importez son retour.
         </div>
       </div>
       {bloque
-        ? <button onClick={onDetail} className="text-xs px-3 py-2 rounded-lg bg-quai-navy text-white">Valider les archivages</button>
-        : <button onClick={telecharger} disabled={!n} className="text-xs px-3 py-2 rounded-lg bg-quai-navy text-white disabled:opacity-40">À reporter{n ? ` (${n})` : ''}</button>}
-      <label className={`text-xs px-3 py-2 rounded-lg border border-quai-border bg-white text-quai-navy cursor-pointer ${envoi ? 'opacity-40' : ''}`}>
-        Importer le retour
+        ? <button onClick={onDetail} className="btn-primary btn-sm">Valider les archivages</button>
+        : <button onClick={telecharger} disabled={!n} className="btn-primary btn-sm inline-flex items-center gap-1.5 disabled:opacity-40"><Icon name="download" size="sm" /> Télécharger{n ? ` (${n})` : ''}</button>}
+      <label className={`btn-secondary btn-sm inline-flex items-center gap-1.5 cursor-pointer ${envoi ? 'opacity-40' : ''}`}>
+        <Icon name="upload" size="sm" /> Importer le retour
         <input type="file" accept=".csv,.txt" className="hidden" onChange={importer} disabled={envoi} />
       </label>
-      {onDetail && !bloque && <button onClick={onDetail} className="text-xs text-quai-muted underline">Détail</button>}
+      {onDetail && !bloque && <button onClick={onDetail} className="text-xs text-quai-muted underline py-2">Détail</button>}
     </div>
   )
 }
 
-function Transmettre() {
-  const [d, setD] = useState(null)
-  useEffect(() => { api.get('/acquereurs/admin/transmettre').then(r => setD(r.data)).catch(err) }, [])
-  if (!d) return null
+// Ce que l'appelante a obtenu pour d'autres : un rendez-vous courtage pour
+// Marine, une estimation à caler. Tant que ce n'est pas « transmis », la ligne
+// reste en haut. `compact` : la version du Suivi, qui ne montre que ce qui
+// attend (et rien du tout s'il n'y a rien).
+export function Transmettre({ compact = false }) {
+  const [d, setD] = useState(null), [tout, setTout] = useState(false)
+  const charger = useCallback(() => api.get('/acquereurs/admin/transmettre').then(r => setD(r.data)).catch(() => setD({ panne: true })), [])
+  useEffect(() => { charger() }, [charger])
+  if (!d) return compact ? null : <Bloc titre="À transmettre" icon="arrow-right"><p className="text-sm text-quai-muted animate-pulse">Chargement…</p></Bloc>
+  if (d.panne) return compact ? null : <Bloc titre="À transmettre" icon="arrow-right"><p className="text-sm text-red-700">Chargement impossible. <button className="underline" onClick={() => { setD(null); charger() }}>Réessayer</button></p></Bloc>
+  const fait = (l) => api.post('/acquereurs/admin/transmettre', { id_contact: l.id_contact, type: l.type }).then(() => { toast.success('Noté comme transmis'); charger() }).catch(err)
+  const vue = (o) => api.post(`/acquereurs/admin/oppositions/${o.id_contact}/vue`).then(() => { toast.success('Noté comme traité'); charger() }).catch(err)
+  const lignes = [...d.marine, ...d.estimations]
+  const attente = lignes.filter(l => l.pret && !l.transmis_le)
+  const visibles = tout ? lignes : attente
+  const ligne = (l) => (
+    <li key={l.type + l.id_contact} className="py-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+      <span className="min-w-0 flex-1 basis-56">
+        <span className="block text-sm text-quai-navy font-medium">{l.prenom} {l.nom} <span className="font-normal text-quai-muted">· {l.tel || 'sans numéro'}</span></span>
+        <span className="block text-[11px] text-quai-muted">
+          {l.type === 'MARINE' ? `Rendez-vous courtage pour Marine · ${l.pret ? 'client d’accord' : 'proposé, accord non donné'}`
+            : `Estimation ${l.pret ? 'acceptée' : 'proposée'}${l.date_rdv ? `, rendez-vous le ${jj(l.date_rdv)}` : l.pret ? ', date à caler' : ''}${l.adresse ? ` · ${l.adresse}` : ''}`}
+          {' '}· appel du {jj(l.horodatage)} par {l.madame_fichier}
+        </span>
+      </span>
+      {l.transmis_le ? <span className="text-[11px] text-emerald-700">transmis le {jj(l.transmis_le)}{l.transmis_par ? ` par ${l.transmis_par}` : ''}</span>
+        : l.pret ? <button className="btn-secondary btn-sm inline-flex items-center gap-1.5" onClick={() => fait(l)}><Icon name="check-circle-2" size="sm" /> Transmis</button>
+        : <span className="text-[11px] text-quai-muted">rien à transmettre</span>}
+    </li>
+  )
+  const oppositions = d.oppositions?.length > 0 && (
+    <div className="rounded-xl bg-red-50 border border-red-200 px-3 py-2.5">
+      <p className="text-sm font-medium text-red-800">{d.oppositions.length} personne{d.oppositions.length > 1 ? 's ont' : ' a'} demandé à ne plus être contactée{d.oppositions.length > 1 ? 's' : ''}, et figure{d.oppositions.length > 1 ? 'nt' : ''} dans une autre mission</p>
+      <ul className="mt-1 divide-y divide-red-200/60">
+        {d.oppositions.map(o => (
+          <li key={o.id_contact} className="py-1.5 flex flex-wrap items-center gap-2 text-sm text-red-900">
+            <span className="flex-1 basis-56">{o.prenom} {o.nom} · {o.tel} <span className="text-xs">→ fiche encore ouverte dans : {o.ou.join(', ')}</span></span>
+            <button className="btn-secondary btn-sm" onClick={() => vue(o)}>C’est traité</button>
+          </li>
+        ))}
+      </ul>
+      <p className="text-[11px] text-red-800 mt-1">Leurs fiches n’ont pas été modifiées : à voir avec Chrystelle ou Marine.</p>
+    </div>
+  )
+  if (compact) {
+    if (!attente.length && !oppositions) return null
+    return (
+      <div className="space-y-2">
+        {attente.length > 0 && (
+          <div className="rounded-xl bg-amber-50 border border-amber-200 px-3 py-2.5">
+            <p className="text-sm font-semibold text-quai-navy">{attente.length} à transmettre</p>
+            <ul className="divide-y divide-amber-200/70">{attente.map(ligne)}</ul>
+          </div>
+        )}
+        {oppositions}
+      </div>
+    )
+  }
   return (
-    <Bloc titre="À transmettre" icon="arrow-right" aide="Ce que Lilas a obtenu pour d’autres : les rendez-vous de courtage pour Marine, et les estimations à caler.">
-      <h3 className="text-sm font-semibold mt-1">Rendez-vous courtage pour Marine ({d.marine.length})</h3>
-      <ul className="text-sm divide-y divide-quai-border mb-3">{d.marine.map(l => <li key={l.horodatage + l.id_contact} className="py-1">{l.prenom} {l.nom} · {l.tel_portable} · proposé le {jj(l.horodatage)} · {l.accord ? 'client d’accord' : 'accord non donné'}</li>)}</ul>
-      <h3 className="text-sm font-semibold">Estimations ({d.estimations.length})</h3>
-      <ul className="text-sm divide-y divide-quai-border">{d.estimations.map(l => <li key={l.horodatage + l.id_contact} className="py-1">{l.prenom} {l.nom} · {l.tel_portable} · {l.acceptee ? `acceptée${l.date_rdv ? ', rdv le ' + new Date(l.date_rdv).toLocaleString('fr-FR') : ''}` : 'proposée'}{l.adresse ? ` · ${l.adresse}` : ''} · à faire par {l.source === 'DELEGUE' ? l.conseiller : l.madame_fichier}</li>)}</ul>
+    <Bloc titre={`À transmettre (${attente.length})`} icon="arrow-right" aide="Ce que l’appelante a obtenu pour d’autres : les rendez-vous de courtage pour Marine, et les estimations à caler. Cliquez « Transmis » une fois que c’est fait.">
+      {visibles.length === 0 ? <p className="text-sm text-quai-muted">{tout ? 'Rien pour l’instant.' : 'Rien n’attend.'}</p> : <ul className="divide-y divide-quai-border">{visibles.map(ligne)}</ul>}
+      {lignes.length > attente.length && <button className="text-xs text-quai-muted underline mt-2 py-1" onClick={() => setTout(t => !t)}>{tout ? 'Ne montrer que ce qui attend' : `Voir aussi ce qui est transmis ou seulement proposé (${lignes.length - attente.length})`}</button>}
+      {oppositions && <div className="mt-3">{oppositions}</div>}
     </Bloc>
   )
 }
 
 const NOMS_PARTIES = { accueil: 'Page d’accueil (texte de présentation)', '0': 'Ouverture', '1': 'Coordonnées', '2.1': 'Projet et motivation', '2.2': 'Critères', '2.3': 'Financement', '3': 'Vendre pour acheter', mandat: 'Le mandat de recherche', '4': 'Suite donnée', repondeur: 'Message sur le répondeur', sms: 'Modèle de SMS' }
 function Scripts() {
-  const [p, setP] = useState(null)
-  useEffect(() => { api.get('/acquereurs/admin/scripts').then(r => setP(r.data.parties)).catch(err) }, [])
-  if (!p) return null
-  const sauver = (x) => api.put(`/acquereurs/admin/scripts/${x.partie}`, { texte: x.texte }).then(() => toast.success('Script enregistré')).catch(err)
+  const [p, setP] = useState(null), [origine, setOrigine] = useState({})
+  useEffect(() => { api.get('/acquereurs/admin/scripts').then(r => { setP(r.data.parties); setOrigine(Object.fromEntries(r.data.parties.map(x => [x.partie, x.texte]))) }).catch(err) }, [])
+  const modifies = (p || []).filter(x => x.texte !== origine[x.partie])
+  // Quitter la page avec un texte non enregistré : le navigateur prévient.
+  useEffect(() => {
+    if (!modifies.length) return
+    const e = (ev) => { ev.preventDefault(); ev.returnValue = '' }
+    window.addEventListener('beforeunload', e); return () => window.removeEventListener('beforeunload', e)
+  }, [modifies.length])
+  if (!p) return <Bloc titre="Scripts et textes" icon="file-text"><p className="text-sm text-quai-muted animate-pulse">Chargement…</p></Bloc>
+  const sauver = (x) => api.put(`/acquereurs/admin/scripts/${x.partie}`, { texte: x.texte }).then(() => { setOrigine(o => ({ ...o, [x.partie]: x.texte })); toast.success('Texte enregistré') }).catch(err)
+  const toutSauver = async () => { for (const x of modifies) await sauver(x) }
   const num = (k) => ({ mandat: '4', '4': '5' }[k] ?? (/^\d/.test(k) ? k : null))
   return (
-    <Bloc titre="Scripts et textes" icon="file-text" aide="Chaque texte s’affiche à l’écran dans sa partie de l’appel. Variables remplacées : {civilite}, {prenom}, {nom}.">
+    <Bloc titre={`Scripts et textes (${p.filter(x => origine[x.partie]).length} rédigés sur ${p.length})`} icon="file-text" aide="Chaque texte s’affiche à l’écran dans sa partie de l’appel. Variables remplacées : {civilite}, {prenom}, {nom}.">
+      {modifies.length > 0 && (
+        <div className="sticky top-0 z-10 mb-3 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 flex flex-wrap items-center gap-2">
+          <span className="text-sm text-amber-900 flex-1">{modifies.length} texte{modifies.length > 1 ? 's' : ''} modifié{modifies.length > 1 ? 's' : ''}, pas encore enregistré{modifies.length > 1 ? 's' : ''}.</span>
+          <button className="btn-primary btn-sm" onClick={toutSauver}>Tout enregistrer</button>
+        </div>
+      )}
       <div className="space-y-3">
         {p.map((x, i) => (
           <div key={x.partie} className="rounded-xl border border-quai-border overflow-hidden">
             <div className="flex items-center gap-2.5 px-3 py-2 bg-quai-light border-b border-quai-border">
               <span className="w-6 h-6 rounded-full bg-quai-navy text-quai-gold grid place-items-center text-[11px] font-semibold shrink-0">{num(x.partie) ?? <Icon name="file-text" size="sm" />}</span>
               <span className="text-sm font-medium text-quai-navy flex-1">{NOMS_PARTIES[x.partie]}</span>
-              {x.texte ? <span className="text-[11px] text-emerald-700">rédigé</span> : <span className="text-[11px] text-quai-muted">à rédiger</span>}
+              {x.texte !== origine[x.partie] ? <span className="text-[11px] text-amber-800">modifié, non enregistré</span>
+                : x.texte ? <span className="text-[11px] text-emerald-700">rédigé</span> : <span className="text-[11px] text-quai-muted">à rédiger</span>}
             </div>
-            <textarea className="w-full px-3 py-2.5 text-sm text-quai-text focus:outline-none min-h-[5rem] block" placeholder="Le texte que l’agent lit à cette étape…"
+            <textarea aria-label={NOMS_PARTIES[x.partie]} className="w-full px-3 py-2.5 text-sm text-quai-text focus:outline-none focus:ring-2 focus:ring-inset focus:ring-quai-navy/40 min-h-[5rem] block" placeholder="Le texte que l’agent lit à cette étape…"
               value={x.texte} onChange={e => setP(l => l.map((y, j) => j === i ? { ...y, texte: e.target.value } : y))} />
             <div className="flex justify-end px-3 py-2 border-t border-quai-border">
-              <button className="btn-secondary btn-sm" onClick={() => sauver(x)}>Enregistrer</button>
+              <button className="btn-secondary btn-sm" disabled={x.texte === origine[x.partie]} onClick={() => sauver(x)}>Enregistrer</button>
             </div>
           </div>
         ))}
@@ -286,14 +393,14 @@ function Scripts() {
 
 // `section` : 'import' | 'report' | 'parametres' pour n'afficher qu'une
 // partie (espace de l'admin, rangé par onglet). Sans elle : tout.
-export default function AcqAdmin({ section = null }) {
+export default function AcqAdmin({ section = null, onUtilisateurs }) {
   const [cle, setCle] = useState(0)
   const [users, setUsers] = useState([])
   useEffect(() => { api.get('/acquereurs/admin/acces').then(r => setUsers(r.data.users)).catch(err) }, [])
   const rafraichir = () => setCle(k => k + 1)
   return (
-    <div className="p-4 md:p-6 max-w-4xl mx-auto">
-      {(!section || section === 'parametres') && <Acces users={users} />}
+    <div className="p-4 md:p-6 max-w-4xl mx-auto espace-mission">
+      {(!section || section === 'parametres') && <Acces users={users} onUtilisateurs={onUtilisateurs} />}
       {(!section || section === 'import') && <Import onFait={rafraichir} users={users} />}
       {(!section || section === 'report') && <Valider cle={cle} onFait={rafraichir} />}
       {(!section || section === 'report') && <Report cle={cle} />}

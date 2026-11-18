@@ -3,13 +3,16 @@
 // des relances de Chrystelle ou du courtage de Marine, sauf en lecture pour
 // signaler un appel récent du même numéro.
 const express = require('express');
+const crypto = require('crypto');
 const { db } = require('../database');
 const { requireAuth } = require('../auth');
 const R = require('../utils/opRegles');
+const { dateValide } = require('../utils/paris');
 const A = require('../utils/acqRegles');
 const I = require('../utils/acqImport');
 const M = require('../utils/acqModelo');
 const { journaliser } = require('../utils/journal');
+const { cleTel } = require('../blocs');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -24,6 +27,17 @@ const admin = (req, res, next) => { const m = moi(req); if (!m || !m.admin) retu
 const json = (s) => { try { return s ? JSON.parse(s) : null; } catch { return null; } };
 
 // Ce que voit la personne : ses contacts. L'admin voit tout.
+// Une ligne par personne : ses détails d'appels fusionnés (le dernier gagne).
+function personnes(lignes) {
+  const m = new Map();
+  for (const l of lignes) {
+    const d = json(l.details) || {};
+    const p = m.get(l.id_contact) || {};
+    m.set(l.id_contact, { ...p, ...d, vendre: { ...(p.vendre || {}), ...(d.vendre || {}) }, marine: { ...(p.marine || {}), ...(d.marine || {}) },
+      mandat: d.mandat || p.mandat });
+  }
+  return [...m.values()];
+}
 const perimetre = (m) => m.admin ? { where: '1=1', params: [] } : { where: 'sans_casse(c.madame_fichier) = sans_casse(?)', params: [m.nom_complet] };
 
 router.get('/mon-acces', (req, res) => {
@@ -115,8 +129,11 @@ router.get('/accueil', acces, (req, res) => {
   const { where, params } = perimetre(m);
   const f = calculerFile(m);
   const n = (sql) => db.prepare(sql).get(...params).n;
-  const det = db.prepare(`SELECT a.details FROM acq_appels a JOIN acq_contacts c ON c.id_contact = a.id_contact
-    WHERE ${where} AND a.details IS NOT NULL AND a.statut_final IS NOT NULL`).all(...params).map(x => json(x.details) || {});
+  // Par PERSONNE : ce qu'on sait d'elle après tous ses appels. Depuis que
+  // « vendre pour acheter » et le mandat sont repris d'un appel à l'autre,
+  // compter les appels aurait compté deux fois la même vendeuse.
+  const det = personnes(db.prepare(`SELECT a.id_contact, a.details FROM acq_appels a JOIN acq_contacts c ON c.id_contact = a.id_contact
+    WHERE ${where} AND a.details IS NOT NULL AND a.statut_final IS NOT NULL ORDER BY a.horodatage`).all(...params));
   res.json({
     // Le texte d'accueil, écrit par Loïck dans Administration › Scripts.
     texte: db.prepare("SELECT texte FROM acq_scripts WHERE partie = 'accueil'").get()?.texte || '',
@@ -141,7 +158,9 @@ router.get('/accueil', acces, (req, res) => {
       AND NOT EXISTS (SELECT 1 FROM acq_appels a WHERE a.id_contact = c.id_contact AND a.horodatage > c.modelo_reporte_le)`),
     en_attente_modelo: n(`SELECT COUNT(*) n FROM acq_contacts c WHERE ${where}
       AND EXISTS (SELECT 1 FROM acq_appels a WHERE a.id_contact = c.id_contact AND a.horodatage > COALESCE(c.modelo_reporte_le, ''))`),
-    ...(m.admin ? { a_reporter: M.aReporter().length, a_valider: M.archivagesEnAttente().length } : {}),
+    ...(m.admin ? { a_reporter: M.aReporter().length, a_valider: M.archivagesEnAttente().length,
+      a_transmettre: aTransmettre().filter(x => !x.transmis_le && x.pret).length,
+      oppositions_ailleurs: oppositionsAilleurs().length } : {}),
   });
 });
 
@@ -161,23 +180,25 @@ router.get('/contacts/:id', acces, (req, res) => {
     .map(f => ({ ...f, donnees: undefined, requalif: json(f.requalif) }));
   const appels = db.prepare('SELECT id, horodatage, canal, issue, statut_final, prochaine_action, date_prochaine_action, notes, madame_fichier, details FROM acq_appels WHERE id_contact = ? ORDER BY horodatage DESC').all(c.id_contact)
     .map(a => ({ ...a, texte: json(a.details)?.texte || null, details: undefined }));
-  const dernier = db.prepare("SELECT details FROM acq_appels WHERE id_contact = ? AND details IS NOT NULL ORDER BY horodatage DESC LIMIT 1").get(c.id_contact);
+  // Ce que les appels précédents ont appris et qui reste vrai : la situation
+  // de logement et le mandat. L'écran repart de là au lieu de repartir à vide.
+  const memoire = personnes(db.prepare("SELECT id_contact, details FROM acq_appels WHERE id_contact = ? AND statut_final IS NOT NULL AND details IS NOT NULL ORDER BY horodatage").all(c.id_contact))[0] || {};
   const scripts = Object.fromEntries(db.prepare('SELECT partie, texte FROM acq_scripts').all().map(s => [s.partie, s.texte]));
   const prochainSansRep = c.sans_reponse_de_suite + 1;
   res.json({
-    contact: c, fiches, appels, dernier_details: json(dernier?.details), scripts,
-    blocages: A.blocages(c, c.appels_ce_mois),
+    contact: c, fiches, appels, memoire: { vendre: memoire.vendre || {}, mandat: memoire.mandat || null }, scripts,
+    blocages: A.blocages(c, c.appels_ce_mois), alertes: A.alertes(),
     appel_recent: A.appelRecent(c, A.appelsRecentsAilleurs()),
     conseil_tentative: prochainSansRep >= 4 ? 'Quatrième tentative : envoyez un SMS ou un mail si pas de réponse.'
       : prochainSansRep === 3 ? 'Troisième tentative : laissez un message sur le répondeur.' : null,
   });
 });
 
-// Ce qui bloque l'appel, à cet instant : l'écran le redemande chaque minute,
-// pour qu'une fiche ouverte à 9 h 58 se débloque à 10 h.
+// Ce qui bloque l'appel, et ce qui n'est qu'un avertissement (l'heure) :
+// l'écran le redemande chaque minute.
 router.get('/contacts/:id/blocages', acces, (req, res) => {
   const c = chargerContact(req, res); if (!c) return;
-  res.json({ blocages: A.blocages(c, c.appels_ce_mois) });
+  res.json({ blocages: A.blocages(c, c.appels_ce_mois), alertes: A.alertes() });
 });
 
 // --- Une tentative sans réponse (ou faux numéro), SMS, mail ----------------
@@ -187,22 +208,28 @@ router.post('/contacts/:id/tentative', acces, (req, res) => {
   const canal = ['APPEL', 'SMS', 'MAIL'].includes(b.canal) ? b.canal : 'APPEL';
   const issue = canal === 'APPEL' ? b.issue : 'PAS_DE_REPONSE';
   if (!['PAS_DE_REPONSE', 'REPONDEUR', 'FAUX_NUMERO'].includes(issue)) return res.status(400).json({ error: 'Issue invalide' });
-  if (b.cle) { const deja = db.prepare('SELECT id FROM acq_appels WHERE cle = ?').get(b.cle); if (deja) return res.json({ id: deja.id, deja: true }); }
+  if (typeof b.cle === 'string' && b.cle) { const deja = db.prepare('SELECT id FROM acq_appels WHERE cle = ?').get(b.cle); if (deja) return res.json({ id: deja.id, deja: true }); }
   if (canal === 'MAIL') {
     // Un mail n'est pas un appel : ni plage, ni plafond. Mais pas de mail à
     // qui n'en veut pas, ni à qui a demandé à ne plus être contacté.
     if (c.stop_mail) return res.status(409).json({ error: 'Stop mail : envoi de mail impossible.' });
     if (c.statut === 'NE_PLUS_CONTACTER' || A.opposee(c)) return res.status(409).json({ error: 'Cette personne a demandé à ne plus être contactée.' });
   } else {
-    const bl = A.blocages(c, c.appels_ce_mois, A.debutAppel(b.ouvert_le));
+    const bl = A.blocages(c, c.appels_ce_mois);
     if (bl.length) return res.status(409).json({ error: bl[0], blocages: bl });
   }
+  const notes = typeof b.notes === 'string' && b.notes.trim() ? b.notes.trim().slice(0, 4000) : null;
+  const cleAppel = typeof b.cle === 'string' ? b.cle.slice(0, 200) : null;
   const r = db.transaction(() => {
     // Le texte du SMS ou du mail, s'il a été noté : il part dans la note Modelo.
-    const texte = canal !== 'APPEL' && String(b.texte || '').trim() ? String(b.texte).trim().slice(0, 2000) : null;
+    // « SMS dans la foulée » : un répondeur suivi d'un SMS, c'est UNE tentative
+    // (un seul appel compté au plafond), avec le texte du SMS gardé.
+    const foulee = canal === 'APPEL' && b.sms === true && issue !== 'FAUX_NUMERO';
+    const texte = (canal !== 'APPEL' || foulee) && typeof b.texte === 'string' && b.texte.trim() ? b.texte.trim().slice(0, 2000) : null;
+    const details = foulee ? { sms: true, ...(texte ? { texte } : {}) } : texte ? { texte } : null;
     const id = db.prepare(`INSERT INTO acq_appels (id_contact, madame_fichier, user_id, canal, issue, notes, details, cle)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(c.id_contact, req.moi.nom_complet, req.moi.id, canal, issue, b.notes || null,
-      texte ? JSON.stringify({ texte }) : null, b.cle || null).lastInsertRowid;
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(c.id_contact, req.moi.nom_complet, req.moi.id, canal, issue, notes,
+      details ? JSON.stringify(details) : null, cleAppel).lastInsertRowid;
     // Le statut ne bouge que s'il n'est pas déjà acquis : un sans-réponse sur
     // un contact requalifié qu'on rappelle ne défait pas sa requalification.
     let statut = c.statut;
@@ -225,18 +252,25 @@ router.post('/contacts/:id/tentative', acces, (req, res) => {
 router.post('/contacts/:id/cloture', acces, (req, res) => {
   const c = chargerContact(req, res); if (!c) return;
   const b = req.body || {};
-  if (b.cle) { const deja = db.prepare('SELECT id FROM acq_appels WHERE cle = ?').get(b.cle); if (deja) return res.json({ id: deja.id, deja: true }); }
+  if (typeof b.cle === 'string' && b.cle) { const deja = db.prepare('SELECT id FROM acq_appels WHERE cle = ?').get(b.cle); if (deja) return res.json({ id: deja.id, deja: true }); }
   const statut = b.statut_final;
+  const notes = typeof b.notes === 'string' && b.notes.trim() ? b.notes.trim().slice(0, 4000) : null;
+  const cleAppel = typeof b.cle === 'string' ? b.cle.slice(0, 200) : null;
+  const texteCourt = (v, n = 300) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, n) : null);
   if (!A.STATUTS.includes(statut)) return res.status(400).json({ error: 'Choisissez l’issue de l’appel.' });
   // Une opposition, une erreur d'identité ou un décès s'enregistrent toujours :
   // on ne refuse pas de noter que quelqu'un ne veut plus être appelé parce
   // qu'il est 13 h 05.
   const toujours = ['NE_PLUS_CONTACTER', 'ERREUR_IDENTITE', 'DECEDE'].includes(statut);
-  const bl = toujours ? [] : A.blocages(c, c.appels_ce_mois, A.debutAppel(b.ouvert_le), { entrant: b.entrant === true });
+  const bl = toujours ? [] : A.blocages(c, c.appels_ce_mois, new Date(), { entrant: b.entrant === true });
   if (bl.length) return res.status(409).json({ error: bl[0], blocages: bl });
   if (statut === 'A_RAPPELER' && !b.date_prochaine_action) return res.status(400).json({ error: 'Indiquez quand rappeler.' });
-  if (b.date_prochaine_action && !/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2})?$/.test(String(b.date_prochaine_action)))
-    return res.status(400).json({ error: 'Date de la prochaine action illisible.' });
+  if (b.date_prochaine_action) {
+    const t = String(b.date_prochaine_action);
+    const h = /T(\d{2}):(\d{2})$/.exec(t);
+    if (!/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2})?$/.test(t) || !dateValide(t.slice(0, 10)) || (h && (+h[1] > 23 || +h[2] > 59)))
+      return res.status(400).json({ error: 'Date de la prochaine action illisible.' });
+  }
 
   const fiches = db.prepare('SELECT id_fiche FROM acq_fiches WHERE id_contact = ?').all(c.id_contact).map(f => f.id_fiche);
   const dec = b.fiches || {};
@@ -277,20 +311,41 @@ router.post('/contacts/:id/cloture', acces, (req, res) => {
     type: ['SIMPLE', 'EXCLUSIF'].includes(m0.type) ? m0.type : 'NON_PRECISE',
     date_acceptation: m0.etat === 'ACCEPTE' ? (m0.date_acceptation || null) : null,
     motif_refus: m0.etat === 'REFUSE' ? (String(m0.motif_refus || '').trim().slice(0, 300) || null) : null,
+    // La date du rendez-vous de signature, si elle est calée ; sinon « à fixer ».
+    rdv_signature: m0.etat === 'ACCEPTE' && b.prochaine_action === 'Rendez-vous de signature' && b.date_prochaine_action ? String(b.date_prochaine_action) : null,
   } : null;
   if (mandat?.etat === 'ACCEPTE') {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(mandat.date_acceptation || '')) return res.status(400).json({ error: 'Mandat de recherche accepté : indiquez la date d’acceptation.' });
-    if (!b.date_prochaine_action) return res.status(400).json({ error: 'Mandat de recherche accepté : indiquez la date du rendez-vous de signature.' });
+    // Le rendez-vous de signature peut rester « à fixer » (décision du 18/11) :
+    // le client dit oui sans que le créneau soit calé.
   }
-  const details = { coordonnees: b.coordonnees || {}, vendre: b.vendre || {}, marine: b.marine || {}, consentement_rappel: !!b.consentement_rappel,
-    ...(mandat ? { mandat } : {}), ...(b.entrant === true ? { entrant: true } : {}) };
+  const objet = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? v : {});
+  // Une coordonnée « modifiée » sans nouvelle valeur ne dit rien : refusée,
+  // sinon le report sortait un « avant » rempli et un « après » vide.
+  const coordonnees = objet(b.coordonnees);
+  for (const k of ['tel_portable', 'tel_fixe', 'email']) {
+    const x = coordonnees[k]; if (!x) continue;
+    if (['MODIFIE', 'AJOUTE'].includes(x.etat) && !(typeof x.apres === 'string' && x.apres.trim()))
+      return res.status(400).json({ error: `Coordonnées : indiquez la nouvelle valeur (${k === 'email' ? 'e-mail' : k === 'tel_fixe' ? 'fixe' : 'portable'}), ou choisissez « Confirmé ».` });
+    if (x.apres != null && typeof x.apres !== 'string') return res.status(400).json({ error: 'Coordonnées illisibles.' });
+  }
+  if (coordonnees.adresse && ['MODIFIE', 'AJOUTE'].includes(coordonnees.adresse.etat)) {
+    const a = objet(coordonnees.adresse.apres);
+    if (!texteCourt(a.adresse)) return res.status(400).json({ error: 'Coordonnées : indiquez la nouvelle adresse, ou choisissez « Confirmée ».' });
+    coordonnees.adresse = { ...coordonnees.adresse, apres: { adresse: texteCourt(a.adresse), code_postal: texteCourt(a.code_postal, 10), commune: texteCourt(a.commune, 100) } };
+  }
+  const stopMail = b.stop_mail === true;
+  const achat = texteCourt(b.achat);
+  const details = { coordonnees, vendre: objet(b.vendre), marine: objet(b.marine), consentement_rappel: !!b.consentement_rappel,
+    ...(mandat ? { mandat } : {}), ...(b.entrant === true ? { entrant: true } : {}),
+    ...(stopMail ? { stop_mail: true } : {}), ...(achat ? { achat } : {}) };
   const ecrire = db.transaction(() => {
     const issue = ['NE_PLUS_CONTACTER', 'ERREUR_IDENTITE', 'DECEDE'].includes(statut) ? statut : statut === 'A_RAPPELER' && !b.joint ? 'A_RAPPELER' : 'JOINT';
     const id = db.prepare(`INSERT INTO acq_appels (id_contact, madame_fichier, user_id, canal, issue, statut_final,
         prochaine_action, date_prochaine_action, duree_sec, notes, details, cle)
       VALUES (?, ?, ?, 'APPEL', ?, ?, ?, ?, ?, ?, ?, ?)`).run(c.id_contact, req.moi.nom_complet, req.moi.id, issue, statut,
-      b.prochaine_action || null, b.date_prochaine_action || null, b.duree_sec || null, b.notes || null,
-      JSON.stringify(details), b.cle || null).lastInsertRowid;
+      texteCourt(b.prochaine_action, 100), b.date_prochaine_action || null, null, notes,
+      JSON.stringify(details), cleAppel).lastInsertRowid;
     // Les coordonnées modifiées remplacent celles de l'appli (l'ancienne
     // valeur reste dans le détail de l'appel, et part en note dans Modelo).
     const co = details.coordonnees;
@@ -307,6 +362,7 @@ router.post('/contacts/:id/cloture', acces, (req, res) => {
     sets.push("statut = ?", "statut_le = datetime('now')", 'rappel_le = ?');
     vals.push(statut, statut === 'A_RAPPELER' ? b.date_prochaine_action : null);
     if (b.consentement_rappel) sets.push("consentement_rappel = 1", "consentement_le = datetime('now')");
+    if (stopMail) sets.push('stop_mail = 1');
     db.prepare(`UPDATE acq_contacts SET ${sets.join(', ')} WHERE id_contact = ?`).run(...vals, c.id_contact);
     for (const idf of fiches) {
       // Sans décision dans cet envoi, la fiche n'est pas touchée : un appel
@@ -328,6 +384,15 @@ router.post('/contacts/:id/cloture', acces, (req, res) => {
       db.prepare(`INSERT INTO op_journal_opposition (id_modelo, canal, origine, agent, nom, prenom, telephone)
         VALUES (?, 'TELEPHONE', 'FICHIER_ACQUEREURS', ?, ?, ?, ?)`).run(c.id_contact, req.moi.nom_complet, c.nom, c.prenom, c.tel_portable || c.tel_fixe);
       db.prepare('UPDATE acq_contacts SET stop_tel = 1 WHERE id_contact = ?').run(c.id_contact);
+      // Dans l'opération anciens clients, la même personne (même identifiant
+      // Modelo ou même numéro) reçoit son stop téléphone tout de suite. Les
+      // fiches de Chrystelle et de Marine ne sont PAS touchées en silence :
+      // elles sont signalées à l'administration (oppositionsAilleurs).
+      const tels = [cleTel(c.tel_portable), cleTel(c.tel_fixe)].filter(Boolean);
+      const stop = db.prepare('UPDATE op_contacts SET stop_telephone = 1 WHERE id_modelo = ?');
+      stop.run(c.id_contact);
+      if (tels.length) for (const o of db.prepare('SELECT id_modelo, tel_portable, tel_fixe FROM op_contacts WHERE stop_telephone = 0').all())
+        if ([cleTel(o.tel_portable), cleTel(o.tel_fixe)].some(t => t && tels.includes(t))) stop.run(o.id_modelo);
     }
     return id;
   });
@@ -375,20 +440,33 @@ router.get('/suivi', acces, (req, res) => {
   const debut = /^\d{4}-\d{2}-\d{2}$/.test(req.query.debut || '') ? req.query.debut : '2000-01-01';
   const q = (sql) => db.prepare(sql).get(debut, ...params).n;
   const base = `FROM acq_appels a JOIN acq_contacts c ON c.id_contact = a.id_contact WHERE date(a.horodatage, 'localtime') >= ? AND ${where}`;
-  const d = db.prepare(`SELECT a.details, a.statut_final FROM acq_appels a JOIN acq_contacts c ON c.id_contact = a.id_contact
-    WHERE date(a.horodatage, 'localtime') >= ? AND ${where} AND a.details IS NOT NULL`).all(debut, ...params).map(x => ({ s: x.statut_final, d: json(x.details) || {} }));
+  const lignes = db.prepare(`SELECT a.id_contact, a.details, a.statut_final FROM acq_appels a JOIN acq_contacts c ON c.id_contact = a.id_contact
+    WHERE date(a.horodatage, 'localtime') >= ? AND ${where} AND a.statut_final IS NOT NULL ORDER BY a.horodatage`).all(debut, ...params);
+  const d = personnes(lignes.filter(x => x.details));
+  // Le dernier statut de chaque personne sur la période.
+  const dernier = new Map(lignes.map(x => [x.id_contact, x.statut_final]));
+  const statuts = [...dernier.values()];
+  const issues = Object.fromEntries(db.prepare(`SELECT CASE WHEN a.canal = 'APPEL' THEN a.issue ELSE a.canal END k, COUNT(*) n ${base} GROUP BY k`).all(debut, ...params).map(x => [x.k, x.n]));
+  const traites = q(`SELECT COUNT(DISTINCT a.id_contact) n ${base}`);
+  const joints = q(`SELECT COUNT(DISTINCT a.id_contact) n ${base} AND a.issue = 'JOINT'`);
   res.json({
     appels: q(`SELECT COUNT(*) n ${base}`),
-    traites: q(`SELECT COUNT(DISTINCT a.id_contact) n ${base}`),
-    joints: q(`SELECT COUNT(DISTINCT a.id_contact) n ${base} AND a.issue = 'JOINT'`),
-    requalifies: d.filter(x => x.s === 'REQUALIFIE').length,
-    archives: d.filter(x => ['ABANDONNE', 'DEJA_ACHETE', 'NE_PLUS_CONTACTER'].includes(x.s)).length,
-    vendeurs: d.filter(x => x.d.vendre?.doit_vendre === 'OUI').length,
-    estimations_proposees: d.filter(x => x.d.vendre?.estimation_proposee).length,
-    estimations_acceptees: d.filter(x => x.d.vendre?.estimation_acceptee).length,
-    marine: d.filter(x => x.d.marine?.proposee).length,
-    mandats_proposes: d.filter(x => x.d.mandat).length,
-    mandats_acceptes: d.filter(x => x.d.mandat?.etat === 'ACCEPTE').length,
+    traites, joints, taux_joints: traites ? Math.round((joints / traites) * 100) : null,
+    issues,
+    par_jour: db.prepare(`SELECT date(a.horodatage, 'localtime') j, COUNT(*) appels, COUNT(DISTINCT CASE WHEN a.issue = 'JOINT' THEN a.id_contact END) joints
+      ${base} GROUP BY j ORDER BY j DESC LIMIT 14`).all(debut, ...params),
+    par_personne: db.prepare(`SELECT a.madame_fichier qui, COUNT(*) appels, COUNT(DISTINCT a.id_contact) traites,
+        COUNT(DISTINCT CASE WHEN a.issue = 'JOINT' THEN a.id_contact END) joints,
+        COUNT(DISTINCT CASE WHEN a.statut_final = 'REQUALIFIE' THEN a.id_contact END) requalifies
+      ${base} GROUP BY a.madame_fichier ORDER BY appels DESC`).all(debut, ...params),
+    requalifies: statuts.filter(x => x === 'REQUALIFIE').length,
+    archives: statuts.filter(x => ['ABANDONNE', 'DEJA_ACHETE', 'NE_PLUS_CONTACTER'].includes(x)).length,
+    vendeurs: d.filter(x => x.vendre?.doit_vendre === 'OUI').length,
+    estimations_proposees: d.filter(x => x.vendre?.estimation_proposee).length,
+    estimations_acceptees: d.filter(x => x.vendre?.estimation_acceptee).length,
+    marine: d.filter(x => x.marine?.proposee).length,
+    mandats_proposes: d.filter(x => x.mandat).length,
+    mandats_acceptes: d.filter(x => x.mandat?.etat === 'ACCEPTE').length,
     restants: db.prepare(`SELECT COUNT(*) n FROM acq_contacts c WHERE ${where} AND c.exclu IS NULL
       AND NOT EXISTS (SELECT 1 FROM acq_appels a WHERE a.id_contact = c.id_contact)`).get(...params).n,
   });
@@ -417,8 +495,10 @@ router.post('/admin/contacts/:id/reintegrer', admin, (req, res) => {
   const c = db.prepare('SELECT * FROM acq_contacts WHERE id_contact = ?').get(req.params.id);
   if (!c) return res.status(404).json({ error: 'Contact introuvable' });
   const sets = ['exclu = NULL', 'exclu_leve = 1'], vals = [];
-  if (b.tel_portable) { sets.push('tel_portable = ?'); vals.push(String(b.tel_portable).trim()); }
-  if (c.statut === 'FAUX_NUMERO' && b.tel_portable) sets.push('statut = NULL');
+  const tel = typeof b.tel_portable === 'string' ? b.tel_portable.trim() : '';
+  if (tel && !cleTel(tel)) return res.status(400).json({ error: 'Numéro illisible.' });
+  if (tel) { sets.push('tel_portable = ?'); vals.push(tel); }
+  if (c.statut === 'FAUX_NUMERO' && tel) sets.push('statut = NULL');
   db.prepare(`UPDATE acq_contacts SET ${sets.join(', ')} WHERE id_contact = ?`).run(...vals, c.id_contact);
   res.json({ ok: true });
 });
@@ -452,7 +532,7 @@ router.get('/admin/listing', admin, (req, res) => {
 
 router.get('/admin/a-valider', admin, (req, res) => res.json({ fiches: M.archivagesEnAttente() }));
 router.post('/admin/valider', admin, (req, res) => {
-  const items = Array.isArray(req.body?.fiches) ? req.body.fiches : [];
+  const items = (Array.isArray(req.body?.fiches) ? req.body.fiches : []).filter(f => f && f.id_fiche != null);
   const st = db.prepare(`UPDATE acq_fiches SET archivage_valide = ?, archivage_valide_par = ?, archivage_valide_le = datetime('now') WHERE id_fiche = ?`);
   db.transaction(() => { for (const f of items) st.run(f.accepte ? 1 : 0, req.moi.nom_complet, String(f.id_fiche)); })();
   res.json({ ok: true, n: items.length });
@@ -463,12 +543,34 @@ router.get('/admin/report', admin, (req, res) => {
   if (attente) return res.status(409).json({ error: `${attente} archivage${attente > 1 ? 's' : ''} à valider avant le report.`, attente });
   const jusquA = db.prepare("SELECT datetime('now') d").get().d;
   const lignes = M.lignesReport(jusquA);
+  const contacts = new Set(lignes.map(l => l.id_contact)).size;
   if (req.query.format === 'csv') {
+    // Chaque fichier téléchargé laisse une trace : deux fichiers du même jour
+    // envoyés à Exploration Modelo, ce sont des notes en double dans Modelo.
+    db.prepare('INSERT INTO acq_telechargements (par, jusqu_a, contacts, lignes) VALUES (?, ?, ?, ?)').run(req.moi.nom_complet, jusquA, contacts, lignes.length);
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="Report_Modelo_Acquereurs_${jusquA.slice(0, 10)}.csv"`);
+    res.setHeader('Content-Disposition', `attachment; filename="Report_Modelo_Acquereurs_${jusquA.slice(0, 16).replace(' ', '_').replace(':', 'h')}.csv"`);
     return res.send(M.enCsv(lignes));
   }
-  res.json({ jusqu_a: jusquA, contacts: new Set(lignes.map(l => l.id_contact)).size, fiches: lignes.length, lignes });
+  res.json({ jusqu_a: jusquA, contacts, fiches: lignes.length, lignes,
+    // Ce que ce report change dans Modelo, à relire avant de télécharger.
+    reattributions: lignes.filter(l => l.nego_contact_cible).map(l => ({ id_contact: l.id_contact, nom: l.nom, prenom: l.prenom, vers: l.nego_contact_cible })),
+    archivages: lignes.filter(l => l.archiver_fiche).length });
+});
+
+// Où en est le report : le dernier fichier téléchargé, s'il attend son retour,
+// et les échecs du dernier retour (ils restaient affichés un instant, puis
+// plus rien ne disait qui avait échoué ni pourquoi).
+router.get('/admin/report/etat', admin, (req, res) => {
+  const tel = db.prepare('SELECT le, par, jusqu_a, contacts, lignes FROM acq_telechargements ORDER BY id DESC LIMIT 1').get() || null;
+  const retour = db.prepare('SELECT le, par, contacts, fiches FROM acq_reports ORDER BY id DESC LIMIT 1').get() || null;
+  const echecs = db.prepare(`SELECT r.id_contact, c.nom, c.prenom, r.motif, r.importe_le FROM acq_modelo_reports r
+    JOIN acq_contacts c ON c.id_contact = r.id_contact
+    WHERE r.statut = 'ECHEC' AND r.id = (SELECT MAX(x.id) FROM acq_modelo_reports x WHERE x.id_contact = r.id_contact AND x.statut = 'ECHEC')
+      AND r.importe_le >= COALESCE(c.modelo_reporte_le, '')
+      AND NOT EXISTS (SELECT 1 FROM acq_modelo_reports y WHERE y.id_contact = r.id_contact AND y.statut = 'REPORTE' AND y.id > r.id)
+    ORDER BY c.nom, c.prenom`).all();
+  res.json({ telechargement: tel, retour, en_attente_de_retour: !!tel && (!retour || retour.le < tel.le), echecs });
 });
 
 // Le fichier de retour d'Exploration Modelo, comme pour l'opération anciens
@@ -482,6 +584,12 @@ router.post('/admin/report/retour', admin, (req, res) => {
   const { lignes, colonnes } = I.lire(csv);
   const manque = ['id_contact', 'statut'].filter(c => !colonnes.includes(c));
   if (manque.length) return res.status(400).json({ error: `Colonnes attendues : id_contact ; id_fiche ; statut ; motif_echec ; jusqu_a (absentes : ${manque.join(', ')})` });
+  // Le même fichier chargé deux fois : refusé. Un ancien fichier rechargé par
+  // erreur faisait reculer la date de report, et les appels déjà reportés
+  // repartaient dans le fichier suivant (notes en double dans Modelo).
+  const empreinte = crypto.createHash('sha1').update(csv.replace(/\r\n/g, '\n').trim()).digest('hex');
+  const dejaCharge = db.prepare('SELECT le, par FROM acq_reports WHERE empreinte = ?').get(empreinte);
+  if (dejaCharge) return res.status(409).json({ error: `Ce fichier de retour a déjà été chargé le ${M.jour(dejaCharge.le)}${dejaCharge.par ? ` par ${dejaCharge.par}` : ''}. Rien n’a été modifié.` });
   const existe = db.prepare('SELECT 1 FROM acq_contacts WHERE id_contact = ?');
   const inserer = db.prepare('INSERT INTO acq_modelo_reports (id_contact, id_fiche, le, statut, motif, par) VALUES (?, ?, ?, ?, ?, ?)');
   const parContact = new Map(); const inconnus = new Set();
@@ -494,7 +602,7 @@ router.post('/admin/report/retour', admin, (req, res) => {
     parContact.get(id).push({ ...l, statut });
   }
   const maintenant = db.prepare("SELECT datetime('now') d").get().d;
-  let reportes = 0, echecs = 0; const motifs = [], sansDate = [];
+  let reportes = 0, echecs = 0; const motifs = [], sansDate = [], dateFuture = [];
   // « 2026-11-18 10:00:00 », « 2026-11-18T10:00 » ou « 18/11/2026 10:00 » (tableur).
   const dateRetour = (v) => {
     const t = String(v || '').trim(); let m;
@@ -513,27 +621,87 @@ router.post('/admin/report/retour', admin, (req, res) => {
         // l'export. Le contact reste à reporter, et on le dit.
         const j = ls.map(l => dateRetour(l.jusqu_a)).find(Boolean);
         if (!j) { sansDate.push(id); continue; }
-        db.prepare('UPDATE acq_contacts SET modelo_reporte_le = ? WHERE id_contact = ?').run(j, id);
+        // Une date dans le futur rendrait invisibles tous les appels à venir.
+        if (j > maintenant) { dateFuture.push(id); continue; }
+        // La date de report ne recule jamais.
+        db.prepare(`UPDATE acq_contacts SET modelo_reporte_le = CASE WHEN COALESCE(modelo_reporte_le, '') > ? THEN modelo_reporte_le ELSE ? END
+          WHERE id_contact = ?`).run(j, j, id);
         reportes++;
       } else { echecs++; const e = ls.find(l => l.statut === 'ECHEC'); motifs.push({ id_contact: id, motif: String(e.motif_echec || '').trim() || null }); }
     }
-    db.prepare('INSERT INTO acq_reports (par, jusqu_a, contacts, fiches) VALUES (?, ?, ?, ?)').run(req.moi.nom_complet, maintenant, reportes, lignes.length);
+    db.prepare('INSERT INTO acq_reports (par, jusqu_a, contacts, fiches, empreinte) VALUES (?, ?, ?, ?, ?)').run(req.moi.nom_complet, maintenant, reportes, lignes.length, empreinte);
   })();
   journaliser({ id: req.moi.id, nom_complet: req.moi.nom_complet }, 'MODELO_RETOUR', { details: { module: 'acquereurs', reportes, echecs, inconnus: inconnus.size } });
-  res.json({ ok: true, reportes, echecs, inconnus: [...inconnus], motifs, sans_date: sansDate });
+  res.json({ ok: true, reportes, echecs, inconnus: [...inconnus], motifs, sans_date: sansDate, date_future: dateFuture });
 });
 
-// Ce qui part chez Marine et les estimations à caler (aucune fiche créée chez elles).
-router.get('/admin/transmettre', admin, (req, res) => {
-  const lignes = db.prepare(`SELECT a.id_contact, a.horodatage, a.madame_fichier, a.details, c.nom, c.prenom, c.tel_portable, c.source,
+// Ce qui part chez Marine et les estimations à caler (aucune fiche créée chez
+// elles). Une ligne par personne et par type : le dernier appel qui en parle.
+// `pret` : il y a quelque chose à transmettre (le client est d'accord, ou
+// l'estimation est acceptée). `transmis_le` : c'est fait, la ligne sort de la
+// liste « à transmettre ».
+function aTransmettre() {
+  const appels = db.prepare(`SELECT a.id_contact, a.horodatage, a.madame_fichier, a.details, c.nom, c.prenom, c.tel_portable, c.tel_fixe, c.source,
       (SELECT GROUP_CONCAT(DISTINCT f.ancien_conseiller) FROM acq_fiches f WHERE f.id_contact = c.id_contact) AS conseiller
-    FROM acq_appels a JOIN acq_contacts c ON c.id_contact = a.id_contact WHERE a.details IS NOT NULL ORDER BY a.horodatage DESC`).all()
-    .map(l => ({ ...l, details: json(l.details) || {} }));
-  res.json({
-    marine: lignes.filter(l => l.details.marine?.proposee).map(l => ({ ...l, accord: !!l.details.marine.accord, details: undefined })),
-    estimations: lignes.filter(l => l.details.vendre?.estimation_proposee).map(l => ({ ...l, acceptee: !!l.details.vendre.estimation_acceptee,
-      date_rdv: l.details.vendre.date_rdv_estimation || null, adresse: l.details.vendre.adresse_bien_a_vendre || null, details: undefined })),
-  });
+    FROM acq_appels a JOIN acq_contacts c ON c.id_contact = a.id_contact
+    WHERE a.details IS NOT NULL AND a.statut_final IS NOT NULL ORDER BY a.horodatage DESC`).all();
+  const faites = db.prepare('SELECT id_contact, type, MAX(le) le, par FROM acq_transmissions GROUP BY id_contact, type').all();
+  const transmis = (id, type) => faites.find(t => t.id_contact === id && t.type === type) || null;
+  const vus = new Set(); const lignes = [];
+  for (const l of appels) {
+    const d = json(l.details) || {};
+    const base = { id_contact: l.id_contact, horodatage: l.horodatage, madame_fichier: l.madame_fichier, nom: l.nom, prenom: l.prenom,
+      tel: l.tel_portable || l.tel_fixe, conseiller: l.conseiller };
+    if (d.marine?.proposee && !vus.has('M' + l.id_contact)) {
+      vus.add('M' + l.id_contact); const t = transmis(l.id_contact, 'MARINE');
+      lignes.push({ ...base, type: 'MARINE', pret: !!d.marine.accord, transmis_le: t && t.le >= l.horodatage ? t.le : null, transmis_par: t?.par || null });
+    }
+    if (d.vendre?.estimation_proposee && !vus.has('E' + l.id_contact)) {
+      vus.add('E' + l.id_contact); const t = transmis(l.id_contact, 'ESTIMATION');
+      lignes.push({ ...base, type: 'ESTIMATION', pret: !!d.vendre.estimation_acceptee, date_rdv: d.vendre.date_rdv_estimation || null,
+        adresse: d.vendre.adresse_bien_a_vendre || null, transmis_le: t && t.le >= l.horodatage ? t.le : null, transmis_par: t?.par || null });
+    }
+  }
+  return lignes;
+}
+router.get('/admin/transmettre', admin, (req, res) => {
+  const l = aTransmettre();
+  res.json({ marine: l.filter(x => x.type === 'MARINE'), estimations: l.filter(x => x.type === 'ESTIMATION'), oppositions: oppositionsAilleurs() });
+});
+router.post('/admin/transmettre', admin, (req, res) => {
+  const b = req.body || {};
+  if (!['MARINE', 'ESTIMATION'].includes(b.type)) return res.status(400).json({ error: 'Type inconnu' });
+  const id = String(b.id_contact || '');
+  if (!db.prepare('SELECT 1 FROM acq_contacts WHERE id_contact = ?').get(id)) return res.status(404).json({ error: 'Contact introuvable' });
+  db.prepare('INSERT INTO acq_transmissions (id_contact, type, par) VALUES (?, ?, ?)').run(id, b.type, req.moi.nom_complet);
+  res.json({ ok: true });
+});
+
+// Une personne qui a dit « ne plus me contacter » à l'appelante acquéreurs et
+// qui a aussi une fiche chez Chrystelle (Estimés) ou chez Marine (courtage),
+// encore ouverte. On ne touche pas à leurs fiches en silence (décision du
+// 18/11) : on le signale ici, l'administration tranche avec elles.
+function oppositionsAilleurs() {
+  const vues = new Set(db.prepare('SELECT id_contact FROM acq_oppositions_vues').all().map(x => x.id_contact));
+  const opposes = db.prepare("SELECT id_contact, nom, prenom, tel_portable, tel_fixe, statut_le FROM acq_contacts WHERE statut = 'NE_PLUS_CONTACTER'").all()
+    .filter(c => !vues.has(c.id_contact));
+  if (!opposes.length) return [];
+  const estimes = db.prepare("SELECT nom, prenom, telephone, telephone2 FROM contacts WHERE statut NOT IN ('pas_interesse','inactif')").all();
+  const courtage = db.prepare("SELECT nom, prenom, telephone FROM courtage_fiches WHERE statut NOT IN ('gagne','perdu','ne_plus_contacter','faux_numero')").all();
+  const res = [];
+  for (const c of opposes) {
+    const tels = [cleTel(c.tel_portable), cleTel(c.tel_fixe)].filter(Boolean);
+    if (!tels.length) continue;
+    const ou = [];
+    if (estimes.some(e => [cleTel(e.telephone), cleTel(e.telephone2)].some(t => t && tels.includes(t)))) ou.push('Mission Estimés');
+    if (courtage.some(e => tels.includes(cleTel(e.telephone)))) ou.push('Mission Courtage');
+    if (ou.length) res.push({ id_contact: c.id_contact, nom: c.nom, prenom: c.prenom, tel: c.tel_portable || c.tel_fixe, le: c.statut_le, ou });
+  }
+  return res;
+}
+router.post('/admin/oppositions/:id/vue', admin, (req, res) => {
+  db.prepare('INSERT OR IGNORE INTO acq_oppositions_vues (id_contact, par) VALUES (?, ?)').run(String(req.params.id), req.moi.nom_complet);
+  res.json({ ok: true });
 });
 
 const PARTIES = ['accueil', '0', '1', '2.1', '2.2', '2.3', '3', 'mandat', '4', 'repondeur', 'sms'];

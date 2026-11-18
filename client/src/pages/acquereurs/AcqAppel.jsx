@@ -48,7 +48,7 @@ function Choix({ options, valeur, onChange, petit }) {
     <div className="flex flex-wrap gap-1.5">
       {options.map(([v, l]) => (
         <button key={v} type="button" onClick={() => onChange(valeur === v ? null : v)}
-          className={`rounded-lg border px-2.5 ${petit ? 'py-1 text-xs' : 'py-1.5 text-sm'} transition-colors ${valeur === v ? 'bg-quai-navy text-white border-quai-navy' : 'bg-white border-quai-border text-quai-text hover:bg-quai-light'}`}>
+          className={`rounded-lg border px-2.5 min-h-[2.75rem] md:min-h-0 ${petit ? 'py-1 text-xs' : 'py-1.5 text-sm'} transition-colors ${valeur === v ? 'bg-quai-navy text-white border-quai-navy' : 'bg-white border-quai-border text-quai-text hover:bg-quai-light'}`}>
           {l}
         </button>
       ))}
@@ -100,7 +100,38 @@ function Etapes({ etapes, onAller }) {
   )
 }
 
-const Champ = ({ label, children }) => <label className="block"><span className="text-[11px] text-quai-muted">{label}</span>{children}</label>
+// Un <label> qui entoure des boutons transmet le clic au premier d'entre eux :
+// toucher le libellé cochait « Actif » ou « Propriétaire » sans qu'on le voie.
+// Autour d'un groupe de boutons, c'est donc un simple groupe, pas un label.
+const Champ = ({ label, children }) => (children?.type === Choix
+  ? <div role="group" aria-label={label}><span className="block text-[11px] text-quai-muted mb-0.5">{label}</span>{children}</div>
+  : <label className="block"><span className="text-[11px] text-quai-muted">{label}</span>{children}</label>)
+
+// Dates proposées d'un clic pour un rappel : demain 10 h, dans deux jours 18 h,
+// dans une semaine. Jamais un samedi ni un dimanche.
+const pad = (n) => String(n).padStart(2, '0')
+const local = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+function dansJours(n, h) {
+  const d = new Date(); d.setDate(d.getDate() + n); d.setHours(h, 0, 0, 0)
+  while ([0, 6].includes(d.getDay())) d.setDate(d.getDate() + 1)
+  return local(d)
+}
+const RACCOURCIS = [['Demain 10 h', () => dansJours(1, 10)], ['Demain 18 h', () => dansJours(1, 18)], ['Dans 2 jours', () => dansJours(2, 10)], ['Dans 1 semaine', () => dansJours(7, 10)]]
+const horsPlage = (v) => { const m = /T(\d{2}):(\d{2})/.exec(v || ''); if (!m) return false
+  const j = new Date(v).getDay(), t = +m[1] * 60 + +m[2]
+  return j === 0 || j === 6 || t < 600 || (t >= 780 && t < 840) || t >= 1200 }
+function ChoixDate({ valeur, onChange }) {
+  return (
+    <div>
+      <input type="datetime-local" className="input max-w-[14rem] mt-0.5" value={valeur || ''} onChange={e => onChange(e.target.value)} />
+      <div className="flex flex-wrap gap-1.5 mt-1.5">
+        {RACCOURCIS.map(([l, f]) => <button key={l} type="button" onClick={() => onChange(f())} className="text-xs px-2.5 py-1.5 min-h-[2.75rem] md:min-h-0 rounded-full border border-quai-border bg-white text-quai-navy hover:border-quai-gold">{l}</button>)}
+      </div>
+      {valeur && valeur < local(new Date()) && <p className="text-[11px] text-amber-800 mt-1">Cette date est déjà passée.</p>}
+      {valeur && valeur >= local(new Date()) && horsPlage(valeur) && <p className="text-[11px] text-amber-800 mt-1">En dehors des horaires d’appel (lundi au vendredi, 10 h-13 h et 14 h-20 h).</p>}
+    </div>
+  )
+}
 
 // Ce qui est saisi survit à un rechargement : une coupure réseau ou un onglet
 // fermé par erreur ne doit pas faire perdre un appel de vingt minutes.
@@ -130,28 +161,27 @@ function ficheVierge(f) {
 const CLE_DERNIER_SMS = 'acq-dernier-sms'
 const dernierSms = () => { try { return localStorage.getItem(CLE_DERNIER_SMS) || '' } catch { return '' } }
 
-export default function AcqAppel({ id, position, onSuivant, onRetour, horsFile, revenir, demo, entrantInitial = false }) {
+export default function AcqAppel({ id, position, onSuivant, onRetour, onPasser, horsFile, revenir, demo, lecture = false, entrantInitial = false }) {
   const [d, setD] = useState(null)
   const [s, setS] = useState(null)       // la saisie
   const [ouv, setOuv] = useState({ fiches: true, p0: true })
   const [envoi, setEnvoi] = useState(false)
   const cle = useRef(null)
-  // L'heure d'ouverture de la fiche : c'est elle qui dit si l'appel a été
-  // passé dans la plage, pas l'heure où on clique « Enregistrer ».
-  const ouvertLe = useRef(null)
+  // Un brouillon repris d'une autre fois : on le dit, avec sa date.
+  const [repris, setRepris] = useState(null)
   // C'est la personne qui rappelle (fiche ouverte depuis « Il vous rappelle ? ») :
   // ni la plage ni le plafond ne s'appliquent à un appel qu'elle passe elle-même.
   const [entrant, setEntrant] = useState(entrantInitial)
 
   useEffect(() => {
-    setD(null); setS(null); cle.current = `${id}-${Date.now()}`; ouvertLe.current = new Date().toISOString()
+    setD(null); setS(null); setRepris(null); cle.current = `${id}-${Date.now()}`
     // Démonstration : les données arrivent toutes faites, rien n'est lu ni
     // écrit sur le serveur.
     ;(demo ? Promise.resolve({ data: demo }) : api.get(`/acquereurs/contacts/${id}`)).then(r => {
       setD(r.data)
       const c = r.data.contact
       const init = {
-        issue: null, rappel_le: '', texte: '', ouverture: null, notes: '', consentement_rappel: false,
+        issue: null, rappel_le: '', texte: '', sms_foulee: false, ouverture: null, notes: '', consentement_rappel: false, stop_mail: false, achat: '',
         coordonnees: {
           tel_portable: { etat: null, avant: c.tel_portable || '', apres: '' },
           tel_fixe: { etat: null, avant: c.tel_fixe || '', apres: '' },
@@ -159,7 +189,11 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, horsFile, 
           adresse: { etat: null, avant: { adresse: c.adresse || '', code_postal: c.code_postal || '', commune: c.commune || '' }, apres: { adresse: '', code_postal: '', commune: '' } },
         },
         fiches: Object.fromEntries(r.data.fiches.map(f => [f.id_fiche, ficheVierge(f)])),
-        vendre: {}, marine: {}, mandat: { etat: null, type: 'NON_PRECISE', date_acceptation: '', motif_refus: '' },
+        // Ce que les appels d'avant ont appris et qui reste vrai : la situation
+        // de logement et le mandat. Sans cela tout repartait à vide au rappel,
+        // et le report Modelo perdait la ligne SITUATION.
+        vendre: { ...(r.data.memoire?.vendre || {}) }, marine: {},
+        mandat: { etat: null, type: 'NON_PRECISE', date_acceptation: '', motif_refus: '', ...(r.data.memoire?.mandat || {}) },
         statut_final: null, prochaine_action: null, date_prochaine_action: '',
       }
       // Le brouillon porte l'identifiant de sa fiche : on ne reprend jamais
@@ -169,20 +203,26 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, horsFile, 
         // Le brouillon est remis d'aplomb avec les fiches d'aujourd'hui : un
         // réimport a pu en ajouter une (ou en retirer) depuis qu'il a été écrit.
         const fiches = Object.fromEntries(r.data.fiches.map(f => [f.id_fiche, b.fiches?.[f.id_fiche] || ficheVierge(f)]))
-        setS({ ...init, ...b, fiches, coordonnees: { ...init.coordonnees, ...(b.coordonnees || {}) } })
-      } else setS({ ...init, _id: id })
+        // La clé d'envoi suit le brouillon : après un rechargement de page, un
+        // appel déjà parti n'est pas enregistré une seconde fois.
+        if (b._cle) cle.current = b._cle
+        // L'issue n'est pas reprise : elle se choisit à chaque appel.
+        setS({ ...init, ...b, issue: null, fiches, coordonnees: { ...init.coordonnees, ...(b.coordonnees || {}) } })
+        const touche = b.ouverture || b.notes || b.statut_final || Object.values(b.coordonnees || {}).some(x => x?.etat)
+        if (touche && b._le) setRepris(b._le)
+      } else setS({ ...init, _id: id, _cle: cle.current, _le: new Date().toISOString() })
     }).catch(() => setD({ erreur: true }))
   }, [id])
   // Au changement de fiche, `s` est encore celle d'avant pendant un rendu :
   // sans ce contrôle, la saisie de la personne précédente était recopiée
   // dans le brouillon de la suivante.
   useEffect(() => { if (s && s._id === id && !demo) ecrireBrouillon(id, s) }, [id, s, demo])
-  // Ce qui bloque l'appel change avec l'heure : une fiche ouverte à 9 h 58
-  // doit se débloquer à 10 h sans qu'on la referme.
+  // Ce qui bloque (stop, plafond) et ce qui avertit (l'heure) change dans la
+  // journée : l'écran le redemande chaque minute.
   useEffect(() => {
     if (demo) return
     const t = setInterval(() => {
-      api.get(`/acquereurs/contacts/${id}/blocages`).then(r => setD(prev => prev && prev.contact ? { ...prev, blocages: r.data.blocages } : prev)).catch(() => {})
+      api.get(`/acquereurs/contacts/${id}/blocages`).then(r => setD(prev => prev && prev.contact ? { ...prev, blocages: r.data.blocages, alertes: r.data.alertes || [] } : prev)).catch(() => {})
     }, 60000)
     return () => clearInterval(t)
   }, [id, demo])
@@ -190,7 +230,7 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, horsFile, 
   const c = d?.contact
   const gardees = useMemo(() => s ? Object.entries(s.fiches).filter(([, f]) => f.decision === 'GARDER').map(([k]) => k) : [], [s])
   if (!d) return <p className="p-6 text-sm text-quai-muted">Chargement…</p>
-  if (d.erreur) return <p className="p-6 text-sm text-red-700">Fiche introuvable. <button className="underline" onClick={onRetour}>Revenir</button></p>
+  if (d.erreur) return <p className="p-6 text-sm text-red-700">La fiche n’a pas pu être chargée. <button className="underline" onClick={onRetour}>Revenir</button></p>
   if (!s) return null
 
   const maj = (chemin, valeur) => setS(prev => {
@@ -200,6 +240,11 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, horsFile, 
     return n
   })
   const bloque = !entrant && d.blocages.length > 0
+  // « Remplie » : quelque chose a été saisi PENDANT cet appel. Les décisions
+  // déjà enregistrées lors d'un appel précédent ne comptent pas — sinon
+  // l'alerte sautait à chaque répondeur sur une personne déjà jointe.
+  const remplie = s.ouverture === 'OK' || !!s.statut_final || Object.values(s.coordonnees).some(x => x.etat)
+    || d.fiches.some(f => (s.fiches[f.id_fiche]?.decision || null) !== (f.decision || null))
   const script = (p) => {
     const t = d.scripts?.[p]
     if (!t) return `Emplacement du script (partie ${p}) : à rédiger dans Mission Acquéreurs › Paramètres.`
@@ -216,27 +261,34 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, horsFile, 
     // Repris de l'opération : une fiche déjà remplie qu'on enregistre en
     // « répondeur » ou « pas de réponse », c'est presque toujours une erreur
     // de bouton. On demande avant de perdre la conversation.
-    const remplie = s.ouverture === 'OK' || Object.values(s.fiches).some(f => f.decision)
     if (remplie && !window.confirm(`La fiche est remplie, mais l’issue choisie est « ${ISSUES.find(x => x[0] === s.issue)?.[1]} ». Enregistrer quand même ?`)) return
     setEnvoi(true)
     try {
-      await api.post(`/acquereurs/contacts/${id}/tentative`, { issue, canal, cle: cle.current + '-' + issue + canal, notes: s.notes || null, ouvert_le: ouvertLe.current,
-        texte: canal !== 'APPEL' ? (s.texte || '').trim() || null : null })
-      if (canal === 'SMS' && (s.texte || '').trim()) { try { localStorage.setItem(CLE_DERNIER_SMS, s.texte.trim()) } catch { /* stockage indisponible */ } }
+      const foulee = canal === 'APPEL' && issue !== 'FAUX_NUMERO' && s.sms_foulee
+      await api.post(`/acquereurs/contacts/${id}/tentative`, { issue, canal, cle: cle.current + '-' + issue + canal, notes: s.notes || null,
+        sms: foulee || undefined, texte: canal !== 'APPEL' || foulee ? (s.texte || '').trim() || null : null })
+      if ((canal === 'SMS' || foulee) && (s.texte || '').trim()) { try { localStorage.setItem(CLE_DERNIER_SMS, s.texte.trim()) } catch { /* stockage indisponible */ } }
       effacerBrouillon(id)
-      toast.success(canal === 'SMS' ? 'SMS noté' : canal === 'MAIL' ? 'Mail noté' : issue === 'FAUX_NUMERO' ? 'Faux numéro noté' : 'Tentative notée')
+      toast.success(canal === 'SMS' ? 'SMS noté' : canal === 'MAIL' ? 'Mail noté' : issue === 'FAUX_NUMERO' ? 'Faux numéro noté' : foulee ? 'Tentative et SMS notés' : 'Tentative notée')
       onSuivant()
     } catch (e) { toast.error(e.messageLisible || e.message) } finally { setEnvoi(false) }
   }
 
-  const cloturer = async () => {
+  // `impose` : la conversation a eu lieu, mais l'issue retenue est « à
+  // rappeler ». Tout ce qui a été saisi part quand même — avant, changer
+  // l'issue de « Joint » à « À rappeler » jetait la saisie sans prévenir.
+  const cloturer = async (impose = null) => {
     if (envoi) return
+    const statut = impose?.statut || s.statut_final
+    const dateAction = impose ? impose.date : s.date_prochaine_action
     const mandat = s.mandat || { etat: null }
-    const mandatVisible = s.statut_final === 'REQUALIFIE' || Object.values(s.fiches).some(f => f.decision === 'GARDER' && f.projet?.etat_projet === 'ACTIF')
-    const sansProjet = ['A_RAPPELER', 'ERREUR_IDENTITE', 'DECEDE'].includes(s.statut_final)
-    if (!s.statut_final) return toast.error('Choisissez l’issue de l’appel.')
+    const mandatVisible = statut === 'REQUALIFIE' || Object.values(s.fiches).some(f => f.decision === 'GARDER' && f.projet?.etat_projet === 'ACTIF')
+    const sansProjet = ['A_RAPPELER', 'ERREUR_IDENTITE', 'DECEDE'].includes(statut)
+    if (!statut) return toast.error('Choisissez la suite donnée.')
+    if (statut === 'A_RAPPELER' && !dateAction) return toast.error('Précisez quand rappeler.')
     if (mandat.etat === 'ACCEPTE' && !mandat.date_acceptation) return toast.error('Mandat de recherche accepté : indiquez la date d’acceptation.')
-    if (mandat.etat === 'ACCEPTE' && !s.date_prochaine_action) return toast.error('Mandat de recherche accepté : indiquez la date du rendez-vous de signature.')
+    const vide = Object.entries(s.coordonnees).find(([k, x]) => ['MODIFIE', 'AJOUTE'].includes(x.etat) && !(k === 'adresse' ? x.apres?.adresse : String(x.apres || '').trim()))
+    if (vide) return toast.error('Coordonnées : indiquez la nouvelle valeur, ou choisissez « Confirmé ».')
     if (!sansProjet) {
       const oubli = Object.values(s.fiches).filter(f => !f.decision).length
       if (oubli) return toast.error(`Décision manquante sur ${oubli} recherche${oubli > 1 ? 's' : ''}.`)
@@ -251,9 +303,10 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, horsFile, 
     setEnvoi(true)
     try {
       await api.post(`/acquereurs/contacts/${id}/cloture`, {
-        cle: cle.current + '-cloture', statut_final: s.statut_final, prochaine_action: s.prochaine_action,
-        date_prochaine_action: s.date_prochaine_action || null, notes: s.notes || null, consentement_rappel: s.consentement_rappel,
-        joint: true, coordonnees, vendre: s.vendre, marine: s.marine, fiches, ouvert_le: ouvertLe.current, entrant,
+        cle: cle.current + '-cloture', statut_final: statut, prochaine_action: impose ? 'Rappel' : s.prochaine_action,
+        date_prochaine_action: dateAction || null, notes: s.notes || null, consentement_rappel: s.consentement_rappel,
+        joint: true, coordonnees, vendre: s.vendre, marine: s.marine, fiches, entrant,
+        stop_mail: s.stop_mail || undefined, achat: statut === 'DEJA_ACHETE' ? (s.achat || '').trim() || null : null,
         mandat: mandatVisible && mandat.etat ? mandat : null,
       })
       effacerBrouillon(id)
@@ -262,7 +315,7 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, horsFile, 
     } catch (e) { toast.error(e.messageLisible || e.message) } finally { setEnvoi(false) }
   }
   const neplus = async () => {
-    if (!window.confirm('Enregistrer que cette personne ne souhaite plus être contactée ? Elle sortira de toutes les files, dans tous les modules.')) return
+    if (!window.confirm('Enregistrer que cette personne ne souhaite plus être contactée ? Elle sort de votre file et de l’opération anciens clients ; l’administration est prévenue pour les autres missions.')) return
     if (demo) return finDemo('opposition notée')
     setEnvoi(true)
     try {
@@ -279,10 +332,14 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, horsFile, 
     if (i === 'REFUS_FERME') return neplus()
     if (i === 'JOINT') return cloturer()
     if (i === 'A_RAPPELER' && !s.rappel_le) return toast.error('Précisez quand rappeler.')
+    // La personne a été jointe, la fiche est remplie, et on convient de se
+    // rappeler : la saisie part avec l'appel.
+    if (i === 'A_RAPPELER' && remplie) return cloturer({ statut: 'A_RAPPELER', date: s.rappel_le })
+    if (remplie && !window.confirm(`La fiche est remplie, mais l’issue choisie est « ${ISSUES.find(x => x[0] === i)?.[1]} » : la saisie ne sera pas gardée. Enregistrer quand même ?`)) return
     if (demo) return finDemo('appel enregistré')
     setEnvoi(true)
     try {
-      await api.post(`/acquereurs/contacts/${id}/cloture`, { cle: cle.current + '-' + i, statut_final: i, ouvert_le: ouvertLe.current, entrant,
+      await api.post(`/acquereurs/contacts/${id}/cloture`, { cle: cle.current + '-' + i, statut_final: i, entrant,
         date_prochaine_action: i === 'A_RAPPELER' ? s.rappel_le : null, prochaine_action: i === 'A_RAPPELER' ? 'Rappel' : null, notes: s.notes || null })
       effacerBrouillon(id); toast.success('Appel enregistré'); onSuivant()
     } catch (e) { toast.error(e.messageLisible || e.message) } finally { setEnvoi(false) }
@@ -304,13 +361,34 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, horsFile, 
     { k: 'p4', ancre: 'acq-p4', l: 'Suite', fait: !!s.statut_final },
   ]
   const manquesReq = gardees.length ? gardees.flatMap(k => manques(s.fiches[k].projet).map(m => gardees.length > 1 ? `${m} (recherche ${k})` : m)) : ['au moins une recherche gardée']
-  const tel = c.tel_portable || c.tel_fixe
+  const tels = [...new Set([c.tel_portable, c.tel_fixe].filter(Boolean))]
+  // Pourquoi le bouton du bas est grisé : dit en clair, juste au-dessus.
+  const raison = lecture ? 'Lecture seule : vous regardez l’écran de l’agent. Pour agir sur une fiche, ouvrez-la depuis l’onglet Contacts.'
+    : !s.issue ? 'Choisissez l’issue de l’appel.'
+    : bloque && s.issue !== 'MAIL' ? d.blocages[0]
+    : joint && !statutChoisi ? 'Il manque : la suite donnée.'
+    : joint && statutChoisi === 'REQUALIFIE' && manquesReq.length ? `Requalifié impossible, il manque : ${manquesReq.join(', ')}.`
+    : null
+  const versSuite = () => { setOuv(o => ({ ...o, p4: true })); setTimeout(() => document.getElementById('acq-p4')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50) }
+  // Au rappel : ce qui avait été convenu, et la dernière note, sous les yeux.
+  const dernierAppel = d.appels[0]
+  const derniereNote = d.appels.find(a => a.notes)
+  const quand = (v) => { const m = /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?/.exec(String(v || '')); return m ? `${m[3]}/${m[2]}${m[4] ? ` à ${m[4]} h ${m[5]}` : ''}` : '' }
+  const horodate = (v) => new Date(String(v).replace(' ', 'T') + 'Z').toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+  // Déjà acheté, abandonné : toutes les recherches sans décision partent à
+  // l'archivage, motif déjà écrit. Plus besoin de le retaper sur chacune.
+  const choisirStatut = (v) => setS(prev => {
+    const n = structuredClone(prev); n.statut_final = v
+    const motif = v === 'DEJA_ACHETE' ? 'a déjà acheté' : v === 'ABANDONNE' ? 'projet abandonné' : null
+    if (motif) for (const f of Object.values(n.fiches)) if (!f.decision) { f.decision = 'ARCHIVER'; f.motif = motif }
+    return n
+  })
 
   return (
-    <div className="p-3 max-w-3xl mx-auto pb-24">
+    <div className="p-3 max-w-3xl mx-auto pb-32">
       <div className="flex items-center gap-2 mb-2 text-xs text-quai-muted">
-        <button onClick={onRetour} className="inline-flex items-center gap-1 hover:text-quai-navy"><Icon name="arrow-left" size="sm" /> Ma file</button>
-        {revenir && <button onClick={revenir.aller} className="inline-flex items-center gap-1 text-quai-navy underline">{revenir.libelle}</button>}
+        <button onClick={onRetour} className="inline-flex items-center gap-1 hover:text-quai-navy py-2 -my-2 pr-2"><Icon name="arrow-left" size="sm" /> Ma file</button>
+        {revenir && <button onClick={revenir.aller} className="inline-flex items-center gap-1 text-quai-navy underline py-2 -my-2">{revenir.libelle}</button>}
         <span className="ml-auto">{position}</span>
 
       </div>
@@ -323,11 +401,17 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, horsFile, 
             <div className="font-display font-semibold text-xl text-quai-navy leading-tight">{c.civilite ? c.civilite + ' ' : ''}{c.prenom} {c.nom}</div>
             <div className="text-xs text-quai-muted truncate">{[c.email, c.commune].filter(Boolean).join(' · ') || 'Pas d’e-mail connu'}</div>
           </div>
-          {tel
-            ? <a href={`tel:${tel.replace(/\s/g, '')}`} className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl bg-quai-gold text-quai-navy font-semibold px-4 py-2.5 hover:bg-quai-goldlt transition-colors">
-                <Icon name="phone" size="sm" /> {tel}
-              </a>
-            : <Pastille ton="ambre">Pas de téléphone</Pastille>}
+          {/* Tous les numéros connus : sur un sans-réponse, on essaie le fixe.
+              Appel interdit (stop, plafond, hors file) : le bouton ne compose pas. */}
+          {tels.length === 0 ? <Pastille ton="ambre">Pas de téléphone</Pastille> : (
+            <div className="w-full sm:w-auto flex flex-wrap gap-1.5">
+              {tels.map((t, i) => bloque || lecture
+                ? <span key={t} className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 rounded-xl bg-quai-light text-quai-muted border border-quai-border px-4 py-2.5"><Icon name="phone-off" size="sm" /> {t}</span>
+                : <a key={t} href={`tel:${t.replace(/\s/g, '')}`} className={`flex-1 sm:flex-none inline-flex items-center justify-center gap-2 rounded-xl font-semibold px-4 py-2.5 transition-colors ${i === 0 ? 'bg-quai-gold text-quai-navy hover:bg-quai-goldlt' : 'bg-white text-quai-navy border border-quai-gold hover:bg-quai-light'}`}>
+                    <Icon name="phone" size="sm" /> {t}
+                  </a>)}
+            </div>
+          )}
         </div>
         <div className="flex flex-wrap gap-1.5 mt-3">
           <Pastille ton="or">{c.source === 'DELEGUE' ? 'Délégué' : 'Orphelin'}{c.anciens_conseillers ? ` · ancien conseiller : ${c.anciens_conseillers}` : ''}</Pastille>
@@ -338,6 +422,23 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, horsFile, 
           {c.stop_mail ? <Pastille ton="rouge">Stop mail</Pastille> : null}
           {d.appel_recent && <Pastille ton="ambre">Appelé le {jj(d.appel_recent.le)} par {d.appel_recent.par} ({d.appel_recent.module})</Pastille>}
         </div>
+        {c.statut === 'A_RAPPELER' && c.rappel_le && (
+          <div className="mt-2.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-sm px-3 py-2">
+            <b>Rappel convenu : {quand(c.rappel_le)}.</b>
+          </div>
+        )}
+        {derniereNote && (
+          <div className="mt-2.5 bg-quai-gold/10 border-l-4 border-quai-gold rounded-r-lg px-3 py-2">
+            <div className="text-[11px] text-quai-muted">Votre dernière note · {horodate(derniereNote.horodatage)}</div>
+            <p className="text-[13px] text-quai-text mt-0.5 whitespace-pre-line">{derniereNote.notes}</p>
+          </div>
+        )}
+        {repris && (
+          <div className="mt-2.5 rounded-lg bg-quai-light border border-quai-border text-xs text-quai-text px-3 py-2 flex flex-wrap items-center gap-2">
+            <span className="flex-1">Saisie commencée le {new Date(repris).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}, reprise ici.</span>
+            <button type="button" className="underline text-quai-navy py-2 -my-2" onClick={() => { effacerBrouillon(id); onRetour() }}>Effacer et repartir de zéro</button>
+          </div>
+        )}
         {(c.derniere_note_date || c.derniere_note_extrait) && (
           <div className="mt-2.5 bg-quai-light rounded-lg px-3 py-2">
             <div className="text-[11px] text-quai-muted">Dernière note Modelo{c.derniere_note_date ? ` · ${jj(c.derniere_note_date)}` : ''}{c.derniere_note_auteur ? ` · ${c.derniere_note_auteur}` : ''}</div>
@@ -349,8 +450,8 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, horsFile, 
             <span className="text-amber-800">Fiche ouverte hors de l’ordre de la file.</span>
             {!demo && (
               <label className="inline-flex items-center gap-1.5 text-quai-navy cursor-pointer">
-                <input type="checkbox" checked={entrant} onChange={e => setEntrant(e.target.checked)} />
-                C’est la personne qui m’a rappelé (les horaires et le plafond ne s’appliquent pas)
+                <input type="checkbox" className="w-5 h-5" checked={entrant} onChange={e => setEntrant(e.target.checked)} />
+                C’est la personne qui m’a rappelé (le plafond et les stops ne s’appliquent pas)
               </label>
             )}
           </div>
@@ -360,10 +461,10 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, horsFile, 
           ? <p className="text-[11px] text-emerald-700 mt-1">Mise à jour Modelo faite le {new Date(String(c.modelo_reporte_le).replace(' ', 'T') + 'Z').toLocaleDateString('fr-FR')}{c.dernier_appel_le && c.dernier_appel_le > c.modelo_reporte_le ? ' · du nouveau depuis, à reporter' : ''}</p>
           : c.appels_total > 0 && <p className="text-[11px] text-quai-muted mt-1">Pas encore reporté dans Modelo.</p>}
         {d.appels.length > 0 && (
-          <details className="mt-1.5">
-            <summary className="text-[11px] text-quai-navy cursor-pointer">Historique dans l’appli ({d.appels.length})</summary>
+          <details className="mt-1.5" open={d.appels.length <= 3}>
+            <summary className="text-[11px] text-quai-navy cursor-pointer py-1">Historique dans l’appli ({d.appels.length})</summary>
             <ul className="text-[11px] text-quai-muted mt-1 space-y-0.5">
-              {d.appels.map(a => <li key={a.id}>{new Date(String(a.horodatage).replace(' ', 'T') + 'Z').toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} · {a.canal === 'SMS' ? 'SMS envoyé' : a.canal === 'MAIL' ? 'mail envoyé' : (STATUTS.find(x => x[0] === a.statut_final)?.[1] || ISSUES.find(x => x[0] === a.issue)?.[1] || a.issue)}{a.texte ? ` : « ${a.texte} »` : ''}{a.notes ? ` · ${a.notes}` : ''} · {a.madame_fichier}</li>)}
+              {d.appels.map(a => <li key={a.id}>{new Date(String(a.horodatage).replace(' ', 'T') + 'Z').toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} · {a.canal === 'SMS' ? 'SMS envoyé' : a.canal === 'MAIL' ? 'mail envoyé' : (STATUTS.find(x => x[0] === a.statut_final)?.[1] || ISSUES.find(x => x[0] === a.issue)?.[1] || a.issue)}{a.canal === 'APPEL' && a.texte ? ' + SMS' : ''}{a.texte ? ` : « ${a.texte} »` : ''}{a.notes ? ` · ${a.notes}` : ''} · {a.madame_fichier}</li>)}
             </ul>
           </details>
         )}
@@ -372,16 +473,28 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, horsFile, 
             <Icon name="phone-off" size="sm" className="shrink-0 mt-0.5" /><div>{d.blocages.map(b => <div key={b}>{b}</div>)}</div>
           </div>
         )}
+        {!bloque && !entrant && (d.alertes || []).length > 0 && (
+          <div className="mt-2.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-sm px-3 py-2.5 flex gap-2">
+            <Icon name="alert-triangle" size="sm" className="shrink-0 mt-0.5" /><div>{d.alertes.map(b => <div key={b}>{b}</div>)}<div className="text-[11px] mt-0.5">Simple rappel : l’appel peut être enregistré.</div></div>
+          </div>
+        )}
         {joint && <Etapes etapes={etapes} onAller={(e) => { setOuv(o => ({ ...o, [e.k]: true })); setTimeout(() => document.getElementById(e.ancre)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50) }} />}
       </div>
 
       {/* L'issue, en premier, comme dans l'opération anciens clients */}
+      {joint ? (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-3.5 py-2 mb-2.5 flex items-center gap-2">
+          <Icon name="check-circle-2" size="sm" className="text-emerald-700" />
+          <span className="text-sm font-medium text-emerald-900 flex-1">Joint</span>
+          <button type="button" className="text-xs text-quai-navy underline py-2 -my-1" onClick={() => maj(['issue'], null)}>Changer l’issue</button>
+        </div>
+      ) : (
       <div className="bg-white border border-quai-border rounded-xl p-3.5 mb-2.5">
         <div className="font-display font-semibold text-quai-navy mb-0.5">Issue de l’appel</div>
         <p className="text-xs text-quai-muted mb-2.5">{d.conseil_tentative || 'Le seul champ obligatoire. Le reste s’ouvre si la personne décroche.'}</p>
         <div className="grid grid-cols-2 md:grid-cols-3 gap-1.5">
           {ISSUES.filter(([v]) => v !== 'MAIL' || !c.stop_mail).map(([v, l, teinte]) => (
-            <button key={v} type="button" onClick={() => maj(['issue'], s.issue === v ? null : v)}
+            <button key={v} type="button" onClick={() => { maj(['issue'], s.issue === v ? null : v); if (v === 'JOINT') setTimeout(() => document.getElementById('acq-p0')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80) }}
               className={`px-2.5 py-2.5 rounded-lg border text-xs font-medium transition-colors min-h-[3rem] ${
                 s.issue === v
                   ? teinte === 'red' ? 'bg-red-600 text-white border-red-600'
@@ -394,23 +507,32 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, horsFile, 
             </button>
           ))}
         </div>
-        {s.issue === 'A_RAPPELER' && <Champ label="Rappeler le"><input type="datetime-local" className="input max-w-[14rem] mt-0.5" value={s.rappel_le} onChange={e => maj(['rappel_le'], e.target.value)} /></Champ>}
+        {s.issue === 'A_RAPPELER' && <div className="mt-2"><span className="text-[11px] text-quai-muted">Rappeler le</span><ChoixDate valeur={s.rappel_le} onChange={v => maj(['rappel_le'], v)} />
+          {remplie && <p className="text-[11px] text-emerald-800 mt-1">Ce que vous avez saisi pendant la conversation sera enregistré avec ce rappel.</p>}</div>}
         {s.issue === 'REPONDEUR' && d.scripts?.repondeur && <div className="mt-2.5"><BlocScript>{script('repondeur')}</BlocScript></div>}
-        {['SMS', 'MAIL'].includes(s.issue) && (
+        {['REPONDEUR', 'PAS_DE_REPONSE'].includes(s.issue) && (
+          <label className="mt-2 flex items-center gap-2 text-sm text-quai-navy py-1.5 cursor-pointer">
+            <input type="checkbox" className="w-5 h-5" checked={!!s.sms_foulee} onChange={e => maj(['sms_foulee'], e.target.checked)} />
+            J’ai envoyé un SMS dans la foulée <span className="text-[11px] text-quai-muted">(une seule tentative comptée)</span>
+          </label>
+        )}
+        {(['SMS', 'MAIL'].includes(s.issue) || (['REPONDEUR', 'PAS_DE_REPONSE'].includes(s.issue) && s.sms_foulee)) && (
           <div className="mt-2">
-            <span className="text-[11px] text-quai-muted">Texte {s.issue === 'SMS' ? 'du SMS' : 'du mail'} que vous avez envoyé (facultatif, il part dans la note Modelo)</span>
+            <span className="text-[11px] text-quai-muted">Texte {s.issue === 'MAIL' ? 'du mail' : 'du SMS'} que vous avez envoyé (facultatif, il part dans la note Modelo)</span>
             <textarea className="input min-h-[4rem] mt-0.5" value={s.texte || ''} onChange={e => maj(['texte'], e.target.value)} />
             <div className="flex flex-wrap gap-1.5 mt-1">
               {d.scripts?.sms && <button type="button" className="btn-secondary btn-sm" onClick={() => maj(['texte'], script('sms'))}>Utiliser le modèle</button>}
-              {s.issue === 'SMS' && dernierSms() && <button type="button" className="btn-secondary btn-sm" onClick={() => maj(['texte'], dernierSms())}>Reprendre mon dernier SMS</button>}
+              {s.issue !== 'MAIL' && dernierSms() && <button type="button" className="btn-secondary btn-sm" onClick={() => maj(['texte'], dernierSms())}>Reprendre mon dernier SMS</button>}
               {s.texte && <button type="button" className="btn-secondary btn-sm" onClick={() => { try { navigator.clipboard.writeText(s.texte); toast.success('Texte copié') } catch { /* presse-papiers indisponible */ } }}>Copier</button>}
             </div>
           </div>
         )}
-        {s.issue === 'REFUS_FERME' && <p className="text-sm text-red-700 mt-2">La personne sortira de toutes les files, dans tous les modules, et un stop téléphone partira dans Modelo.</p>}
-        {['ERREUR_IDENTITE', 'DECEDE'].includes(s.issue) && <p className="text-sm text-quai-muted mt-2">Toutes ses recherches seront proposées à l’archivage, après validation.</p>}
+        {s.issue === 'REFUS_FERME' && <p className="text-sm text-red-700 mt-2">La personne sort de votre file et de l’opération anciens clients, et un stop téléphone partira dans Modelo. L’administration est prévenue si elle figure dans une autre mission.</p>}
+        {s.issue === 'DECEDE' && <p className="text-sm text-quai-muted mt-2">Toutes ses recherches seront proposées à l’archivage, après validation.</p>}
+        {s.issue === 'ERREUR_IDENTITE' && <p className="text-sm text-quai-muted mt-2">La personne sort de la file. Ses recherches ne sont pas archivées : l’administration vérifie la fiche.</p>}
         {s.issue && s.issue !== 'JOINT' && <Champ label="Note (facultatif)"><textarea className="input min-h-[3rem] mt-0.5" value={s.notes} onChange={e => maj(['notes'], e.target.value)} /></Champ>}
       </div>
+      )}
 
       {/* Les recherches */}
       <Partie ancre="acq-fiches" titre={`${d.fiches.length} recherche${d.fiches.length > 1 ? 's' : ''} dans Modelo`} aide={joint ? 'une décision pour chacune' : 'ce que Modelo sait'}
@@ -442,11 +564,17 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, horsFile, 
                 {x.decision === 'FUSIONNER' && (
                   <select className="input mt-1.5" value={x.fusion_dans} onChange={e => maj(['fiches', f.id_fiche, 'fusion_dans'], e.target.value)}>
                     <option value="">Dans quelle recherche gardée ?</option>
-                    {d.fiches.filter(y => y.id_fiche !== f.id_fiche).map(y => <option key={y.id_fiche} value={y.id_fiche}>N° {y.id_fiche} · {y.type_bien}</option>)}
+                    {d.fiches.filter(y => y.id_fiche !== f.id_fiche && s.fiches[y.id_fiche]?.decision === 'GARDER').map(y => <option key={y.id_fiche} value={y.id_fiche}>N° {y.id_fiche} · {y.type_bien}</option>)}
                   </select>
                 )}
                 {x.decision === 'ARCHIVER' && (
-                  <input className="input mt-1.5" placeholder="Motif : projet ancien, abandonné, a acheté…" value={x.motif} onChange={e => maj(['fiches', f.id_fiche, 'motif'], e.target.value)} />
+                  <div className="mt-1.5">
+                    <div className="flex flex-wrap gap-1.5 mb-1.5">
+                      {['projet ancien', 'projet abandonné', 'a déjà acheté', 'doublon'].map(m => <button key={m} type="button" onClick={() => maj(['fiches', f.id_fiche, 'motif'], m)}
+                        className={`text-xs px-2.5 py-1.5 min-h-[2.75rem] md:min-h-0 rounded-full border ${x.motif === m ? 'bg-quai-navy text-white border-quai-navy' : 'bg-white border-quai-border text-quai-navy hover:border-quai-gold'}`}>{m}</button>)}
+                    </div>
+                    <input className="input" placeholder="Motif de l’archivage" aria-label="Motif de l’archivage" value={x.motif} onChange={e => maj(['fiches', f.id_fiche, 'motif'], e.target.value)} />
+                  </div>
                 )}
               </div>}
             </div>
@@ -465,6 +593,9 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, horsFile, 
 
       <Partie num="1" ancre="acq-p1" titre="Coordonnées" aide="une fois pour la personne" script={script('1')} ouverte={ouv.p1} onBasculer={() => basculer('p1')}
         faite={Object.values(s.coordonnees).every(x => x.etat)}>
+        <button type="button" className="btn-secondary btn-sm mb-1" onClick={() => setS(prev => { const n = structuredClone(prev)
+          for (const [k, x] of Object.entries(n.coordonnees)) { const a = k === 'adresse' ? (x.avant.adresse || x.avant.commune) : x.avant; if (!x.etat) x.etat = a ? 'CONFIRME' : 'SANS' }
+          return n })}>Tout est bon</button>
         {[['tel_portable', 'Portable', '06 12 34 56 78'], ['tel_fixe', 'Fixe', '04 76 00 00 00'], ['email', 'E-mail', 'nom@exemple.fr'], ['adresse', 'Adresse postale']].map(([k, l, ph]) => {
           const x = s.coordonnees[k]
           const avant = k === 'adresse' ? [x.avant.adresse, x.avant.code_postal, x.avant.commune].filter(Boolean).join(' ') : x.avant
@@ -480,13 +611,19 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, horsFile, 
                     onSaisir={v => maj(['coordonnees', 'adresse', 'apres'], { ...x.apres, adresse: v })}
                     onChoisir={a => maj(['coordonnees', 'adresse', 'apres'], a)} />
                     <div className="grid grid-cols-2 gap-2 mt-1.5">
-                      <input className="input" placeholder="Code postal" value={x.apres.code_postal} onChange={e => maj(['coordonnees', 'adresse', 'apres'], { ...x.apres, code_postal: e.target.value })} />
-                      <input className="input" placeholder="Commune" value={x.apres.commune} onChange={e => maj(['coordonnees', 'adresse', 'apres'], { ...x.apres, commune: e.target.value })} />
+                      <input className="input" placeholder="Code postal" aria-label="Code postal" inputMode="numeric" maxLength={5} value={x.apres.code_postal} onChange={e => maj(['coordonnees', 'adresse', 'apres'], { ...x.apres, code_postal: e.target.value })} />
+                      <input className="input" placeholder="Commune" aria-label="Commune" value={x.apres.commune} onChange={e => maj(['coordonnees', 'adresse', 'apres'], { ...x.apres, commune: e.target.value })} />
                     </div></div>
-                : <input className="input mt-1.5" placeholder={ph} value={x.apres} onChange={e => maj(['coordonnees', k, 'apres'], e.target.value)} />)}
+                : <input className="input mt-1.5" placeholder={ph} aria-label={`${l} : nouvelle valeur`} autoComplete="off"
+                    {...(k === 'email' ? { type: 'email', inputMode: 'email', autoCapitalize: 'none' } : { type: 'tel', inputMode: 'tel' })}
+                    value={x.apres} onChange={e => maj(['coordonnees', k, 'apres'], e.target.value)} />)}
             </div>
           )
         })}
+        <label className="mt-2 flex items-center gap-2 text-sm text-quai-navy py-1.5 cursor-pointer border-t border-quai-border pt-2.5">
+          <input type="checkbox" className="w-5 h-5" checked={!!s.stop_mail} onChange={e => maj(['stop_mail'], e.target.checked)} />
+          Ne veut plus recevoir de mails <span className="text-[11px] text-quai-muted">(stop mail dans Modelo)</span>
+        </label>
         <p className="text-[11px] text-quai-muted mt-1">L’ancienne valeur est gardée et part en note dans Modelo.</p>
       </Partie>
 
@@ -508,8 +645,8 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, horsFile, 
                   <Champ label="Motivation"><Choix petit valeur={p.motivation} onChange={v => set('motivation', v)} options={[['ENVIE', 'Envie'], ['OBLIGATION', 'Obligation'], ['OPPORTUNITE', 'Opportunité']]} /></Champ>
                 </div>
                 <Champ label="Pourquoi ce projet ?"><input className="input" value={p.motivation_texte || ''} onChange={e => set('motivation_texte', e.target.value)} /></Champ>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  <Champ label="Urgence /10"><input type="number" min="1" max="10" className="input" value={p.urgence || ''} onChange={e => set('urgence', e.target.value)} /></Champ>
+                <Champ label="Urgence, de 1 à 10"><Choix petit valeur={p.urgence ? String(p.urgence) : null} onChange={v => set('urgence', v || '')} options={['1', '2', '3', '4', '5', '6', '7', '8', '9', '10'].map(n => [n, n])} /></Champ>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                   <Champ label="Emménagement souhaité"><input className="input" placeholder="printemps 2027" value={p.date_emmenagement || ''} onChange={e => set('date_emmenagement', e.target.value)} /></Champ>
                   <Champ label="Cherche depuis"><input className="input" value={p.recherche_depuis || ''} onChange={e => set('recherche_depuis', e.target.value)} /></Champ>
                   <Champ label="Décideurs"><input className="input" placeholder="couple, parents…" value={p.decideurs || ''} onChange={e => set('decideurs', e.target.value)} /></Champ>
@@ -569,7 +706,7 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, horsFile, 
                   <div className="rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-sm p-2.5 flex flex-wrap items-center gap-2">
                     <span className="flex-1">Financement pas validé : proposer un rendez-vous avec Marine.</span>
                     <button className={s.marine.proposee ? 'btn-primary btn-sm' : 'btn-secondary btn-sm'} onClick={() => maj(['marine'], { ...s.marine, proposee: !s.marine.proposee })}>{s.marine.proposee ? 'Marine proposée' : 'Proposer Marine'}</button>
-                    {s.marine.proposee && <label className="text-xs inline-flex items-center gap-1"><input type="checkbox" checked={!!s.marine.accord} onChange={e => maj(['marine'], { ...s.marine, accord: e.target.checked })} /> le client est d’accord</label>}
+                    {s.marine.proposee && <label className="text-xs inline-flex items-center gap-1.5 py-1.5 cursor-pointer"><input type="checkbox" className="w-5 h-5" checked={!!s.marine.accord} onChange={e => maj(['marine'], { ...s.marine, accord: e.target.checked })} /> le client est d’accord</label>}
                   </div>
                 )}
               </div>
@@ -580,8 +717,8 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, horsFile, 
 
       <Partie num="3" ancre="acq-p3" titre="Vendre pour acheter" aide="une fois pour la personne" script={script('3')} ouverte={ouv.p3} onBasculer={() => basculer('p3')} faite={!!s.vendre.statut_logement}>
         <div className="space-y-2">
-          <Champ label="Logement actuel"><Choix petit valeur={s.vendre.statut_logement} onChange={v => maj(['vendre', 'statut_logement'], v)} options={[['PROPRIETAIRE', 'Propriétaire'], ['LOCATAIRE', 'Locataire'], ['HEBERGE', 'Hébergé']]} /></Champ>
-          <Champ label="Depuis"><input className="input max-w-[12rem]" placeholder="2015" value={s.vendre.depuis || ''} onChange={e => maj(['vendre', 'depuis'], e.target.value)} /></Champ>
+          <Champ label="Logement actuel"><Choix petit valeur={s.vendre.statut_logement} onChange={v => maj(['vendre'], v === 'PROPRIETAIRE' ? { ...s.vendre, statut_logement: v } : { statut_logement: v, depuis: s.vendre.depuis })} options={[['PROPRIETAIRE', 'Propriétaire'], ['LOCATAIRE', 'Locataire'], ['HEBERGE', 'Hébergé']]} /></Champ>
+          <Champ label="Depuis"><input className="input max-w-[12rem]" placeholder="2015" inputMode="numeric" value={s.vendre.depuis || ''} onChange={e => maj(['vendre', 'depuis'], e.target.value)} /></Champ>
           {s.vendre.statut_logement === 'PROPRIETAIRE' && <>
             <Champ label="Doit-il vendre pour acheter ?"><Choix petit valeur={s.vendre.doit_vendre} onChange={v => maj(['vendre', 'doit_vendre'], v)} options={[['OUI', 'Oui'], ['NON', 'Non']]} /></Champ>
             {s.vendre.doit_vendre === 'OUI' && <>
@@ -594,8 +731,8 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, horsFile, 
                   <div className="font-semibold text-quai-navy mb-1">Bien pas encore estimé : proposer une estimation</div>
                   <div className="flex flex-wrap items-center gap-2">
                     <button className={s.vendre.estimation_proposee ? 'btn-primary btn-sm' : 'btn-secondary btn-sm'} onClick={() => maj(['vendre', 'estimation_proposee'], !s.vendre.estimation_proposee)}>{s.vendre.estimation_proposee ? 'Estimation proposée' : 'Proposer une estimation'}</button>
-                    {s.vendre.estimation_proposee && <label className="text-xs inline-flex items-center gap-1"><input type="checkbox" checked={!!s.vendre.estimation_acceptee} onChange={e => maj(['vendre', 'estimation_acceptee'], e.target.checked)} /> acceptée</label>}
-                    {s.vendre.estimation_acceptee && <input type="datetime-local" className="input max-w-[14rem]" value={s.vendre.date_rdv_estimation || ''} onChange={e => maj(['vendre', 'date_rdv_estimation'], e.target.value)} />}
+                    {s.vendre.estimation_proposee && <label className="text-xs inline-flex items-center gap-1.5 py-1.5 cursor-pointer"><input type="checkbox" className="w-5 h-5" checked={!!s.vendre.estimation_acceptee} onChange={e => maj(['vendre', 'estimation_acceptee'], e.target.checked)} /> acceptée</label>}
+                    {s.vendre.estimation_acceptee && <input type="datetime-local" className="input max-w-[14rem]" aria-label="Date du rendez-vous d’estimation" value={s.vendre.date_rdv_estimation || ''} onChange={e => maj(['vendre', 'date_rdv_estimation'], e.target.value)} />}
                   </div>
                 </div>
               )}
@@ -634,9 +771,9 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, horsFile, 
               <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-2.5 space-y-2">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <Champ label="Accepté le"><input type="date" className="input" value={mandat.date_acceptation} onChange={e => maj(['mandat'], { ...mandat, date_acceptation: e.target.value })} /></Champ>
-                  <Champ label="Rendez-vous de signature le"><input type="datetime-local" className="input" value={s.date_prochaine_action} onChange={e => maj(['date_prochaine_action'], e.target.value)} /></Champ>
+                  <Champ label="Rendez-vous de signature le (facultatif)"><input type="datetime-local" className="input" value={s.date_prochaine_action} onChange={e => maj(['date_prochaine_action'], e.target.value)} /></Champ>
                 </div>
-                <p className="text-[11px] text-emerald-900">La prochaine action devient « Rendez-vous de signature ». La signature se fait hors de l’appli.</p>
+                <p className="text-[11px] text-emerald-900">{s.date_prochaine_action ? 'La prochaine action devient « Rendez-vous de signature ».' : 'Sans date, le mandat est noté « accepté, rendez-vous de signature à fixer ».'} La signature se fait hors de l’appli.</p>
               </div>
             )}
             {mandat.etat === 'REFUSE' && <Champ label="Motif du refus (court)"><input className="input" maxLength={300} value={mandat.motif_refus} onChange={e => maj(['mandat'], { ...mandat, motif_refus: e.target.value })} /></Champ>}
@@ -646,12 +783,15 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, horsFile, 
 
       <Partie num={mandatVisible ? '5' : '4'} ancre="acq-p4" titre="Suite donnée" script={script('4')} ouverte={ouv.p4 ?? true} onBasculer={() => basculer('p4')} faite={!!statutChoisi}>
         <div className="space-y-2.5">
-          <Choix valeur={statutChoisi} onChange={v => maj(['statut_final'], v)} options={STATUTS} />
+          <Choix valeur={statutChoisi} onChange={choisirStatut} options={STATUTS} />
           {statutChoisi === 'REQUALIFIE' && manquesReq.length > 0 && <p className="text-sm text-red-700">Requalifié impossible, il manque : {manquesReq.join(', ')}.</p>}
+          {statutChoisi === 'DEJA_ACHETE' && <Champ label="Acheté où, chez qui ? (part dans la note Modelo)"><input className="input" value={s.achat || ''} onChange={e => maj(['achat'], e.target.value)} /></Champ>}
+          {['DEJA_ACHETE', 'ABANDONNE'].includes(statutChoisi) && <p className="text-[11px] text-quai-muted">Les recherches sans décision sont passées en « Archiver ». L’archivage sera validé par l’administration avant de partir dans Modelo.</p>}
           <Champ label="Prochaine action"><Choix petit valeur={s.prochaine_action} onChange={v => maj(['prochaine_action'], v)} options={ACTIONS.map(a => [a, a])} /></Champ>
-          {(s.prochaine_action || statutChoisi === 'A_RAPPELER') && <Champ label={statutChoisi === 'A_RAPPELER' ? 'Rappeler le' : 'Date'}>
-            <input type="datetime-local" className="input max-w-[14rem]" value={s.date_prochaine_action} onChange={e => maj(['date_prochaine_action'], e.target.value)} /></Champ>}
-          <label className="text-sm inline-flex items-center gap-2"><input type="checkbox" checked={s.consentement_rappel} onChange={e => maj(['consentement_rappel'], e.target.checked)} /> Accepte d’être rappelé(e)</label>
+          {(s.prochaine_action || statutChoisi === 'A_RAPPELER') && <div><span className="text-[11px] text-quai-muted">{statutChoisi === 'A_RAPPELER' ? 'Rappeler le' : 'Date'}</span>
+            {statutChoisi === 'A_RAPPELER' ? <ChoixDate valeur={s.date_prochaine_action} onChange={v => maj(['date_prochaine_action'], v)} />
+              : <input type="datetime-local" className="input max-w-[14rem] mt-0.5 block" aria-label="Date de la prochaine action" value={s.date_prochaine_action} onChange={e => maj(['date_prochaine_action'], e.target.value)} />}</div>}
+          <label className="text-sm flex items-center gap-2 py-1.5 cursor-pointer"><input type="checkbox" className="w-5 h-5" checked={s.consentement_rappel} onChange={e => maj(['consentement_rappel'], e.target.checked)} /> Consent à être recontacté(e) par l’agence</label>
           <Champ label="Note (faits utiles à la recherche, jamais d’appréciation sur la personne)">
             <textarea className="input min-h-[4rem]" value={s.notes} onChange={e => maj(['notes'], e.target.value)} /></Champ>
         </div>
@@ -660,11 +800,16 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, horsFile, 
       </>}
 
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-quai-border p-2.5" style={{ paddingBottom: 'max(0.625rem, env(safe-area-inset-bottom))' }}>
-        <div className="max-w-3xl mx-auto flex gap-2">
-          <button className="btn-secondary" onClick={onRetour}>Plus tard</button>
-          <button className="btn-primary flex-1 min-h-[2.75rem]" disabled={envoi || !s.issue || (bloque && s.issue !== 'MAIL') || (joint && (!statutChoisi || (statutChoisi === 'REQUALIFIE' && manquesReq.length > 0)))} onClick={enregistrer}>
-            {envoi ? 'Enregistrement…' : 'Enregistrer et suivant'}
-          </button>
+        <div className="max-w-3xl mx-auto">
+          {raison && (joint && !lecture && !bloque
+            ? <button type="button" onClick={versSuite} className="block w-full text-left text-[11px] text-amber-800 mb-1.5 underline">{raison}</button>
+            : <p className={`text-[11px] mb-1.5 ${bloque && s.issue ? 'text-red-700' : 'text-quai-muted'}`}>{raison}</p>)}
+          <div className="flex gap-2">
+            <button className="btn-secondary" onClick={onPasser || onRetour}>{onPasser ? 'Passer' : 'Retour'}</button>
+            <button className="btn-primary flex-1 min-h-[2.75rem]" disabled={envoi || !!raison} onClick={enregistrer}>
+              {envoi ? 'Enregistrement…' : lecture ? 'Lecture seule' : 'Enregistrer et suivant'}
+            </button>
+          </div>
         </div>
       </div>
     </div>

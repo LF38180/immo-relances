@@ -11,8 +11,15 @@ import { Chiffre, Titre } from './ui'
 // Pas de compteur « affaires conclues » (cahier, section 6).
 export default function AcqAccueil({ onCommencer, onAdmin, estAdmin }) {
   const { user } = useAuth()
-  const [d, setD] = useState(null)
-  useEffect(() => { api.get('/acquereurs/accueil').then(r => setD(r.data)).catch(() => setD({})) }, [])
+  const [d, setD] = useState(null), [panne, setPanne] = useState(false)
+  const charger = () => { setPanne(false); api.get('/acquereurs/accueil').then(r => setD(r.data)).catch(() => setPanne(true)) }
+  useEffect(() => { charger() }, [])
+  if (panne) return (
+    <div className="p-6 max-w-md mx-auto text-center">
+      <p className="text-sm text-red-700 mb-3">L’accueil n’a pas pu être chargé. Vérifiez votre connexion.</p>
+      <button className="btn-primary" onClick={charger}>Réessayer</button>
+    </div>
+  )
   if (!d) return <p className="p-6 text-sm text-quai-muted animate-pulse">Chargement…</p>
   const jour = (s) => s ? new Date(s).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }) : ''
   const appeles = (d.contacts || 0) - (d.jamais_appeles || 0)

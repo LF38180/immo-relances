@@ -8,6 +8,7 @@ import { DashboardCourtageContenu } from './CourtagePage'
 import toast from 'react-hot-toast'
 import { blocCourant } from '../utils/blocCourant'
 import ChoixPeriode, { enParametres, periodeEnClair } from '../components/ChoixPeriode'
+import { Chiffre, Titre, Initiales } from '../components/ui/Briques'
 
 // Les libellés des résultats d'appel, comme dans la session et l'export.
 const LIBELLE_ISSUE = {
@@ -76,35 +77,21 @@ export default function SupervisionPage() {
         </PageHeader>
         {erreur && <div className="card mb-4 text-sm text-quai-navy">{erreur}</div>}
 
-        <h2 className="font-semibold text-quai-navy mb-3">Activité aujourd'hui — {format(new Date(), 'dd MMMM yyyy', { locale: fr })}</h2>
+        <Titre>Activité aujourd'hui — {format(new Date(), 'dd MMMM yyyy', { locale: fr })}</Titre>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
           {data?.activite?.map(a => {
             const tx = a.relances_total > 0 ? Math.round((a.contactes + a.rdv) / a.relances_total * 100) : 0
             return (
               <div key={a.id} className="card">
                 <div className="flex items-center gap-3 mb-3">
-                  <div className="w-10 h-10 bg-quai-navy rounded-full flex items-center justify-center text-white font-bold text-lg">
-                    {a.prenom?.[0]}{a.nom?.[0]}
-                  </div>
+                  <Initiales prenom={a.prenom} nom={a.nom} ton="marine" />
                   <div className="font-semibold text-quai-navy">{a.prenom} {a.nom}</div>
                 </div>
-                <div className="grid grid-cols-2 gap-2 text-center">
-                  <div className="bg-quai-light border border-quai-border rounded p-2">
-                    <div className="text-xl font-bold text-quai-navy">{a.relances_total}</div>
-                    <div className="text-xs text-quai-muted">Appels</div>
-                  </div>
-                  <div className="bg-emerald-50 border border-emerald-100 rounded p-2">
-                    <div className="text-xl font-bold text-emerald-700">{a.rdv}</div>
-                    <div className="text-xs text-quai-muted">Projets</div>
-                  </div>
-                  <div className="bg-quai-light border border-quai-border rounded p-2">
-                    <div className="text-xl font-bold text-quai-navy">{a.contactes}</div>
-                    <div className="text-xs text-quai-muted">Contactés</div>
-                  </div>
-                  <div className="bg-quai-gold/10 border border-quai-gold/30 rounded p-2">
-                    <div className="text-xl font-bold text-quai-navy">{tx}%</div>
-                    <div className="text-xs text-quai-muted">Contact</div>
-                  </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <Chiffre valeur={a.relances_total} libelle="Appels" />
+                  <Chiffre valeur={a.rdv} libelle="Projets" />
+                  <Chiffre valeur={a.contactes} libelle="Contactés" />
+                  <Chiffre valeur={`${tx}%`} libelle="Contact" />
                 </div>
               </div>
             )
@@ -117,7 +104,7 @@ export default function SupervisionPage() {
         {/* Suivi sur la durée qu'on veut : semaine, mois, année, depuis le début, ou deux dates. */}
         <div className="flex flex-wrap items-end justify-between gap-3 mb-3">
           <div>
-            <h2 className="font-semibold text-quai-navy">Suivi {stats?.periode ? periodeEnClair(stats.periode) : ''}</h2>
+            <Titre>Suivi {stats?.periode ? periodeEnClair(stats.periode) : ''}</Titre>
             <p className="text-xs text-quai-muted">
               {blocCourant() ? 'Fichier choisi en haut de l\'écran uniquement. ' : ''}Seuls les appels comptent, pas les notes ajoutées à une fiche.
             </p>
@@ -134,7 +121,7 @@ export default function SupervisionPage() {
 
         {stats && t && (
           <>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
               <StatCard label="Appels passés" value={t.appels.toLocaleString('fr')} detail={ecart('appels')} />
               <StatCard label="Personnes jointes" value={t.personnes_jointes.toLocaleString('fr')} detail={`${taux(t)} % des appels aboutissent`} />
               <StatCard label="Projets détectés" value={t.projets.toLocaleString('fr')} detail={ecart('projets')} />
@@ -143,7 +130,7 @@ export default function SupervisionPage() {
 
             {stats.parPersonne?.length > 0 && (
               <div className="card mb-6 overflow-x-auto">
-                <h3 className="font-medium text-quai-navy mb-3">Par personne</h3>
+                <h3 className="font-display font-semibold text-lg text-quai-navy leading-tight mb-3">Par personne</h3>
                 <table className="w-full text-sm">
                   <thead><tr className="text-left text-xs text-quai-muted border-b border-quai-border">
                     <th className="py-2 pr-3">Personne</th><th className="pr-3">Appels</th><th className="pr-3">Personnes jointes</th>
@@ -165,7 +152,7 @@ export default function SupervisionPage() {
             )}
 
             <div className="card">
-              <h3 className="font-medium text-quai-navy mb-3">Résultats des appels</h3>
+              <h3 className="font-display font-semibold text-lg text-quai-navy leading-tight mb-3">Résultats des appels</h3>
               {stats.parIssue?.length ? (
                 <div className="space-y-2">
                   {[...stats.parIssue].sort((x, y) => y.cnt - x.cnt).map(s => (
@@ -185,7 +172,7 @@ export default function SupervisionPage() {
 
         {courtage && (
           <div className="mt-8">
-            <h2 className="font-semibold text-quai-navy mb-3">Courtage — Marine</h2>
+            <Titre>Courtage — Marine</Titre>
             <DashboardCourtageContenu data={courtage} />
           </div>
         )}
@@ -196,10 +183,6 @@ export default function SupervisionPage() {
 
 function StatCard({ label, value, detail, alerte }) {
   return (
-    <div className="card text-center">
-      <div className={`text-2xl font-bold ${alerte ? 'text-amber-700' : 'text-quai-navy'}`}>{value}</div>
-      <div className="text-xs text-quai-muted mt-1">{label}</div>
-      {detail && <div className="text-xs text-quai-muted mt-1">{detail}</div>}
-    </div>
+    <Chiffre valeur={value} libelle={label} detail={detail} alerte={alerte} />
   )
 }

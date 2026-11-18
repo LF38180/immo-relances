@@ -16,13 +16,19 @@ const OBLIGATOIRES = ['id_fiche', 'id_contact', 'nom', 'tel_portable', 'stop_tel
 const OPTIONS = ['balcon', 'terrasse', 'jardin', 'ascenseur', 'dernier_etage', 'cave', 'piscine', 'pmr'];
 
 const vide = (v) => (v == null || String(v).trim() === '' ? null : String(v).trim());
-const entier = (v) => { const n = parseInt(String(v || '').replace(/\D/g, ''), 10); return Number.isFinite(n) && n > 0 ? n : null; };
+// « 300 000,00 » vaut 300 000, pas 30 000 000 : les décimales tombent avant
+// qu'on retire ce qui n'est pas un chiffre.
+const entier = (v) => { const n = parseInt(String(v || '').replace(/[.,]\d{1,2}\s*(€|euros?)?\s*$/i, '').replace(/\D/g, ''), 10); return Number.isFinite(n) && n > 0 ? n : null; };
 const oui = (v) => /^(oui|1|true)$/i.test(String(v || '').trim()) ? 1 : 0;
+// Un stop n'est pas une case qu'on devine : oui ou non, rien d'autre.
+const ouiNonValide = (v) => /^(oui|non|1|0|true|false)?$/i.test(String(v == null ? '' : v).trim());
 const sansAccent = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
 
 function lire(texte) {
-  const r = Papa.parse(String(texte).replace(/^﻿/, ''), { header: true, delimiter: ';', skipEmptyLines: true });
-  return { lignes: r.data, colonnes: r.meta.fields || [] };
+  const brut = String(texte).replace(/^﻿/, '');
+  const r = Papa.parse(brut, { header: true, delimiter: ';', skipEmptyLines: true });
+  return { lignes: r.data, colonnes: r.meta.fields || [], erreurs: r.errors || [],
+    lignes_physiques: brut.split(/\r?\n/).filter(x => x.trim()).length - 1 };
 }
 
 // Les contacts que l'audit des doublons propose d'archiver : l'autre agence
@@ -36,11 +42,13 @@ function doublonsAArchiver(texte) {
 
 // Pourquoi ce contact ne va pas dans la file. null = il y va.
 function motifExclusion(c, fiches, { doublons, suiveursRepris }) {
-  const alertes = fiches.map(f => f.alertes_a_verifier || '').join(' | ').toLowerCase();
-  if (c.stop_brut == null || alertes.includes('contact archivé')) return 'CONTACT_ARCHIVE';
+  // Sans accents : un fichier dont les accents ont souffert ne doit pas laisser
+  // passer un décès ou un contact archivé.
+  const alertes = sansAccent(fiches.map(f => f.alertes_a_verifier || '').join(' | '));
+  if (c.stop_brut == null || /contact archiv/.test(alertes)) return 'CONTACT_ARCHIVE';
   if (c.stop_tel) return 'STOP_TEL';
   if (!cleTel(c.tel_portable) && !cleTel(c.tel_fixe)) return 'SANS_TELEPHONE';
-  if (alertes.includes('décès') || alertes.includes('deces')) return 'DECES_POSSIBLE';
+  if (/dec[eè]s|decede/.test(alertes)) return 'DECES_POSSIBLE';
   if (doublons.has(c.id_contact)) return 'DOUBLON_AUTRE_AGENCE';
   if (c.suivi_par && !suiveursRepris.has(sansAccent(c.suivi_par))) return 'SUIVI_PAR_AGENT';
   if (fiches.every(f => sansAccent(f.type_recherche) === 'location')) return 'LOCATION_SEULE';
@@ -60,10 +68,18 @@ const LIBELLES_EXCLUSION = {
 
 function importer(texte, { doublonsCsv = null, madameFichier, suiveursRepris = ['Loick FERRUCCI'], simulation = true } = {}) {
   if (!madameFichier) return { ok: false, error: 'Précisez qui traite ce fichier.' };
-  const { lignes, colonnes } = lire(texte);
+  // Un fichier ré-enregistré par un tableur dans un autre encodage arrive avec
+  // des caractères de remplacement : on le refuse, on ne devine pas.
+  if (String(texte).includes('\uFFFD')) return { ok: false, error: 'Le fichier n’est pas en UTF-8 (accents illisibles). Demandez à Exploration Modelo de le renvoyer tel quel, sans le rouvrir dans un tableur.' };
+  const { lignes, colonnes, erreurs: malFormees, lignes_physiques } = lire(texte);
+  // Un guillemet mal fermé avale les lignes suivantes sans prévenir.
+  const graves = malFormees.filter(e => e.type === 'Quotes' || e.code === 'TooManyFields' || e.code === 'TooFewFields');
+  if (graves.length) return { ok: false, error: `Fichier mal formé, rien n’a été importé : ${graves.slice(0, 3).map(e => `ligne ${(e.row ?? 0) + 2} (${e.code === 'TooFewFields' ? 'colonnes manquantes' : e.code === 'TooManyFields' ? 'colonnes en trop' : 'guillemet non fermé'})`).join(', ')}${graves.length > 3 ? `, et ${graves.length - 3} autres` : ''}.` };
   const manquantes = OBLIGATOIRES.filter(c => !colonnes.includes(c));
   if (manquantes.length) return { ok: false, error: `Colonnes absentes du fichier : ${manquantes.join(', ')}.`, colonnes };
   if (!lignes.length) return { ok: false, error: 'Le fichier ne contient aucune ligne.' };
+  const stopIllisible = lignes.findIndex(l => !ouiNonValide(l.stop_tel) || !ouiNonValide(l.stop_mail));
+  if (stopIllisible >= 0) return { ok: false, error: `Ligne ${stopIllisible + 2} : la colonne stop_tel ou stop_mail contient « ${String(lignes[stopIllisible].stop_tel || lignes[stopIllisible].stop_mail).trim()} ». Seuls OUI et NON sont acceptés ; rien n’a été importé.` };
 
   const doublons = doublonsAArchiver(doublonsCsv);
   const repris = new Set([madameFichier, ...suiveursRepris].map(sansAccent));
@@ -103,10 +119,14 @@ function importer(texte, { doublonsCsv = null, madameFichier, suiveursRepris = [
     });
   });
 
-  const bilan = { ok: true, simulation, lignes: lignes.length, fiches: 0, contacts: parContact.size,
-    nouveaux_contacts: 0, contacts_mis_a_jour: 0, dans_la_file: 0, fiches_dans_la_file: 0, exclus: {}, erreurs };
+  const bilan = { ok: true, simulation, lignes: lignes.length, lignes_physiques, fiches: 0, contacts: parContact.size,
+    nouveaux_contacts: 0, contacts_mis_a_jour: 0, dans_la_file: 0, fiches_dans_la_file: 0, exclus: {}, erreurs,
+    // Les contacts déjà travaillés que ce fichier sort de la file : à lire
+    // avant d'enregistrer, un rappel convenu peut disparaître avec eux.
+    sortis_de_la_file: [] };
   const ecrire = db.transaction(() => {
-    const existe = db.prepare(`SELECT id_contact, exclu_leve, statut,
+    const ficheDe = db.prepare('SELECT id_contact FROM acq_fiches WHERE id_fiche = ?');
+    const existe = db.prepare(`SELECT id_contact, exclu_leve, statut, exclu, nom, prenom, rappel_le,
       EXISTS (SELECT 1 FROM acq_appels a WHERE a.id_contact = acq_contacts.id_contact) AS travaille FROM acq_contacts WHERE id_contact = ?`);
     const insC = db.prepare(`INSERT INTO acq_contacts (id_contact, civilite, nom, prenom, societe, email, tel_portable, tel_fixe,
         adresse, code_postal, commune, stop_tel, stop_mail, type_contact, suivi_par, madame_fichier, exclu,
@@ -161,9 +181,19 @@ function importer(texte, { doublonsCsv = null, madameFichier, suiveursRepris = [
       const ligne = { ...contact, madame_fichier: madameFichier, exclu };
       delete ligne.stop_brut;
       const deja = existe.get(contact.id_contact);
-      if (deja) { bilan.contacts_mis_a_jour++; majC.run({ ...ligne, garder: deja.travaille || deja.exclu_leve ? 1 : 0 }); }
-      else { bilan.nouveaux_contacts++; insC.run(ligne); }
-      for (const f of fiches) insF.run(f);
+      if (deja) {
+        bilan.contacts_mis_a_jour++;
+        if (exclu && !deja.exclu && !deja.exclu_leve && deja.travaille)
+          bilan.sortis_de_la_file.push({ id_contact: contact.id_contact, nom: deja.nom, prenom: deja.prenom, motif: LIBELLES_EXCLUSION[exclu] || exclu, rappel_le: deja.rappel_le || null });
+        majC.run({ ...ligne, garder: deja.travaille || deja.exclu_leve ? 1 : 0 });
+      } else { bilan.nouveaux_contacts++; insC.run(ligne); }
+      for (const f of fiches) {
+        // Une fiche déjà connue sous un autre contact : elle y reste (on ne
+        // déplace pas le travail fait), et on le dit.
+        const avant = ficheDe.get(f.id_fiche);
+        if (avant && avant.id_contact !== f.id_contact) { erreurs.push(`Fiche ${f.id_fiche} : présentée sous le contact ${f.id_contact}, déjà rattachée au contact ${avant.id_contact}. Non déplacée.`); continue; }
+        insF.run(f);
+      }
     }
     if (simulation) throw new Error('__simulation__');
   });

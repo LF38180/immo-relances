@@ -18,13 +18,16 @@ export function Personne({ user, sombre = false, className = '' }) {
 // L'en-tête d'un espace de mission : le logo de la mission à gauche, la
 // personne à droite, puis le retour et la déconnexion. Le même pour toutes
 // les missions, et pour chaque personne qui en recevra une.
+// `children` et `actions` sont facultatifs : sans eux, l'en-tête est inchangé.
 const NOMS = { estimes: 'Mission Estimés', acquereurs: 'Mission Acquéreurs', courtage: 'Mission Courtage' }
-export default function EnTeteMission({ mission, user, onRetour, libelleRetour = 'Mon espace', logout, collant = false, largeur = '' }) {
+export default function EnTeteMission({ mission, user, onRetour, libelleRetour = 'Mon espace', logout, collant = false, largeur = '', children = null, actions = null }) {
   return (
     <header className={`bg-quai-navy text-white shrink-0 ${collant ? 'sticky top-0 z-30' : ''}`} style={{ paddingTop: 'max(0.5rem, env(safe-area-inset-top))' }}>
       <div className={`px-3 pb-2 flex items-center gap-2 ${largeur}`}>
         <img src={`/marque/mission-${mission}-long-clair.png`} alt={NOMS[mission]} className="h-8 w-auto shrink-0" />
         <h1 className="sr-only">{NOMS[mission]}</h1>
+        {/* `children` : une mention à côté du logo (la pastille « Démonstration »). */}
+        {children}
         <div className="flex-1" />
         <Personne user={user} className="hidden sm:inline-flex" />
         {onRetour && (
@@ -37,6 +40,8 @@ export default function EnTeteMission({ mission, user, onRetour, libelleRetour =
             <Icon name="log-out" size="sm" />
           </button>
         )}
+        {/* `actions` : un bouton propre à l'écran, tout à droite (« Quitter »). */}
+        {actions}
       </div>
     </header>
   )

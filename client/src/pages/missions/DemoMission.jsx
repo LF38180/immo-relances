@@ -2,6 +2,8 @@ import { useState, useEffect, lazy, Suspense } from 'react'
 import Icon from '../../components/ui/Icon'
 import ErrorBoundary from '../../components/ErrorBoundary'
 import { activerDemo } from '../../demo/demoApi'
+import EnTeteMission from '../../components/EnTeteMission'
+import { Pastille } from '../../components/ui/Briques'
 
 // Démonstration des missions Estimés et Courtage : le VRAI écran de l'agent,
 // branché sur de fausses fiches. Rien n'est lu ni écrit sur le serveur tant
@@ -10,7 +12,6 @@ import { activerDemo } from '../../demo/demoApi'
 const SessionPage = lazy(() => import('../SessionPage'))
 const CourtagePage = lazy(() => import('../CourtagePage'))
 const JEUX = { estimes: () => import('../../demo/estimes.json'), courtage: () => import('../../demo/courtage.json') }
-const NOMS = { estimes: 'Mission Estimés', courtage: 'Mission Courtage' }
 
 export default function DemoMission({ mission, onFermer }) {
   // L'écran n'est monté qu'une fois la couche de démonstration en place : sa
@@ -25,15 +26,15 @@ export default function DemoMission({ mission, onFermer }) {
 
   return (
     <div className="h-ecran flex flex-col bg-quai-light">
-      <div className="bg-quai-encre text-white px-3 py-2 flex items-center gap-3 shrink-0" style={{ paddingTop: 'max(0.5rem, env(safe-area-inset-top))' }}>
-        <img src={`/marque/mission-${mission}-long-clair.png`} alt={NOMS[mission]} className="h-7 w-auto shrink-0" />
-        <div className="text-[13px] leading-snug flex-1 min-w-0">
-          <b>Démonstration</b><span className="hidden sm:inline"> : fiches fictives, rien n’est enregistré.</span>
-        </div>
-        <button onClick={onFermer} className="text-xs inline-flex items-center gap-1 px-3 py-1.5 rounded-full border border-white/30 hover:border-quai-taupe shrink-0">
-          <Icon name="x" size="sm" /> Quitter
-        </button>
-      </div>
+      <EnTeteMission mission={mission}
+        actions={
+          <button onClick={onFermer} className="text-xs inline-flex items-center gap-1 px-3 py-1.5 min-h-[2.75rem] sm:min-h-0 rounded-full border border-white/30 hover:border-quai-taupe shrink-0 focus-clair">
+            <Icon name="x" size="sm" /> Quitter
+          </button>
+        }>
+        <Pastille ton="clair">Démonstration</Pastille>
+        <span className="hidden sm:inline text-[13px] leading-snug text-white/80 truncate min-w-0">Fiches fictives, rien n’est enregistré.</span>
+      </EnTeteMission>
       {erreur && <p className="p-6 text-sm text-red-700">La démonstration n’a pas pu être chargée.</p>}
       {pret && (
         <ErrorBoundary>

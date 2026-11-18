@@ -1012,4 +1012,30 @@ db.exec(`
 if (!db.prepare('PRAGMA table_info(users)').all().some(c => c.name === 'acces_acquereurs'))
   db.exec('ALTER TABLE users ADD COLUMN acces_acquereurs INTEGER NOT NULL DEFAULT 0');
 
+// Compléments du 18/11 au soir (table ronde) — ajouts seuls, rien de modifié.
+// - acq_telechargements : chaque fichier de report téléchargé laisse une trace
+//   (qui, quand, combien de lignes), pour ne pas en envoyer deux à Modelo.
+// - acq_transmissions : un rendez-vous courtage ou une estimation obtenus par
+//   l'appelante, une fois transmis à Marine ou au conseiller.
+// - acq_oppositions_vues : une opposition qui touche une fiche d'un autre
+//   module, une fois traitée par l'administration.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS acq_telechargements (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    le TEXT NOT NULL DEFAULT (datetime('now')),
+    par TEXT, jusqu_a TEXT NOT NULL, contacts INTEGER, lignes INTEGER
+  );
+  CREATE TABLE IF NOT EXISTS acq_transmissions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id_contact TEXT NOT NULL, type TEXT NOT NULL CHECK(type IN ('MARINE','ESTIMATION')),
+    le TEXT NOT NULL DEFAULT (datetime('now')), par TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_acq_transmissions ON acq_transmissions(id_contact, type);
+  CREATE TABLE IF NOT EXISTS acq_oppositions_vues (
+    id_contact TEXT PRIMARY KEY, le TEXT NOT NULL DEFAULT (datetime('now')), par TEXT
+  );
+`);
+if (!db.prepare('PRAGMA table_info(acq_reports)').all().some(c => c.name === 'empreinte'))
+  db.exec('ALTER TABLE acq_reports ADD COLUMN empreinte TEXT');
+
 module.exports = { db, recalculerScore, DB_PATH };

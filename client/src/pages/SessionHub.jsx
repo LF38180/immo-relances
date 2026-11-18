@@ -3,6 +3,7 @@ import api from '../utils/api'
 import toast from 'react-hot-toast'
 import Icon from '../components/ui/Icon'
 import { useAuth } from '../hooks/useAuth'
+import { Titre } from '../components/ui/Briques'
 
 const SessionPage = lazy(() => import('./SessionPage'))
 
@@ -118,9 +119,7 @@ export function VueAgent({ id }) {
 
   return (
     <div>
-      <h2 className="font-semibold text-quai-navy mb-3">
-        Session de {agent.prenom} {agent.nom}
-      </h2>
+      <Titre>Session de {agent.prenom} {agent.nom}</Titre>
 
       <div className="flex flex-wrap gap-1 mb-4 border-b border-quai-border">
         {ONGLETS.map(([k, lbl]) => (
@@ -205,7 +204,7 @@ export function VueCourtage() {
   if (!boite) {
     return (
       <div>
-        <h2 className="font-semibold text-quai-navy mb-3">Courtage — boîtes de relance</h2>
+        <Titre>Courtage — boîtes de relance</Titre>
         <button onClick={() => setBoite('relances')}
           className="text-left card w-full mb-3 border-quai-gold hover:shadow-md transition-all">
           <div className="flex items-center justify-between gap-2">
@@ -213,13 +212,11 @@ export function VueCourtage() {
               <div className="font-medium text-quai-navy">Relances prévues</div>
               <div className="text-xs text-quai-muted">Contacts déjà appelés ou planifiés</div>
             </div>
-            <div className="text-2xl font-bold text-quai-navy">{boites.relancesPrevues}</div>
+            <div className="font-display text-3xl font-semibold leading-none text-quai-navy">{boites.relancesPrevues}</div>
           </div>
         </button>
 
-        <div className="text-xs font-medium text-quai-muted uppercase tracking-wide mb-2">
-          Cahier des messages — leads jamais appelés
-        </div>
+        <Titre>Cahier des messages — leads jamais appelés</Titre>
         {boites.mois.length === 0 && <div className="text-sm text-quai-muted">Aucun lead en attente.</div>}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {boites.mois.map(m => (
@@ -227,7 +224,7 @@ export function VueCourtage() {
               className="text-left card hover:border-quai-gold hover:shadow-md transition-all">
               <div className="flex items-center justify-between gap-2">
                 <div className="font-medium text-quai-navy capitalize">{m.libelle}</div>
-                <div className="text-2xl font-bold text-quai-navy">{m.total}</div>
+                <div className="font-display text-3xl font-semibold leading-none text-quai-navy">{m.total}</div>
               </div>
               <div className="text-xs text-quai-muted mt-0.5">contact{m.total > 1 ? 's' : ''} à appeler</div>
             </button>
@@ -247,7 +244,7 @@ export function VueCourtage() {
         className="text-sm text-quai-muted hover:text-quai-navy inline-flex items-center gap-1.5 mb-3">
         <Icon name="arrow-left" size="sm" /> Retour aux boîtes
       </button>
-      <h2 className="font-semibold text-quai-navy mb-3 capitalize">{libelle}</h2>
+      <Titre>{libelle}</Titre>
       {chargement ? <Chargement /> : (
         <Liste vide="Aucune fiche dans cette boîte.">
           {fiches.map(f => (

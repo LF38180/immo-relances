@@ -6,7 +6,9 @@ import { ONGLETS } from './onglets'
 import { Titre } from '../acquereurs/ui'
 
 // L'accueil de l'admin : une carte par mission, toutes au même rang. Chaque
-// carte donne la personne, trois chiffres du jour, et les mêmes cinq accès.
+// carte donne la personne, trois chiffres (sept jours glissants, ce qui reste
+// à appeler, ce que ça a donné) et les mêmes cinq accès. Chaque chiffre mène
+// à l'écran qui le détaille.
 // Le chiffre du milieu — ce qui reste à appeler — est celui qu'on regarde le
 // matin : il est mis en avant.
 const LOGOS = { estimes: '/marque/mission-estimes-large-bleu.png', acquereurs: '/marque/mission-acquereurs-large-bleu.png', courtage: '/marque/mission-courtage-large-bleu.png' }
@@ -23,7 +25,7 @@ export default function AccueilMissions({ onOuvrir }) {
     <div className="flex-1 overflow-y-auto p-4 md:p-6 pb-24 md:pb-6 bg-quai-light">
       <div className="max-w-6xl mx-auto">
         <div className="mb-5">
-          <h1 className="font-display text-2xl font-semibold text-quai-navy">Bonjour {user?.prenom}</h1>
+          <h2 className="font-display text-2xl font-semibold text-quai-navy">Bonjour {user?.prenom}</h2>
           <div className="mt-1.5 w-10 h-0.5 bg-quai-gold" />
           <p className="text-sm text-quai-muted mt-2 first-letter:uppercase">{jour}. Voici où en est chaque mission.</p>
         </div>
@@ -53,19 +55,25 @@ export default function AccueilMissions({ onOuvrir }) {
 
               <div className="grid grid-cols-3 divide-x divide-quai-border border-b border-quai-border">
                 {m.chiffres.map((c, i) => (
-                  <div key={c.l} className={`px-3 py-3.5 ${i === 1 ? 'bg-quai-gold/10' : ''}`}>
+                  <button key={c.l} onClick={() => m.id === 'operation' ? onOuvrir('operation') : onOuvrir(m.id, c.onglet || 'suivi', c.sous || null)}
+                    className={`text-left px-3 py-3.5 transition-colors hover:bg-quai-light ${i === 1 ? 'bg-quai-gold/10 hover:bg-quai-gold/20' : ''}`}>
                     <div className="font-display text-3xl font-semibold text-quai-navy leading-none">{c.n}</div>
                     <div className="text-[11px] text-quai-muted leading-snug mt-1.5">{c.l}</div>
-                  </div>
+                  </button>
                 ))}
               </div>
+              {(m.alertes || []).map(a => (
+                <button key={a.l} onClick={() => onOuvrir(m.id, a.onglet)} className="text-left px-4 py-2 text-xs bg-amber-50 text-amber-900 border-b border-amber-200 hover:bg-amber-100 flex items-center gap-2">
+                  <Icon name="alert-triangle" size="sm" className="shrink-0" /><span className="flex-1">{a.l}</span><Icon name="chevron-right" size="sm" className="shrink-0" />
+                </button>
+              ))}
 
               <div className="p-3 flex flex-wrap gap-1.5 mt-auto">
                 {m.id === 'operation'
                   ? <button onClick={() => onOuvrir('operation')} className="btn-secondary btn-sm inline-flex items-center gap-1.5"><Icon name="arrow-right" size="sm" /> Ouvrir l’opération</button>
                   : ONGLETS.map(o => (
                     <button key={o.id} onClick={() => onOuvrir(m.id, o.id)}
-                      className="text-xs px-2.5 py-1.5 rounded-lg border border-quai-border text-quai-navy hover:border-quai-gold hover:bg-quai-light inline-flex items-center gap-1.5 transition-colors">
+                      className="text-xs px-2.5 py-1.5 min-h-[2.75rem] md:min-h-0 rounded-lg border border-quai-border text-quai-navy hover:border-quai-gold hover:bg-quai-light inline-flex items-center gap-1.5 transition-colors">
                       <Icon name={o.icon} size="sm" className="text-quai-muted" /> {o.label}
                     </button>
                   ))}

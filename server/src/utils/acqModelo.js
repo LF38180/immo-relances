@@ -21,7 +21,7 @@ const TYPE_MANDAT = { SIMPLE: 'simple', EXCLUSIF: 'exclusif', NON_PRECISE: 'à p
 function texteMandat(m) {
   if (!m) return null;
   const jour = (d) => (d ? String(d).slice(8, 10) + '/' + String(d).slice(5, 7) : '');
-  if (m.etat === 'ACCEPTE') return `accepté le ${jour(m.date_acceptation)} (${TYPE_MANDAT[m.type] || 'à préciser'})`;
+  if (m.etat === 'ACCEPTE') return `accepté le ${jour(m.date_acceptation)} (${TYPE_MANDAT[m.type] || 'à préciser'})${m.rdv_signature ? `, signature le ${jjh(m.rdv_signature)}` : ', rendez-vous de signature à fixer'}`;
   if (m.etat === 'REFUSE') return `refusé${m.motif_refus ? ` (${m.motif_refus})` : ''}`;
   if (m.etat === 'A_REPROPOSER') return 'à reproposer';
   return 'proposé';
@@ -29,7 +29,40 @@ function texteMandat(m) {
 
 const jj = (s) => { if (!s) return ''; const d = new Date(String(s).replace(' ', 'T') + (String(s).length <= 19 && !/Z$/.test(s) && s.includes(':') ? 'Z' : ''));
   return Number.isNaN(d.getTime()) ? String(s) : d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' }); };
+// Une date saisie à l'écran (« 2026-11-20T15:30 », heure de Paris) : on la
+// recopie telle quelle, sans conversion — passer par jj() la traitait comme
+// de l'UTC et perdait l'heure du rendez-vous.
+const jjh = (s) => { const m = /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?/.exec(String(s || ''));
+  return m ? `${m[3]}/${m[2]}/${m[1]}${m[4] ? ` à ${m[4]} h ${m[5]}` : ''}` : jj(s); };
 const json = (s) => { try { return s ? JSON.parse(s) : {}; } catch { return {}; } };
+
+// Tout ce que les appels aboutis d'un lot ont appris, fusionné : le plus
+// récent gagne champ par champ. Avant, seul le DERNIER appel était lu — un
+// numéro corrigé lundi disparaissait du report si la personne était
+// requalifiée mercredi (constat de la table ronde du 18/11).
+function fusionDetails(appels) {
+  const f = { coordonnees: {}, vendre: {}, marine: {}, mandat: null, stop_mail: false, consentement_rappel: false, achat: null };
+  for (const a of appels.filter(x => x.statut_final)) {
+    const d = json(a.details);
+    for (const [k, x] of Object.entries(d.coordonnees || {})) {
+      if (!x || !x.etat) continue;
+      const prec = f.coordonnees[k];
+      // « Confirmé » après une modification du même lot ne l'efface pas ; et
+      // l'« avant » reste celui d'avant le lot (ce que Modelo connaît).
+      if (prec && ['MODIFIE', 'AJOUTE', 'A_SUPPRIMER'].includes(prec.etat) && ['CONFIRME', 'SANS'].includes(x.etat)) continue;
+      f.coordonnees[k] = prec && ['MODIFIE', 'AJOUTE', 'A_SUPPRIMER'].includes(prec.etat) ? { ...x, avant: prec.avant, etat: prec.etat === 'AJOUTE' && x.etat === 'MODIFIE' ? 'AJOUTE' : x.etat } : x;
+    }
+    Object.assign(f.vendre, Object.fromEntries(Object.entries(d.vendre || {}).filter(([, v]) => v != null && v !== '')));
+    Object.assign(f.marine, Object.fromEntries(Object.entries(d.marine || {}).filter(([, v]) => v)));
+    if (d.mandat) f.mandat = d.mandat;
+    if (d.stop_mail) f.stop_mail = true;
+    if (d.consentement_rappel) f.consentement_rappel = true;
+    if (d.achat) f.achat = d.achat;
+  }
+  // « Doit vendre » n'a de sens que pour un propriétaire.
+  if (f.vendre.statut_logement && f.vendre.statut_logement !== 'PROPRIETAIRE') { delete f.vendre.doit_vendre; delete f.vendre.etat_revente; }
+  return f;
+}
 const initiales = (nom) => String(nom || '').split(/\s+/).map(x => x[0] || '').join('').toUpperCase();
 
 // Les codes de l'écran, en français lisible pour Modelo.
@@ -41,23 +74,24 @@ const MOTIF = { ENVIE: 'envie', OBLIGATION: 'obligation', OPPORTUNITE: 'opportun
 
 // Le bloc « Précisions sur la recherche » (cahier, section 7). Les anciennes
 // précisions sont gardées en dessous : rien de ce que Modelo savait n'est perdu.
-function blocPrecisions(fiche, contact, appel) {
+function blocPrecisions(fiche, contact, appel, fusion = null) {
   const p = json(fiche.requalif);
-  const v = json(appel?.details).vendre || {};
+  const det = fusion || json(appel?.details);
+  const v = det.vendre || {};
   const crit = (niv) => (p.criteres || []).filter(c => c.niveau === niv).map(c => c.valeur ? `${c.critere} : ${c.valeur}` : c.critere).join(', ');
   const FIN = { ACCORD: 'accord de principe', SIMULATION: 'simulation faite', COMPTANT: 'comptant', EN_COURS: 'en cours', NON: 'non validé' };
   const lignes = ['━━━ LE PROJET ━━━',
-    `PROJET : ${[ACHAT[p.type_achat] || p.type_achat, p.motivation && ('par ' + (MOTIF[p.motivation] || p.motivation.toLowerCase())), p.motivation_texte].filter(Boolean).join(' — ')}`,
+    `PROJET : ${[ACHAT[p.type_achat] || p.type_achat, p.motivation && ('par ' + (MOTIF[p.motivation] || p.motivation.toLowerCase())), p.motivation_texte, p.recherche_depuis && `cherche depuis ${p.recherche_depuis}`].filter(Boolean).join(' — ')}`,
     `URGENCE : ${[p.urgence && `${p.urgence}/10`, p.passer_a_10 && `passerait à 10 si : ${p.passer_a_10}`, p.date_emmenagement && `emménagement ${p.date_emmenagement}`].filter(Boolean).join(' — ')}`,
-    `SITUATION : ${[LOGEMENT[v.statut_logement], v.depuis && `depuis ${v.depuis}`, v.doit_vendre && `doit vendre : ${v.doit_vendre.toLowerCase()}`, v.etat_revente && `revente : ${REVENTE[v.etat_revente] || v.etat_revente}`].filter(Boolean).join(' — ')}`,
-    `FINANCEMENT : ${[p.mode_financement, FIN[p.financement_valide], p.financement_nom, p.financement_date, p.financement_montant && `${Number(p.financement_montant).toLocaleString('fr-FR')} €`, p.apport && `apport ${Number(p.apport).toLocaleString('fr-FR')} €`, p.apport_revente && `dont revente ${Number(p.apport_revente).toLocaleString('fr-FR')} €`, p.mensualite && `mensualité ${p.mensualite} €`, p.banque_ou_courtier].filter(Boolean).join(' — ')}`,
+    `SITUATION : ${[LOGEMENT[v.statut_logement], v.depuis && `depuis ${v.depuis}`, v.doit_vendre && `doit vendre : ${v.doit_vendre.toLowerCase()}`, v.etat_revente && `revente : ${REVENTE[v.etat_revente] || v.etat_revente}`, v.doit_vendre === 'OUI' && v.adresse_bien_a_vendre && `bien à vendre : ${v.adresse_bien_a_vendre}`].filter(Boolean).join(' — ')}`,
+    `FINANCEMENT : ${[p.mode_financement, FIN[p.financement_valide], p.financement_par && `par ${p.financement_par}`, p.financement_nom, p.financement_date, p.financement_montant && `${Number(p.financement_montant).toLocaleString('fr-FR')} €`, p.apport && `apport ${Number(p.apport).toLocaleString('fr-FR')} €`, p.apport_revente && `dont revente ${Number(p.apport_revente).toLocaleString('fr-FR')} €`, p.mensualite && `mensualité ${p.mensualite} €`, p.banque_ou_courtier, p.origine_fonds && `origine des fonds : ${p.origine_fonds}`].filter(Boolean).join(' — ')}`,
     `DÉCIDEURS : ${p.decideurs || ''}`,
     `IMPORTANT : ${crit('IMPORTANT')}`,
     `OPTIONNEL : ${crit('OPTIONNEL')}`,
     `RÉDHIBITOIRES : ${crit('REDHIBITOIRE')}`,
     `SECTEURS : ${Array.isArray(p.secteurs) ? p.secteurs.join(', ') : (p.secteurs || '')}`,
     `DÉJÀ VU : ${p.deja_vu || ''}`,
-    ...(json(appel?.details).mandat ? [`MANDAT DE RECHERCHE : ${texteMandat(json(appel.details).mandat)}`] : []),
+    ...(det.mandat ? [`MANDAT DE RECHERCHE : ${texteMandat(det.mandat)}`] : []),
     `MAJ : ${jj(appel?.horodatage)} ${initiales(appel?.madame_fichier)}`]
     // Une rubrique sans rien derrière ses deux-points n'apprend rien à qui
     // lit la fiche dans Modelo : on ne l'écrit pas.
@@ -68,26 +102,33 @@ function blocPrecisions(fiche, contact, appel) {
 
 // La note d'appel, une par contact : toutes les tentatives et l'appel abouti
 // depuis le dernier report.
-function noteContact(contact, appels) {
+function noteContact(contact, appels, fiches = []) {
   // Comme pour l'opération : les appels dans le vide sur une ligne, chaque SMS
   // ou mail dans une phrase à part, avec son texte s'il a été noté.
   const tent = appels.filter(a => LIB_ISSUE[a.issue] && a.canal === 'APPEL').map(a => `${jj(a.horodatage).slice(0, 5)} ${LIB_ISSUE[a.issue]}`);
-  const messages = appels.filter(a => a.canal !== 'APPEL').map(a => { const t = json(a.details).texte;
-    return `${a.canal === 'SMS' ? 'SMS' : 'Mail'} envoyé le ${jj(a.horodatage).slice(0, 5)}${t ? ` : « ${t} »` : ''}.`; });
-  const fin = [...appels].reverse().find(a => a.statut_final);
+  // Un SMS « dans la foulée » d'un répondeur est rangé dans le même appel.
+  const messages = appels.filter(a => a.canal !== 'APPEL' || json(a.details).sms).map(a => { const t = json(a.details).texte;
+    return `${a.canal === 'MAIL' ? 'Mail' : 'SMS'} envoyé le ${jj(a.horodatage).slice(0, 5)}${t ? ` : « ${t} »` : ''}.`; });
+  const aboutis = appels.filter(a => a.statut_final);
+  const fin = aboutis[aboutis.length - 1];
   const morceaux = [PREFIXE];
   if (tent.length) morceaux.push(`Tentatives : ${tent.join(', ')}.`);
   morceaux.push(...messages);
   if (fin) {
-    const d = json(fin.details);
+    const d = fusionDetails(appels);
+    // Les appels aboutis d'avant, dans le même lot : une ligne chacun.
+    for (const a of aboutis.slice(0, -1)) morceaux.push(`Appel du ${jj(a.horodatage)} : ${LIB_STATUT[a.statut_final] || a.statut_final}.${a.notes ? ' ' + a.notes : ''}`);
     morceaux.push(`Appel du ${jj(fin.horodatage)} : ${LIB_STATUT[fin.statut_final] || fin.statut_final}.`);
-    if (fin.prochaine_action) morceaux.push(`Prochaine action : ${fin.prochaine_action}${fin.date_prochaine_action ? ' le ' + jj(fin.date_prochaine_action) : ''}.`);
+    if (fin.prochaine_action) morceaux.push(`Prochaine action : ${fin.prochaine_action}${fin.date_prochaine_action ? ' le ' + jjh(fin.date_prochaine_action) : ''}.`);
+    const achats = [d.achat, ...fiches.map(f => json(f.requalif).achete_ou_chez_qui)].filter(Boolean);
+    if (achats.length) morceaux.push(`A acheté : ${[...new Set(achats)].join(' ; ')}.`);
     const anc = Object.entries(d.coordonnees || {}).filter(([, c]) => ['MODIFIE', 'A_SUPPRIMER'].includes(c.etat) && c.avant)
       .map(([k, c]) => `${k.replace('_', ' ')} : ${typeof c.avant === 'object' ? Object.values(c.avant).filter(Boolean).join(' ') : c.avant}`);
     if (anc.length) morceaux.push(`Anciennes coordonnées : ${anc.join(' ; ')}.`);
     if (d.coordonnees?.adresse?.etat === 'A_SUPPRIMER') morceaux.push('Adresse postale fausse (NPAI).');
+    if (d.stop_mail) morceaux.push('Ne veut plus recevoir de mails.');
     if (d.marine?.proposee) morceaux.push(`Rendez-vous courtage proposé${d.marine.accord ? ', client d’accord' : ''}.`);
-    if (d.vendre?.estimation_proposee) morceaux.push(`Estimation proposée${d.vendre.estimation_acceptee ? `, acceptée${d.vendre.date_rdv_estimation ? ' (rdv le ' + jj(d.vendre.date_rdv_estimation) + ')' : ''}` : ''}.`);
+    if (d.vendre?.estimation_proposee) morceaux.push(`Estimation proposée${d.vendre.estimation_acceptee ? `, acceptée${d.vendre.date_rdv_estimation ? ' (rdv le ' + jjh(d.vendre.date_rdv_estimation) + ')' : ''}` : ''}.`);
     if (d.mandat) morceaux.push(`Mandat de recherche ${texteMandat(d.mandat)}.`);
     if (d.consentement_rappel) morceaux.push('Accepte d’être rappelé.');
     if (fin.notes) morceaux.push(fin.notes);
@@ -96,12 +137,13 @@ function noteContact(contact, appels) {
   return morceaux.join(' ');
 }
 
-const COLONNES = ['id_contact', 'id_fiche', 'nom', 'prenom', 'agent', 'date_note', 'type_note', 'note_contact',
+const COLONNES = ['id_contact', 'id_fiche', 'nom', 'prenom', 'agent', 'date_note', 'type_note', 'commentaire',
   'stop_tel', 'stop_mail',
   'tel_portable_avant', 'tel_portable_apres', 'tel_fixe_avant', 'tel_fixe_apres', 'email_avant', 'email_apres',
   'adresse_avant', 'adresse_apres',
   'type_bien_apres', 'budget_min_apres', 'budget_max_avant', 'budget_max_apres', 'surface_min_apres',
-  'pieces_min_apres', 'chambres_min_apres', 'priorite_apres', 'criteres_obligatoires_apres', 'precisions_apres',
+  'pieces_min_apres', 'chambres_min_apres', 'secteurs_avant', 'secteurs_apres', 'priorite_avant', 'priorite_apres',
+  'criteres_obligatoires_apres', 'precisions_apres',
   'nego_contact_cible', 'nego_fiche_cible', 'alerte_mail', 'archiver_fiche', 'commentaire_fiche', 'fusion_dans',
   'type_contact_ajout', 'a_proposer_a_loick', 'jusqu_a',
   // À remplir par Exploration Modelo, puis réimporter : « reporté » ou « échec ».
@@ -130,16 +172,16 @@ function lignesReport(jusquA) {
       ORDER BY horodatage`).all(c.id_contact, c.modelo_reporte_le, jusquA);
     if (!appels.length) continue;
     const fin = [...appels].reverse().find(a => a.statut_final);
-    const d = json(fin?.details);
+    const d = fusionDetails(appels);
     const co = d.coordonnees || {};
-    const note = noteContact(c, appels);
+    const fiches = db.prepare('SELECT * FROM acq_fiches WHERE id_contact = ? ORDER BY id_fiche').all(c.id_contact);
+    const note = noteContact(c, appels, fiches);
     // La réattribution et la mise à jour des fiches ne partent que si CE lot
     // contient l'appel abouti : après un report, une simple tentative sur un
     // contact requalifié ne donne qu'une note (et `fin` n'existe pas).
     const requal = c.statut === 'REQUALIFIE' && !!fin;
     const archiveTout = STATUTS_ARCHIVANT.includes(c.statut);
-    const vendeur = d.vendre?.doit_vendre === 'OUI' && !/vendeur/i.test(c.type_contact || '');
-    const fiches = db.prepare('SELECT * FROM acq_fiches WHERE id_contact = ? ORDER BY id_fiche').all(c.id_contact);
+    const vendeur = !!fin && d.vendre?.doit_vendre === 'OUI' && !/vendeur/i.test(c.type_contact || '');
     const av = (k) => { const x = co[k]; return x && ['MODIFIE', 'A_SUPPRIMER'].includes(x.etat) ? (typeof x.avant === 'object' ? Object.values(x.avant || {}).filter(Boolean).join(' ') : x.avant || '') : ''; };
     // Une adresse « à supprimer » est une adresse fausse : NPAI, comme dans
     // l'opération anciens clients.
@@ -147,33 +189,43 @@ function lignesReport(jusquA) {
       return ['MODIFIE', 'AJOUTE'].includes(x.etat) ? (typeof x.apres === 'object' ? [x.apres.adresse, x.apres.code_postal, x.apres.commune].filter(Boolean).join(' ') : x.apres || '') : ''; };
     fiches.forEach((f, i) => {
       const p = json(f.requalif);
-      const garde = f.decision === 'GARDER' && fin && appels.some(a => a.statut_final);
+      // Une recherche « gardée » chez une personne dont le statut archive tout
+      // (abandonné, déjà acheté…) n'est pas mise à jour : elle part à l'archivage.
+      const garde = f.decision === 'GARDER' && !!fin && !archiveTout;
       const archiver = (f.decision === 'ARCHIVER' || f.decision === 'FUSIONNER' || archiveTout) && f.archivage_valide === 1;
+      // Le budget + 10 % ne part que s'il a été rediscuté : contact requalifié,
+      // ou montant différent de celui de Modelo. Sinon une valeur simplement
+      // pré-remplie était gonflée à chaque report.
+      const budgetDiscute = garde && p.budget_max && (requal || Number(p.budget_max) !== Number(f.budget_max));
+      const secteurs = Array.isArray(p.secteurs) ? p.secteurs.join(', ') : (p.secteurs || '');
       const motif = f.decision === 'FUSIONNER' ? `doublon de la recherche n° ${f.fusion_dans}, conservée et mise à jour`
         : f.decision === 'ARCHIVER' ? (f.motif_archivage || 'projet ancien')
         : archiveTout ? LIB_STATUT[c.statut] : '';
       lignes.push({
         id_contact: c.id_contact, id_fiche: f.id_fiche, nom: c.nom || '', prenom: c.prenom || '',
         agent: fin?.madame_fichier || appels[appels.length - 1].madame_fichier, date_note: jj((fin || appels[appels.length - 1]).horodatage),
-        type_note: TYPE_NOTE, note_contact: i === 0 ? (note || '') : '',
-        stop_tel: i === 0 && c.statut === 'NE_PLUS_CONTACTER' ? 'OUI' : '', stop_mail: '',
+        type_note: TYPE_NOTE, commentaire: i === 0 ? (note || '') : '',
+        stop_tel: i === 0 && c.statut === 'NE_PLUS_CONTACTER' ? 'OUI' : '', stop_mail: i === 0 && d.stop_mail ? 'OUI' : '',
         tel_portable_avant: i === 0 ? av('tel_portable') : '', tel_portable_apres: i === 0 ? ap('tel_portable') : '',
         tel_fixe_avant: i === 0 ? av('tel_fixe') : '', tel_fixe_apres: i === 0 ? ap('tel_fixe') : '',
         email_avant: i === 0 ? av('email') : '', email_apres: i === 0 ? ap('email') : '',
         adresse_avant: i === 0 ? av('adresse') : '', adresse_apres: i === 0 ? ap('adresse') : '',
         type_bien_apres: garde ? (p.type_bien || '') : '',
         budget_min_apres: garde && p.budget_min ? String(p.budget_min) : '',
-        budget_max_avant: garde && f.budget_max ? String(f.budget_max) : '',
-        budget_max_apres: garde && p.budget_max ? String(A.budgetModelo(p.budget_max)) : '',
+        budget_max_avant: budgetDiscute && f.budget_max ? String(f.budget_max) : '',
+        budget_max_apres: budgetDiscute ? String(A.budgetModelo(p.budget_max)) : '',
         surface_min_apres: garde && p.surface_min ? String(p.surface_min) : '',
         pieces_min_apres: garde && p.pieces ? String(p.pieces) : '',
         chambres_min_apres: garde && p.chambres ? String(p.chambres) : '',
+        secteurs_avant: garde && secteurs ? (f.communes || f.codes_postaux || '') : '',
+        secteurs_apres: garde ? secteurs : '',
+        priorite_avant: garde && A.prioriteModelo(p.urgence) ? (f.priorite || '') : '',
         priorite_apres: garde ? (A.prioriteModelo(p.urgence) || '') : '',
         criteres_obligatoires_apres: garde ? (p.criteres || []).filter(x => x.niveau === 'INDISPENSABLE').map(x => x.valeur ? `${x.critere} : ${x.valeur}` : x.critere).join(', ') : '',
-        precisions_apres: garde ? blocPrecisions(f, c, fin) : '',
+        precisions_apres: garde ? blocPrecisions(f, c, fin, d) : '',
         nego_contact_cible: i === 0 && requal ? fin.madame_fichier : '',
         nego_fiche_cible: requal && garde ? fin.madame_fichier : '',
-        alerte_mail: garde ? (requal ? 'oui' : c.statut === 'EN_PAUSE' ? 'non' : '') : (archiver ? 'non' : ''),
+        alerte_mail: garde ? (requal ? 'oui' : c.statut === 'EN_PAUSE' ? 'non' : '') : (archiver || (archiveTout && f.decision === 'GARDER') ? 'non' : ''),
         archiver_fiche: archiver ? 'oui' : '',
         commentaire_fiche: archiver ? `${PREFIXE} Fiche archivée le ${jj(f.decision_le || fin?.horodatage)} par ${fin?.madame_fichier || ''} : ${motif}.` : '',
         fusion_dans: archiver && f.decision === 'FUSIONNER' ? (f.fusion_dans || '') : '',
@@ -189,5 +241,6 @@ function lignesReport(jusquA) {
 const cellule = (v) => { const s = String(v ?? ''); return /[;"\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
 const enCsv = (lignes) => '﻿' + [COLONNES.join(';'), ...lignes.map(l => COLONNES.map(k => cellule(l[k])).join(';'))].join('\r\n');
 
-module.exports = { blocPrecisions, noteContact, lignesReport, enCsv, archivagesEnAttente, aReporter, COLONNES,
+const jour = (s) => jj(s);
+module.exports = { jour, fusionDetails, blocPrecisions, noteContact, lignesReport, enCsv, archivagesEnAttente, aReporter, COLONNES,
   STATUTS_ARCHIVANT, LIB_STATUT, PREFIXE };

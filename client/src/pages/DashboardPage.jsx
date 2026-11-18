@@ -4,11 +4,11 @@ import api from '../utils/api'
 import { CATEGORIES, STATUTS } from '../utils/constants'
 import { format } from 'date-fns'
 import { fr } from 'date-fns/locale'
-import Icon from '../components/ui/Icon'
 import PageHeader from '../components/ui/PageHeader'
 import ChoixPeriode, { enParametres, periodeEnClair } from '../components/ChoixPeriode'
+import { Chiffre, Initiales } from '../components/ui/Briques'
 
-const PIE_COLORS = ['#0D0D2B','#C9A96E','#2d2d6b','#e8c98a','#1a1a4e','#94a3b8']
+const PIE_COLORS = ['#0D0D2B','#C9A96E','#2d2d6b','#e8c98a','#1a1a4e','#B6A997']
 
 // `onVoir` : fourni par l'espace de l'admin, il rend les quatre cases
 // cliquables (vers les contacts, le suivi par personne…). Sans lui, l'écran
@@ -75,23 +75,21 @@ export default function DashboardPage({ onNavigate, onVoir = null }) {
             <button onClick={charger} className="btn-secondary btn-sm flex-shrink-0">Réessayer</button>
           </div>
         )}
-        <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6 transition-opacity ${loading ? 'opacity-50' : ''}`}>
-          <KpiCard label="Fiches dans le fichier" value={stats.totalContacts.toLocaleString('fr')} icon="users" variant="navy" onClick={onVoir ? () => onVoir('fiches') : undefined} />
-          <KpiCard label="Appels (période)" value={appels} icon="phone" variant="gold" onClick={onVoir ? () => onVoir('appels') : undefined} />
-          <KpiCard label="Taux de contact (période)" value={`${tauxContact}%`} icon="trending-up" variant="light" onClick={onVoir ? () => onVoir('appels') : undefined} />
-          <KpiCard label="Projets (période)" value={t.projets ?? 0} icon="calendar-check" variant="success" onClick={onVoir ? () => onVoir('projets') : undefined} />
+        <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6 transition-opacity ${loading ? 'opacity-50' : ''}`}>
+          <Chiffre fort libelle="Fiches dans le fichier" valeur={stats.totalContacts.toLocaleString('fr')} icon="users" onClick={onVoir ? () => onVoir('fiches') : undefined} />
+          <Chiffre libelle="Appels (période)" valeur={appels} icon="phone" onClick={onVoir ? () => onVoir('appels') : undefined} />
+          <Chiffre libelle="Taux de contact (période)" valeur={`${tauxContact}%`} icon="trending-up" onClick={onVoir ? () => onVoir('appels') : undefined} />
+          <Chiffre libelle="Projets (période)" valeur={t.projets ?? 0} icon="calendar-check" onClick={onVoir ? () => onVoir('projets') : undefined} />
         </div>
 
         {stats.parAgent?.length > 0 && (
           <div className="card mb-6">
-            <h2 className="font-semibold text-quai-navy mb-4 text-sm uppercase tracking-wider">Activité aujourd'hui</h2>
+            <h2 className="font-display font-semibold text-lg text-quai-navy leading-tight mb-4">Activité aujourd'hui</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
               {stats.parAgent.map(a => (
                 <div key={a.id} className="text-center p-4 bg-quai-light rounded-xl border border-quai-border">
-                  <div className="w-10 h-10 bg-quai-navy rounded-full flex items-center justify-center text-white text-sm font-bold mx-auto mb-2">
-                    {a.prenom?.[0]}{a.nom?.[0]}
-                  </div>
-                  <div className="text-2xl font-bold text-quai-navy">{a.relances_jour}</div>
+                  <div className="flex justify-center mb-2"><Initiales prenom={a.prenom} nom={a.nom} ton="marine" /></div>
+                  <div className="font-display text-3xl font-semibold leading-none text-quai-navy mb-1">{a.relances_jour}</div>
                   <div className="text-xs text-quai-muted">{a.prenom} {a.nom}</div>
                 </div>
               ))}
@@ -101,7 +99,7 @@ export default function DashboardPage({ onNavigate, onVoir = null }) {
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
           <div className="card">
-            <h2 className="font-semibold text-quai-navy mb-4 text-sm uppercase tracking-wider">Relances par {granularite}</h2>
+            <h2 className="font-display font-semibold text-lg text-quai-navy leading-tight mb-4">Relances par {granularite}</h2>
             {stats.periode && <p className="text-xs text-quai-muted -mt-3 mb-3">{periodeEnClair(stats.periode)}</p>}
             {parJourData.length > 0 ? (
               <ResponsiveContainer width="100%" height={200}>
@@ -116,7 +114,7 @@ export default function DashboardPage({ onNavigate, onVoir = null }) {
           </div>
 
           <div className="card">
-            <h2 className="font-semibold text-quai-navy mb-4 text-sm uppercase tracking-wider">Répartition par catégorie</h2>
+            <h2 className="font-display font-semibold text-lg text-quai-navy leading-tight mb-4">Répartition par catégorie</h2>
             {catData.length > 0 ? (
               <ResponsiveContainer width="100%" height={200}>
                 <PieChart>
@@ -132,41 +130,19 @@ export default function DashboardPage({ onNavigate, onVoir = null }) {
         </div>
 
         <div className="card">
-          <h2 className="font-semibold text-quai-navy mb-4 text-sm uppercase tracking-wider">Contacts par statut</h2>
+          <h2 className="font-display font-semibold text-lg text-quai-navy leading-tight mb-4">Contacts par statut</h2>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-3">
             {stats.contactsParStatut.map(s => {
               const info = STATUTS[s.statut] || { label: s.statut, color: 'bg-quai-light text-quai-muted' }
               return (
                 <div key={s.statut} className="text-center p-3 bg-quai-light rounded-xl border border-quai-border">
-                  <div className="text-xl font-bold text-quai-navy">{s.cnt}</div>
+                  <div className="font-display text-2xl font-semibold leading-none text-quai-navy">{s.cnt}</div>
                   <div className={`badge ${info.color} mt-1.5 text-xs`}>{info.label}</div>
                 </div>
               )
             })}
           </div>
         </div>
-      </div>
-    </div>
-  )
-}
-
-function KpiCard({ label, value, icon, variant, onClick }) {
-  const styles = {
-    navy:    'bg-quai-navy text-white',
-    gold:    'bg-quai-gold text-quai-navy',
-    light:   'bg-white border border-quai-border text-quai-navy',
-    success: 'bg-emerald-600 text-white',
-  }
-  return (
-    <div
-      className={`rounded-xl p-5 flex items-center gap-4 ${styles[variant]} ${onClick ? 'cursor-pointer hover:opacity-90 transition-opacity' : ''}`}
-      onClick={onClick}
-      {...(onClick ? { role: 'button', tabIndex: 0, onKeyDown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick() } } } : {})}
-    >
-      <Icon name={icon} size="xl" className="opacity-80" />
-      <div>
-        <div className="text-2xl font-bold leading-tight">{value}</div>
-        <div className="text-xs opacity-70 mt-0.5">{label}</div>
       </div>
     </div>
   )

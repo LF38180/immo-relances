@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, lazy, Suspense } from 'react'
+import toast from 'react-hot-toast'
 import api from '../../utils/api'
 import Icon from '../../components/ui/Icon'
 import { Pastille, Initiales, Titre, StatutBadge } from './ui'
@@ -24,7 +25,8 @@ export function MesContacts({ depart = '', onChoisir, onFermer }) {
   const [liste, setListe] = useState(null)
   const [q, setQ] = useState(depart)
   const [seulement, setSeulement] = useState('')
-  useEffect(() => { api.get('/acquereurs/mes-contacts').then(r => setListe(r.data)).catch(() => setListe([])) }, [])
+  const [panne, setPanne] = useState(false)
+  useEffect(() => { api.get('/acquereurs/mes-contacts').then(r => setListe(r.data)).catch(() => { setListe([]); setPanne(true) }) }, [])
   useEffect(() => { const e = (ev) => { if (ev.key === 'Escape') onFermer() }; window.addEventListener('keydown', e); return () => window.removeEventListener('keydown', e) }, [onFermer])
   const motif = q.trim().toLowerCase(), chiffres = motif.replace(/\D/g, '')
   const visibles = (liste || []).filter(c => {
@@ -35,18 +37,18 @@ export function MesContacts({ depart = '', onChoisir, onFermer }) {
     if (`${c.nom || ''} ${c.prenom || ''} ${c.nom || ''} ${c.commune || ''} ${c.email || ''}`.toLowerCase().includes(motif)) return true
     return chiffres.length >= 3 && `${c.tel_portable || ''} ${c.tel_fixe || ''}`.replace(/\D/g, '').includes(chiffres)
   })
-  const puce = (a) => `text-xs px-2.5 py-1.5 rounded-full border ${a ? 'bg-quai-navy text-white border-quai-navy' : 'border-quai-border text-quai-muted'}`
+  const puce = (a) => `text-xs px-3 py-1.5 min-h-[2.75rem] md:min-h-0 rounded-full border ${a ? 'bg-quai-navy text-white border-quai-navy' : 'border-quai-border text-quai-muted'}`
   const n = (f) => (liste || []).filter(f).length
   return (
     <div className="fixed inset-0 z-[1250] bg-black/40 flex items-end md:items-center justify-center md:p-4" onClick={onFermer}>
       <div role="dialog" aria-modal="true" aria-label="Mes contacts" onClick={e => e.stopPropagation()}
-        className="bg-white w-full md:max-w-lg h-[90vh] md:h-[85vh] rounded-t-2xl md:rounded-xl flex flex-col overflow-hidden">
+        className="bg-white w-full md:max-w-lg h-[90dvh] md:h-[85vh] rounded-t-2xl md:rounded-xl flex flex-col overflow-hidden">
         <div className="px-4 py-3 border-b border-quai-border">
           <div className="flex items-center justify-between">
             <span className="font-semibold text-quai-navy text-sm">Mes contacts{liste ? ` (${liste.length})` : ''}</span>
-            <button onClick={onFermer} aria-label="Fermer" className="text-quai-muted p-2 -mr-2"><Icon name="x" size="sm" /></button>
+            <button onClick={onFermer} aria-label="Fermer" className="text-quai-muted -mr-2 min-w-[2.75rem] min-h-[2.75rem] grid place-items-center"><Icon name="x" size="sm" /></button>
           </div>
-          <input value={q} onChange={e => setQ(e.target.value)} autoFocus placeholder="Nom, commune, e-mail ou numéro…" className="input mt-2 min-h-[2.75rem]" />
+          <input type="search" aria-label="Rechercher dans mes contacts" value={q} onChange={e => setQ(e.target.value)} placeholder="Nom, commune, e-mail ou numéro…" className="input mt-2 min-h-[2.75rem]" />
           <div className="flex flex-wrap gap-1.5 mt-2">
             <button onClick={() => setSeulement('')} className={puce(!seulement)}>Tous</button>
             <button onClick={() => setSeulement(seulement === 'appeles' ? '' : 'appeles')} className={puce(seulement === 'appeles')}>Déjà appelés {n(c => c.appels)}</button>
@@ -54,9 +56,10 @@ export function MesContacts({ depart = '', onChoisir, onFermer }) {
             <button onClick={() => setSeulement(seulement === 'sms' ? '' : 'sms')} className={puce(seulement === 'sms')}>SMS envoyé {n(c => c.dernier_canal === 'SMS')}</button>
           </div>
         </div>
-        <div className="flex-1 overflow-y-auto divide-y divide-quai-border/60">
+        <div className="flex-1 overflow-y-auto divide-y divide-quai-border/60" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
           {!liste && <p className="p-4 text-sm text-quai-muted">Chargement…</p>}
-          {liste && !visibles.length && <p className="p-4 text-sm text-quai-muted">Aucun contact ne correspond.</p>}
+          {panne && <p className="p-4 text-sm text-red-700">La liste n’a pas pu être chargée. Fermez et rouvrez pour réessayer.</p>}
+          {liste && !panne && !visibles.length && <p className="p-4 text-sm text-quai-muted">Aucun contact ne correspond.</p>}
           {visibles.slice(0, 200).map(c => (
             <button key={c.id_contact} onClick={() => onChoisir(c.id_contact)} className="w-full text-left px-4 py-2.5 hover:bg-quai-light flex items-center gap-3 transition-colors">
               <Initiales prenom={c.prenom} nom={c.nom} taille="sm" />
@@ -78,19 +81,21 @@ export function MesContacts({ depart = '', onChoisir, onFermer }) {
 
 // Ce que j'ai fait aujourd'hui : rouvrir une fiche pour la compléter.
 function Effectues({ onChoisir, onFermer }) {
-  const [l, setL] = useState(null)
-  useEffect(() => { api.get('/acquereurs/effectues').then(r => setL(r.data)).catch(() => setL([])) }, [])
+  const [l, setL] = useState(null), [panne, setPanne] = useState(false)
+  useEffect(() => { api.get('/acquereurs/effectues').then(r => setL(r.data)).catch(() => { setL([]); setPanne(true) }) }, [])
+  useEffect(() => { const e = (ev) => { if (ev.key === 'Escape') onFermer() }; window.addEventListener('keydown', e); return () => window.removeEventListener('keydown', e) }, [onFermer])
   return (
     <div className="fixed inset-0 z-[1250] bg-black/40 flex items-end md:items-center justify-center md:p-4" onClick={onFermer}>
       <div role="dialog" aria-modal="true" aria-label="Effectués aujourd'hui" onClick={e => e.stopPropagation()}
         className="bg-white w-full md:max-w-lg max-h-[85vh] rounded-t-2xl md:rounded-xl flex flex-col overflow-hidden">
         <div className="px-4 py-3 border-b border-quai-border flex items-center justify-between">
           <span className="font-semibold text-quai-navy text-sm">Effectués aujourd’hui{l ? ` (${l.length})` : ''}</span>
-          <button onClick={onFermer} aria-label="Fermer" className="text-quai-muted p-2 -mr-2"><Icon name="x" size="sm" /></button>
+          <button onClick={onFermer} aria-label="Fermer" className="text-quai-muted -mr-2 min-w-[2.75rem] min-h-[2.75rem] grid place-items-center"><Icon name="x" size="sm" /></button>
         </div>
         <div className="overflow-y-auto divide-y divide-quai-border/60">
           {!l && <p className="p-4 text-sm text-quai-muted">Chargement…</p>}
-          {l && !l.length && <p className="p-4 text-sm text-quai-muted">Aucun appel aujourd’hui.</p>}
+          {panne && <p className="p-4 text-sm text-red-700">La liste n’a pas pu être chargée. Fermez et rouvrez pour réessayer.</p>}
+          {l && !panne && !l.length && <p className="p-4 text-sm text-quai-muted">Aucun appel aujourd’hui.</p>}
           {(l || []).map(a => (
             <button key={a.id} onClick={() => onChoisir(a.id_contact)} className="w-full text-left px-4 py-2.5 hover:bg-quai-light flex items-center gap-3 transition-colors">
               <span className="text-xs font-semibold text-quai-navy bg-quai-light border border-quai-border rounded-lg px-2 py-1 shrink-0 tabular-nums">{heure(a.horodatage)}</span>
@@ -122,7 +127,7 @@ function Barre({ index, total, horsFile, faits, plage, contacts, onOuvrir, onAFa
     `${c.nom || ''} ${c.prenom || ''} ${c.nom || ''} ${c.email || ''}`.toLowerCase().includes(motif)
     || (chiffres.length >= 3 && `${c.tel_portable || ''} ${c.tel_fixe || ''}`.replace(/\D/g, '').includes(chiffres))).slice(0, 8)
   const pct = total ? Math.round(((index ?? 0) / total) * 100) : 0
-  const pastille = 'inline-flex items-center gap-1 px-2 py-1 rounded-full border border-quai-border text-quai-navy hover:border-quai-gold bg-white'
+  const pastille = 'inline-flex items-center gap-1 px-2.5 py-1 min-h-[2.5rem] md:min-h-0 rounded-full border border-quai-border text-quai-navy hover:border-quai-gold bg-white'
   return (
     <div className="bg-white border-b border-quai-border py-2 sticky top-0 z-20">
       <div className="max-w-3xl mx-auto px-3">
@@ -139,7 +144,7 @@ function Barre({ index, total, horsFile, faits, plage, contacts, onOuvrir, onAFa
         <div className="h-1.5 bg-quai-border rounded-full overflow-hidden"><div className="h-full bg-quai-gold rounded-full transition-all" style={{ width: `${pct}%` }} /></div>
         <div className={`relative mt-2 ${enAppel && !loupe ? 'hidden md:block' : ''}`}>
           <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-quai-muted pointer-events-none"><Icon name="search" size="sm" /></span>
-          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Il vous rappelle ? Nom ou numéro…" className="input pl-8 min-h-[2.75rem] md:min-h-0" />
+          <input type="search" aria-label="Retrouver quelqu’un qui rappelle" value={q} onChange={e => setQ(e.target.value)} placeholder="Il vous rappelle ? Nom ou numéro…" className="input pl-8 min-h-[2.75rem] md:min-h-0" />
           {res.length > 0 && (
             <ul className="absolute z-[1100] left-0 right-0 mt-1 bg-white border border-quai-border rounded-lg shadow-lg overflow-hidden max-h-72 overflow-y-auto">
               {res.map(c => (
@@ -157,7 +162,10 @@ function Barre({ index, total, horsFile, faits, plage, contacts, onOuvrir, onAFa
   )
 }
 
-export default function AcqFile() {
+// `lecture` : l'admin regarde l'écran de l'agent, rien ne s'enregistre.
+// `onEnAppel` : dit à l'espace qu'une fiche est ouverte (il replie ses onglets
+// sur téléphone, où quatre barres empilées mangeaient un tiers de l'écran).
+export default function AcqFile({ lecture = false, onEnAppel }) {
   const [d, setD] = useState(null)
   const [ouvert, setOuvert] = useState(null)   // id_contact en cours
   const [horsFile, setHorsFile] = useState(false)
@@ -189,6 +197,7 @@ export default function AcqFile() {
   )
   const charger = useCallback(() => api.get('/acquereurs/file').then(r => setD(r.data)).catch(() => setD({ erreur: true })), [])
   useEffect(() => { charger() }, [charger])
+  useEffect(() => { onEnAppel?.(!!ouvert); return () => onEnAppel?.(false) }, [ouvert, onEnAppel])
 
   if (ouvert) {
     const idx = d?.file?.findIndex(c => c.id_contact === ouvert) ?? -1
@@ -207,15 +216,24 @@ export default function AcqFile() {
         const reste = r.data.file.filter(c => c.id_contact !== ouvert)
         const prochain = reste[Math.max(idx, 0)] || reste[0]
         setOuvert(prochain ? prochain.id_contact : null)
+      }).catch(() => {
+        // L'appel est bien enregistré ; c'est la file qui n'a pas pu être
+        // relue. On revient à la liste plutôt que de laisser la fiche traitée
+        // à l'écran, bouton réactivé.
+        toast.error('Appel enregistré, mais la file n’a pas pu être rechargée.')
+        setOuvert(null); charger()
       })
     }
+    // « Passer » : la fiche reste dans la file, on ouvre la suivante.
+    const apres = !horsFile && idx >= 0 ? d.file[idx + 1] : null
+    const passer = apres ? () => setOuvert(apres.id_contact) : null
     return (
       <Suspense fallback={<div className="p-6 text-sm text-quai-muted animate-pulse">Chargement…</div>}>
-        <Barre index={horsFile || idx < 0 ? null : idx} total={d?.file?.length || 0} horsFile={horsFile} faits={faits} plage={d?.plage}
+        <Barre index={horsFile || idx < 0 ? null : idx} total={d?.file?.length || 0} horsFile={horsFile} faits={faits} plage={null}
           contacts={contacts} onOuvrir={(id) => ouvrirHorsFile(id, true)} onAFaire={() => { setOuvert(null); setHorsFile(false); setPrecedent(null); charger() }}
           onEffectues={() => setFenetre('effectues')} onContacts={() => setFenetre('contacts')} />
         <AcqAppel key={ouvert} id={ouvert} position={horsFile ? 'Hors de la file' : idx >= 0 ? `${idx + 1} / ${d.file.length}` : ''}
-          horsFile={horsFile} entrantInitial={horsFile && entrant}
+          horsFile={horsFile} entrantInitial={horsFile && entrant} lecture={lecture} onPasser={passer}
           revenir={precedent ? { libelle: 'Revenir à l’appel en cours', aller: () => { const p = precedent; setPrecedent(null); setHorsFile(false); setOuvert(p) } } : null}
           onSuivant={suivant} onRetour={() => { setOuvert(null); setHorsFile(false); setPrecedent(null); charger() }} />
         {outils}
@@ -223,7 +241,12 @@ export default function AcqFile() {
     )
   }
   if (!d) return <p className="p-6 text-sm text-quai-muted">Chargement…</p>
-  if (d.erreur) return <p className="p-6 text-sm text-red-700">La file n’a pas pu être chargée. Réessayez.</p>
+  if (d.erreur) return (
+    <div className="p-6 max-w-md mx-auto text-center">
+      <p className="text-sm text-red-700 mb-3">La file n’a pas pu être chargée. Vérifiez votre connexion.</p>
+      <button className="btn-primary" onClick={() => { setD(null); charger() }}>Réessayer</button>
+    </div>
+  )
   const g = d.groupes
   // La file, rangée par raison d'appeler : on voit d'un coup d'œil ce qui
   // presse (un rappel convenu) et ce qui peut attendre.

@@ -25,6 +25,8 @@ const ImportModal = lazy(() => import('../../components/ImportModal'))
 const VueCourtage = lazy(() => import('../SessionHub').then(m => ({ default: m.VueCourtage })))
 const VueAgent = lazy(() => import('../SessionHub').then(m => ({ default: m.VueAgent })))
 const ReportBandeau = lazy(() => import('../acquereurs/AcqAdmin').then(m => ({ default: m.ReportBandeau })))
+const Transmettre = lazy(() => import('../acquereurs/AcqAdmin').then(m => ({ default: m.Transmettre })))
+const EnTeteMission = lazy(() => import('../../components/EnTeteMission'))
 const AcqSuivi = lazy(() => import('../acquereurs/AcqSuivi'))
 const AcqListing = lazy(() => import('../acquereurs/AcqListing'))
 const AcqAdmin = lazy(() => import('../acquereurs/AcqAdmin'))
@@ -196,7 +198,7 @@ function Pastilles({ choix, valeur, onChange, largeur = 'max-w-6xl' }) {
   )
 }
 
-function ContenuMission({ mission, onglet, setOnglet, sous, setSous, plein }) {
+function ContenuMission({ mission, onglet, setOnglet, sous, setSous, plein, aller }) {
   if (mission === 'estimes') {
     if (onglet === 'suivi') {
       const v = sous || 'tableau'
@@ -246,8 +248,12 @@ function ContenuMission({ mission, onglet, setOnglet, sous, setSous, plein }) {
   if (onglet === 'suivi') return (
     <Defile>
       <div className="max-w-4xl mx-auto px-4 md:px-6 pt-3 space-y-2">
-        <AccesMission onEcran={() => plein({ type: 'acq', onglet: 'file' })} onDemo={() => plein({ type: 'acq', onglet: 'demo' })} />
+        <AccesMission onEcran={() => plein({ type: 'acq', onglet: 'file', apercu: 'ecran' })} onDemo={() => plein({ type: 'acq', onglet: 'demo', apercu: 'demo' })} />
         <ReportBandeau onDetail={() => setOnglet('report')} />
+        {/* Ce qui attend d'être transmis (courtage, estimations) et les
+            oppositions qui touchent une autre mission : visibles ici, sans
+            aller les chercher dans un autre onglet. */}
+        <Transmettre compact />
       </div>
       <AcqSuivi onVoir={(f) => { setSous(f); setOnglet('contacts') }} />
     </Defile>
@@ -255,7 +261,7 @@ function ContenuMission({ mission, onglet, setOnglet, sous, setSous, plein }) {
   if (onglet === 'contacts') return <Defile><AcqListing filtreInitial={sous || ''} onOuvrir={(id) => plein({ type: 'fiche', id })} /></Defile>
   if (onglet === 'import') return <Defile><AcqAdmin section="import" /></Defile>
   if (onglet === 'report') return <Defile><AcqAdmin section="report" /></Defile>
-  return <Defile><AcqAdmin section="parametres" /></Defile>
+  return <Defile><AcqAdmin section="parametres" onUtilisateurs={() => aller('utilisateurs')} /></Defile>
 }
 
 export default function EspaceAdmin({ operation }) {
@@ -264,9 +270,9 @@ export default function EspaceAdmin({ operation }) {
   const [sous, setSous] = useState(null)
   const [plein, setPlein] = useState(null)   // un écran hors du menu : opération, écran de l'agent, fiche
   const setOnglet = (o) => { setOngletBrut(o) }
-  const aller = (p, o) => {
+  const aller = (p, o, s = null) => {
     if (p === 'operation') return setPlein({ type: 'operation' })
-    setPage(p); setOngletBrut(o || 'suivi'); setSous(null)
+    setPage(p); setOngletBrut(o || 'suivi'); setSous(s)
   }
 
   if (plein) {
@@ -276,13 +282,11 @@ export default function EspaceAdmin({ operation }) {
         <Suspense fallback={<div className="min-h-screen flex"><Attente /></div>}>
           {plein.type === 'operation' && <OperationHub onRetour={fermer} />}
           {plein.type === 'demo' && <DemoMission mission={plein.mission} onFermer={fermer} />}
-          {plein.type === 'acq' && <AcqHub onRetour={fermer} libelleRetour="Mission Acquéreurs" ongletInitial={plein.onglet} />}
+          {plein.type === 'acq' && <AcqHub onRetour={fermer} libelleRetour="Mission Acquéreurs" ongletInitial={plein.onglet} apercu={plein.apercu}
+            onAdmin={() => { setPlein(null); setPage('acquereurs'); setOngletBrut('report'); setSous(null) }} />}
           {plein.type === 'fiche' && (
-            <div className="h-ecran flex flex-col bg-quai-light">
-              <header className="bg-quai-navy text-white px-3 py-2 flex items-center gap-2 shrink-0" style={{ paddingTop: 'max(0.5rem, env(safe-area-inset-top))' }}>
-                <div className="font-display font-semibold text-sm flex-1">Mission Acquéreurs</div>
-                <button onClick={fermer} className="text-white/80 hover:text-white text-xs inline-flex items-center gap-1 px-2 py-2"><Icon name="arrow-left" size="sm" /> Contacts</button>
-              </header>
+            <div className="h-ecran flex flex-col bg-quai-light espace-mission">
+              <EnTeteMission mission="acquereurs" onRetour={fermer} libelleRetour="Contacts" />
               <main className="flex-1 overflow-y-auto">
                 <AcqAppel key={plein.id} id={plein.id} horsFile position="Depuis les contacts" onSuivant={fermer} onRetour={fermer} />
               </main>
@@ -343,13 +347,13 @@ export default function EspaceAdmin({ operation }) {
               <div className="bg-white border-b border-quai-border flex gap-0.5 px-2 md:px-4 shrink-0 overflow-x-auto no-scrollbar">
                 {ONGLETS.map(o => (
                   <button key={o.id} onClick={() => { setOngletBrut(o.id); setSous(null) }}
-                    className={`px-3 py-2.5 text-[13px] font-medium whitespace-nowrap inline-flex items-center gap-1.5 border-b-2 transition-colors ${
+                    className={`flex-1 md:flex-none px-1.5 md:px-3 py-1.5 md:py-2.5 min-h-[2.75rem] text-[10px] md:text-[13px] leading-tight font-medium md:whitespace-nowrap inline-flex flex-col md:flex-row items-center justify-center gap-0.5 md:gap-1.5 border-b-2 transition-colors ${
                       onglet === o.id ? 'border-quai-gold text-quai-navy' : 'border-transparent text-quai-muted hover:text-quai-navy'}`}>
-                    <Icon name={o.icon} size="sm" /> {o.label}
+                    <Icon name={o.icon} size="sm" /> <span className="text-center">{o.label}</span>
                   </button>
                 ))}
               </div>
-              <ContenuMission key={`${page}-${onglet}`} mission={page} onglet={onglet} setOnglet={setOnglet} sous={sous} setSous={setSous} plein={setPlein} />
+              <ContenuMission key={`${page}-${onglet}`} mission={page} onglet={onglet} setOnglet={setOnglet} sous={sous} setSous={setSous} plein={setPlein} aller={aller} />
             </>
           )}
         </Suspense>

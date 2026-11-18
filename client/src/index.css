@@ -15,6 +15,11 @@
      et de Chrome mobile ; 100dvh la suit. Repli sur 100vh pour les
      navigateurs qui ne connaissent pas dvh (iOS < 15.4). */
   .h-ecran { height: 100vh; height: 100dvh; }
+
+  /* Sur un fond marine, le contour de focus marine ne se voit pas : cette
+     classe le passe en blanc. À poser sur les boutons des menus et en-têtes
+     sombres (équivalent de focus-visible:outline-white). */
+  .focus-clair:focus-visible { outline-color: #fff; }
 }
 
 @layer components {
@@ -66,6 +71,6 @@
    16 px : en dessous, l'iPhone zoome dès qu'on touche un champ.
    44 px : la taille qu'un doigt atteint sans viser. */
 @media (max-width: 767px) {
-  .espace-agence .input { font-size: 16px; }
-  .espace-agence .btn-sm { min-height: 44px; }
+  .espace-agence .input, .espace-mission .input { font-size: 16px; }
+  .espace-agence .btn-sm, .espace-mission .btn-sm { min-height: 44px; }
 }

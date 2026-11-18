@@ -30,7 +30,8 @@ const jour = (d) => d ? new Date(String(d).replace(' ', 'T') + (String(d).includ
 // la fiche s'ouvre à la place du Listing.
 export default function AcqListing({ filtreInitial = '', onOuvrir = null }) {
   const [d, setD] = useState(null), [filtre, setFiltre] = useState(filtreInitial), [q, setQ] = useState(''), [ouvert, setOuvert] = useState(null)
-  const charger = () => api.get('/acquereurs/admin/listing').then(r => setD(r.data)).catch(() => setD({ contacts: [], libelles: {} }))
+  const [panne, setPanne] = useState(false)
+  const charger = () => { setPanne(false); return api.get('/acquereurs/admin/listing').then(r => setD(r.data)).catch(() => setPanne(true)) }
   useEffect(() => { charger() }, [])
   useEffect(() => { setFiltre(filtreInitial) }, [filtreInitial])
   const visibles = useMemo(() => {
@@ -46,7 +47,13 @@ export default function AcqListing({ filtreInitial = '', onOuvrir = null }) {
         onSuivant={() => { setOuvert(null); charger() }} onRetour={() => { setOuvert(null); charger() }} />
     </Suspense>
   )
-  if (!d) return <p className="p-6 text-sm text-quai-muted">Chargement…</p>
+  if (panne) return (
+    <div className="p-6 max-w-md mx-auto text-center">
+      <p className="text-sm text-red-700 mb-3">La liste n’a pas pu être chargée.</p>
+      <button className="btn-primary" onClick={charger}>Réessayer</button>
+    </div>
+  )
+  if (!d) return <p className="p-6 text-sm text-quai-muted animate-pulse">Chargement…</p>
   const n = (k) => d.contacts.filter(FILTRES[k].f).length
   const exporter = () => {
     const lignes = visibles.map(c => ({ id_contact: c.id_contact, civilite: c.civilite, nom: c.nom, prenom: c.prenom, tel_portable: c.tel_portable,
@@ -60,19 +67,19 @@ export default function AcqListing({ filtreInitial = '', onOuvrir = null }) {
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob)
     a.download = `fichier-acquereurs-${(FILTRES[filtre]?.l || 'tous').toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${new Date().toLocaleDateString('fr-CA')}.csv`; a.click()
   }
-  const puce = (k, vide) => `text-xs px-2.5 py-1.5 rounded-full border whitespace-nowrap transition-colors ${filtre === k ? 'bg-quai-navy text-white border-quai-navy' : vide ? 'bg-transparent border-quai-border/60 text-quai-muted/60' : 'bg-white border-quai-border text-quai-navy hover:border-quai-gold'}`
+  const puce = (k, vide) => `text-xs px-3 py-1.5 min-h-[2.75rem] md:min-h-0 rounded-full border whitespace-nowrap transition-colors ${filtre === k ? 'bg-quai-navy text-white border-quai-navy' : vide ? 'bg-transparent border-dashed border-quai-border text-quai-muted' : 'bg-white border-quai-border text-quai-navy hover:border-quai-gold'}`
   return (
-    <div className="p-4 md:p-6 max-w-5xl mx-auto">
+    <div className="p-4 md:p-6 max-w-5xl mx-auto espace-mission">
       <div className="flex flex-wrap gap-2 mb-2">
         <div className="relative flex-1 min-w-[12rem]">
           <Icon name="search" size="sm" className="absolute left-2.5 top-1/2 -translate-y-1/2 text-quai-muted" />
-          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Nom, commune, e-mail ou numéro…" className="input pl-8 min-h-[2.75rem] md:min-h-0" />
+          <input type="search" aria-label="Rechercher une personne" value={q} onChange={e => setQ(e.target.value)} placeholder="Nom, commune, e-mail ou numéro…" className="input pl-8 min-h-[2.75rem] md:min-h-0" />
         </div>
-        <button onClick={exporter} className="btn-secondary inline-flex items-center gap-1.5"><Icon name="download" size="sm" /> Export ({visibles.length})</button>
+        <button onClick={exporter} className="btn-secondary inline-flex items-center gap-1.5"><Icon name="download" size="sm" /> Exporter ({visibles.length})</button>
       </div>
       {GROUPES.map(([titre, cles]) => (
-        <div key={titre} className="flex items-center gap-1.5 mb-1.5 overflow-x-auto no-scrollbar">
-          <span className="text-[10px] uppercase tracking-wider text-quai-muted w-16 shrink-0">{titre}</span>
+        <div key={titre} className="flex items-center gap-1.5 mb-1.5 overflow-x-auto no-scrollbar md:flex-wrap md:overflow-visible">
+          <span className="text-[10px] uppercase tracking-wider text-quai-muted w-16 shrink-0 sticky left-0 bg-quai-light md:static py-1">{titre}</span>
           {cles.map(k => { const nb = n(k); return (
             <button key={k} className={puce(k, !nb)} onClick={() => setFiltre(k)}>{FILTRES[k].l} <b className="font-semibold">{nb}</b></button>
           ) })}

@@ -153,17 +153,17 @@ const t = (n, fn) => { try { fn(); console.log('  OK  ' + n) } catch (e) { conso
     const l = r.body.lignes.filter(x => x.id_contact === '11');
     assert.strictEqual(l.length, 2);
     const g = l.find(x => x.id_fiche === '101'), f = l.find(x => x.id_fiche === '102');
-    assert.ok(g.note_contact.startsWith('[MADAME FICHIER ACQ 2026]')); assert.strictEqual(f.note_contact, '');
+    assert.ok(g.commentaire.startsWith('[MADAME FICHIER ACQ 2026]')); assert.strictEqual(f.commentaire, '');
     assert.strictEqual(g.budget_max_apres, '352000'); assert.strictEqual(g.priorite_apres, 'Court terme');
     assert.strictEqual(g.nego_contact_cible, 'Lilas FERKOUS'); assert.strictEqual(g.nego_fiche_cible, 'Lilas FERKOUS'); assert.strictEqual(g.alerte_mail, 'oui');
     assert.ok(g.precisions_apres.includes('━━━ LE PROJET ━━━') && g.precisions_apres.includes('T3 lumineux'));
     assert.strictEqual(f.archiver_fiche, 'oui'); assert.ok(f.commentaire_fiche.includes('doublon de la recherche n° 101'));
     assert.strictEqual(g.tel_portable_avant, '0600000011'); assert.strictEqual(g.tel_portable_apres, '0611111111');
     assert.strictEqual(g.type_contact_ajout, 'Vendeur');
-    assert.ok(g.note_contact.includes('Mandat de recherche accepté le 20/11 (exclusif).'));
+    assert.ok(g.commentaire.includes('Mandat de recherche accepté le 20/11 (exclusif)'));
     assert.ok(g.precisions_apres.includes('MANDAT DE RECHERCHE : accepté le 20/11 (exclusif)'));
     const n = r.body.lignes.find(x => x.id_contact === '12');
-    assert.ok(n.note_contact.includes('Non joint') && n.note_contact.includes('SMS envoyé le') && n.note_contact.includes('« Bonjour, Lilas du Quai. »'));
+    assert.ok(n.commentaire.includes('Non joint') && n.commentaire.includes('SMS envoyé le') && n.commentaire.includes('« Bonjour, Lilas du Quai. »'));
   });
   // Retour d'Exploration Modelo : le fichier, plus « statut ». Un échec
   // laisse le contact à reporter, avec son motif.
@@ -233,7 +233,7 @@ const t = (n, fn) => { try { fn(); console.log('  OK  ' + n) } catch (e) { conso
     t('report après une simple tentative sur un requalifié : pas d erreur, note seule, pas de réattribution', () => {
       assert.strictEqual(x.status, 200);
       const l = x.body.lignes.filter(y => y.id_contact === '11');
-      assert.ok(l[0].note_contact.includes('Non joint')); assert.strictEqual(l[0].nego_contact_cible, ''); assert.strictEqual(l[0].precisions_apres, '');
+      assert.ok(l[0].commentaire.includes('Non joint')); assert.strictEqual(l[0].nego_contact_cible, ''); assert.strictEqual(l[0].precisions_apres, '');
     });
 
     // 2. « Joint, à rappeler » sans décision renvoyée : rien n'est effacé.
@@ -284,7 +284,17 @@ const t = (n, fn) => { try { fn(); console.log('  OK  ' + n) } catch (e) { conso
     x = await call('POST', '/acquereurs/admin/report/retour', tAdmin, { csv: ['id_contact;id_fiche;statut;motif_echec;jusqu_a', ...r5.body.lignes.map(l => [l.id_contact, l.id_fiche, 'reporté', '', ''].join(';'))].join('\n') });
     t('retour sans date « jusqu_a » : rien n est marqué reporté, et on le dit', () => { assert.strictEqual(x.body.reportes, 0); assert.strictEqual(x.body.sans_date.length, ids5.length); });
     x = await call('POST', '/acquereurs/admin/report/retour', tAdmin, { csv: ['id_contact;id_fiche;statut;motif_echec;jusqu_a', ...r5.body.lignes.map(l => [l.id_contact, l.id_fiche, 'reporté', '', '18/11/2030 10:00'].join(';'))].join('\n') });
+    t('retour daté dans le futur : refusé, rien n est marqué reporté', () => { assert.strictEqual(x.body.reportes, 0); assert.strictEqual(x.body.date_future.length, ids5.length); });
+    const j5 = r5.body.jusqu_a, fr5 = `${j5.slice(8, 10)}/${j5.slice(5, 7)}/${j5.slice(0, 4)} ${j5.slice(11, 16)}`;
+    const csv5 = ['id_contact;id_fiche;statut;motif_echec;jusqu_a', ...r5.body.lignes.map(l => [l.id_contact, l.id_fiche, 'reporté', '', fr5].join(';'))].join('\n');
+    x = await call('POST', '/acquereurs/admin/report/retour', tAdmin, { csv: csv5 });
     t('retour avec une date reformatée par un tableur : comprise', () => assert.strictEqual(x.body.reportes, ids5.length));
+    x = await call('POST', '/acquereurs/admin/report/retour', tAdmin, { csv: csv5 });
+    t('le même fichier de retour chargé deux fois : refusé', () => assert.strictEqual(x.status, 409));
+    // Un ancien fichier (date antérieure) ne fait pas reculer la date de report.
+    const avant5 = db.prepare('SELECT modelo_reporte_le d FROM acq_contacts WHERE id_contact = ?').get(ids5[0]).d;
+    x = await call('POST', '/acquereurs/admin/report/retour', tAdmin, { csv: ['id_contact;id_fiche;statut;motif_echec;jusqu_a', [ids5[0], '', 'reporté', '', '2026-01-05 10:00:00'].join(';')].join('\n') });
+    t('un ancien fichier de retour ne fait pas reculer la date de report', () => assert.strictEqual(db.prepare('SELECT modelo_reporte_le d FROM acq_contacts WHERE id_contact = ?').get(ids5[0]).d, avant5));
   }
 
   // Réimport : le travail de Lilas n'est pas écrasé.
@@ -296,6 +306,119 @@ const t = (n, fn) => { try { fn(); console.log('  OK  ' + n) } catch (e) { conso
     assert.strictEqual(c11.tel_portable, '0611111111'); assert.strictEqual(c11.commune, 'Meylan');
     assert.strictEqual(db.prepare("SELECT tel_portable FROM acq_contacts WHERE id_contact = '13'").get().tel_portable, '0611112222');
   });
+
+  // ---- Table ronde du 18/11 au soir ---------------------------------------
+  {
+    let x;
+    const valider = async () => { const av = await call('GET', '/acquereurs/admin/a-valider', tAdmin);
+      await call('POST', '/acquereurs/admin/valider', tAdmin, { fiches: av.body.fiches.map(f => ({ id_fiche: f.id_fiche, accepte: true })) }); };
+    // Trois personnes neuves, importées à part.
+    const CSV2 = [ENTETE,
+      ligne(C('21', { id_fiche: '201', tel_fixe: '0476000021' })),
+      ligne(C('22', { id_fiche: '202', alertes_a_verifier: 'Décès signalé' })),
+      ligne(C('23', { id_fiche: '203', budget_max: '300 000,00' })),
+    ].join('\n');
+    x = await call('POST', '/acquereurs/admin/import', tAdmin, { csv: CSV2, madame_fichier: 'Lilas FERKOUS', ecrire: true });
+    t('import : « 300 000,00 » vaut 300 000', () => assert.strictEqual(db.prepare("SELECT budget_max b FROM acq_fiches WHERE id_fiche = '203'").get().b, 300000));
+
+    // La plage horaire n'interdit plus : elle avertit seulement.
+    x = await call('GET', '/acquereurs/contacts/21', tLilas);
+    t('la fiche donne les blocages ET les alertes, à part', () => { assert.ok(Array.isArray(x.body.alertes)); assert.ok(!x.body.blocages.some(b => /plage/i.test(b))); });
+
+    // Un contact exclu ne s'appelle pas depuis la recherche.
+    x = await call('POST', '/acquereurs/contacts/22/tentative', tLilas, { issue: 'REPONDEUR', cle: 'tr-exclu' });
+    t('contact hors file (décès possible) : appel refusé', () => assert.strictEqual(x.status, 409));
+    x = await call('POST', '/acquereurs/contacts/22/cloture', tLilas, { statut_final: 'A_RAPPELER', date_prochaine_action: '2027-01-12T10:00', entrant: true, cle: 'tr-exclu-e' });
+    t('… sauf si c est la personne qui rappelle', () => assert.strictEqual(x.status, 201));
+
+    // Report : tout ce que les appels aboutis du lot ont appris, pas seulement le dernier.
+    x = await call('POST', '/acquereurs/contacts/21/cloture', tLilas, { cle: 'tr-1', statut_final: 'A_RAPPELER', date_prochaine_action: '2027-01-11T15:30', joint: true,
+      notes: 'Préfère le soir.', stop_mail: true,
+      coordonnees: { tel_portable: { etat: 'MODIFIE', avant: '0600000021', apres: '0699999921' } },
+      vendre: { statut_logement: 'PROPRIETAIRE', doit_vendre: 'OUI', etat_revente: 'PAS_SORTIE', adresse_bien_a_vendre: '3 rue des Lilas 38240 Meylan', estimation_proposee: true, estimation_acceptee: true, date_rdv_estimation: '2027-01-14T09:15' },
+      marine: { proposee: true, accord: true } });
+    t('joint, à rappeler, avec une saisie complète : enregistré', () => assert.strictEqual(x.status, 201));
+    x = await call('GET', '/acquereurs/contacts/21', tLilas);
+    t('au rappel, l écran retrouve la situation de logement', () => assert.strictEqual(x.body.memoire.vendre.doit_vendre, 'OUI'));
+    db.prepare("UPDATE acq_appels SET horodatage = datetime('now', '-2 days') WHERE cle = 'tr-1'").run();
+    x = await call('POST', '/acquereurs/contacts/21/cloture', tLilas, { cle: 'tr-2', statut_final: 'REQUALIFIE', joint: true, notes: 'Requalifiée.',
+      prochaine_action: 'Rendez-vous de signature',
+      mandat: { etat: 'ACCEPTE', type: 'SIMPLE', date_acceptation: '2026-11-20' },
+      coordonnees: { tel_portable: { etat: 'CONFIRME', avant: '0699999921' } }, vendre: { statut_logement: 'PROPRIETAIRE', doit_vendre: 'OUI' },
+      fiches: { 201: { decision: 'GARDER', projet: { etat_projet: 'ACTIF', budget_max: '300000', secteurs: ['Meylan'], urgence: 8, mode_financement: 'Comptant', financement_valide: 'COMPTANT',
+        origine_fonds: 'vente d un terrain', recherche_depuis: 'six mois' } } } });
+    t('mandat accepté sans date de signature : accepté (« à fixer »)', () => assert.strictEqual(x.status, 201));
+    await valider();
+    x = await call('GET', '/acquereurs/admin/report', tAdmin);
+    const l21 = x.body.lignes.find(l => l.id_contact === '21');
+    t('report : le numéro corrigé au PREMIER appel du lot est bien là', () => { assert.strictEqual(l21.tel_portable_avant, '0600000021'); assert.strictEqual(l21.tel_portable_apres, '0699999921'); });
+    t('report : stop mail, vendeur, estimation avec son heure, courtage, note du premier appel', () => {
+      assert.strictEqual(l21.stop_mail, 'OUI'); assert.strictEqual(l21.type_contact_ajout, 'Vendeur');
+      assert.ok(l21.commentaire.includes('rdv le 14/01/2027 à 09 h 15'), l21.commentaire);
+      assert.ok(l21.commentaire.includes('Rendez-vous courtage proposé, client d’accord'));
+      assert.ok(l21.commentaire.includes('Préfère le soir.') && l21.commentaire.includes('Requalifiée.'));
+      assert.ok(l21.commentaire.includes('rendez-vous de signature à fixer'));
+    });
+    t('report : les champs qui se perdaient sont dans les Précisions', () => {
+      for (const m of ['cherche depuis six mois', 'origine des fonds : vente d un terrain', 'bien à vendre : 3 rue des Lilas 38240 Meylan']) assert.ok(l21.precisions_apres.includes(m), m);
+    });
+    t('report : secteurs et priorité avec leur « avant »', () => { assert.strictEqual(l21.secteurs_apres, 'Meylan'); assert.strictEqual(l21.priorite_apres, 'Court terme'); });
+    t('report : la liste des réattributions est donnée à relire', () => assert.ok(x.body.reattributions.some(r => r.id_contact === '21' && r.vers === 'Lilas FERKOUS')));
+
+    // Budget simplement pré-rempli (non requalifié, même montant) : pas de + 10 %.
+    x = await call('POST', '/acquereurs/contacts/23/cloture', tLilas, { cle: 'tr-3', statut_final: 'EN_PAUSE', joint: true,
+      fiches: { 203: { decision: 'GARDER', projet: { etat_projet: 'EN_PAUSE', budget_max: '300000' } } } });
+    x = await call('GET', '/acquereurs/admin/report', tAdmin);
+    t('report : un budget non rediscuté n est pas majoré', () => assert.strictEqual(x.body.lignes.find(l => l.id_contact === '23').budget_max_apres, ''));
+
+    // Une coordonnée « modifiée » sans nouvelle valeur est refusée.
+    x = await call('POST', '/acquereurs/contacts/23/cloture', tLilas, { cle: 'tr-4', statut_final: 'A_RAPPELER', date_prochaine_action: '2027-01-12', joint: true,
+      coordonnees: { email: { etat: 'MODIFIE', avant: 'a@b.fr', apres: '' } } });
+    t('coordonnée « modifiée » sans nouvelle valeur : refusée', () => assert.strictEqual(x.status, 400));
+    x = await call('POST', '/acquereurs/contacts/23/cloture', tLilas, { cle: 'tr-5', statut_final: 'A_RAPPELER', date_prochaine_action: '2026-13-45' });
+    t('date de rappel impossible : refusée', () => assert.strictEqual(x.status, 400));
+
+    // Répondeur + SMS dans la foulée : une seule tentative.
+    const avant = db.prepare("SELECT COUNT(*) n FROM acq_appels WHERE id_contact = '23'").get().n;
+    x = await call('POST', '/acquereurs/contacts/23/tentative', tLilas, { issue: 'REPONDEUR', sms: true, texte: 'Bonjour, Lilas.', cle: 'tr-6' });
+    t('répondeur + SMS dans la foulée : un seul appel compté, texte gardé', () => {
+      assert.strictEqual(db.prepare("SELECT COUNT(*) n FROM acq_appels WHERE id_contact = '23'").get().n, avant + 1);
+      assert.ok(JSON.parse(db.prepare("SELECT details FROM acq_appels WHERE cle = 'tr-6'").get().details).sms);
+    });
+
+    // Transmissions : la ligne sort de la liste une fois transmise.
+    x = await call('GET', '/acquereurs/admin/transmettre', tAdmin);
+    t('à transmettre : le rendez-vous courtage et l estimation de la personne 21', () => {
+      assert.ok(x.body.marine.some(l => l.id_contact === '21' && l.pret && !l.transmis_le));
+      assert.ok(x.body.estimations.some(l => l.id_contact === '21' && l.pret && !l.transmis_le));
+    });
+    await call('POST', '/acquereurs/admin/transmettre', tAdmin, { id_contact: '21', type: 'MARINE' });
+    x = await call('GET', '/acquereurs/admin/transmettre', tAdmin);
+    t('une fois transmis, c est noté', () => assert.ok(x.body.marine.find(l => l.id_contact === '21').transmis_le));
+    x = await call('POST', '/acquereurs/admin/transmettre', tLilas, { id_contact: '21', type: 'MARINE' });
+    t('transmettre : réservé à l administration', () => assert.strictEqual(x.status, 403));
+
+    // Opposition : la même personne dans l'opération reçoit son stop.
+    db.prepare("INSERT INTO op_contacts (id_modelo, nom, script, tel_portable) VALUES ('OP-99', 'MEME', 1, '06 00 00 00 23')").run();
+    await call('POST', '/acquereurs/contacts/23/cloture', tLilas, { cle: 'tr-7', statut_final: 'NE_PLUS_CONTACTER' });
+    t('ne plus contacter : stop téléphone posé dans l opération (même numéro)', () => assert.strictEqual(db.prepare("SELECT stop_telephone s FROM op_contacts WHERE id_modelo = 'OP-99'").get().s, 1));
+
+    // Import : fichiers abîmés refusés.
+    x = await call('POST', '/acquereurs/admin/import', tAdmin, { csv: CSV2.replace('Décès signalé', 'D�c�s signal�'), madame_fichier: 'Lilas FERKOUS' });
+    t('import : fichier mal encodé refusé', () => assert.strictEqual(x.status, 400));
+    x = await call('POST', '/acquereurs/admin/import', tAdmin, { csv: [ENTETE, ligne(C('31', { id_fiche: '301', precisions: '"guillemet ouvert' })), ligne(C('32', { id_fiche: '302' }))].join('\n'), madame_fichier: 'Lilas FERKOUS' });
+    t('import : guillemet non fermé refusé', () => assert.strictEqual(x.status, 400));
+    x = await call('POST', '/acquereurs/admin/import', tAdmin, { csv: [ENTETE, ligne(C('33', { id_fiche: '303', stop_tel: 'X' }))].join('\n'), madame_fichier: 'Lilas FERKOUS' });
+    t('import : stop_tel illisible refusé', () => assert.strictEqual(x.status, 400));
+    x = await call('POST', '/acquereurs/admin/import', tAdmin, { csv: [ENTETE, ligne(C('21', { id_fiche: '201', suivi_par_contact: 'Nathalie ALBIN' }))].join('\n'), madame_fichier: 'Lilas FERKOUS' });
+    t('import : un contact déjà travaillé qui sort de la file est annoncé', () => assert.ok(x.body.sortis_de_la_file.some(c => c.id_contact === '21')));
+
+    // Suivi : indicateurs de pilotage.
+    x = await call('GET', '/acquereurs/suivi', tAdmin);
+    t('suivi : taux de joints, issues, par personne', () => { assert.ok(x.body.taux_joints > 0); assert.ok(x.body.issues.JOINT > 0); assert.ok(x.body.par_personne.some(p => p.qui === 'Lilas FERKOUS')); });
+    x = await call('GET', '/acquereurs/admin/report/etat', tAdmin);
+    t('état du report : lisible', () => assert.ok('echecs' in x.body && 'en_attente_de_retour' in x.body));
+  }
 
   db.close(); srv.kill();
   for (const s of ['', '-wal', '-shm']) fs.rmSync(tmp + s, { force: true });

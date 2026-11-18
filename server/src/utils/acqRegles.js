@@ -23,7 +23,13 @@ const TENTATIVES_MAX = 4;
 // identifiant Modelo et par téléphone.
 function oppositions() {
   const lignes = db.prepare(`SELECT id_modelo, telephone FROM op_journal_opposition WHERE canal = 'TELEPHONE'`).all();
-  return { ids: new Set(lignes.map(l => l.id_modelo)), tels: new Set(lignes.map(l => cleTel(l.telephone)).filter(Boolean)) };
+  const tels = new Set(lignes.map(l => cleTel(l.telephone)).filter(Boolean));
+  // Un « ne plus contacter » noté par Marine vaut aussi pour les acquéreurs :
+  // la personne a dit non à l'agence, pas à un module.
+  for (const l of db.prepare("SELECT telephone FROM courtage_fiches WHERE statut = 'ne_plus_contacter'").all()) {
+    const k = cleTel(l.telephone); if (k) tels.add(k);
+  }
+  return { ids: new Set(lignes.map(l => l.id_modelo)), tels };
 }
 // `journal` : le résultat de oppositions(), lu une fois quand on teste toute
 // une file (sinon une requête par contact, à chaque affichage).
@@ -68,21 +74,29 @@ function appelRecent(contact, carte) {
 
 // Ce qui interdit d'appeler. Liste vide = l'appel est permis.
 //
-// `maintenant` est le moment où l'appel a COMMENCÉ, pas celui où on enregistre
-// son résultat : un appel lancé à 12 h 55 et clos à 13 h 02 est un appel passé
-// dans la plage. `entrant` : c'est la personne qui rappelle — ni la plage, ni
-// le plafond, ni un stop ne s'appliquent à un appel qu'elle a passé elle-même.
+// Décision de Loïck du 18/11 : la plage horaire n'interdit plus, elle AVERTIT
+// (comme dans l'opération anciens clients) — voir alertes(). Un appel commencé
+// à 12 h 55 et clos à 13 h 02 ne pouvait plus être enregistré. Restent
+// bloquants : le stop, l'opposition, le plafond mensuel, et une fiche sortie
+// de la file. `entrant` : c'est la personne qui rappelle — rien de tout cela
+// ne s'applique à un appel qu'elle a passé elle-même.
+const LIB_EXCLU = { CONTACT_ARCHIVE: 'contact archivé ou absent de Modelo', STOP_TEL: 'stop téléphone',
+  SANS_TELEPHONE: 'sans téléphone', DECES_POSSIBLE: 'décès possible (note Modelo)',
+  DOUBLON_AUTRE_AGENCE: 'doublon avec Saint-Égrève', SUIVI_PAR_AGENT: 'suivi par un agent en poste',
+  LOCATION_SEULE: 'recherche en location uniquement', OPPOSITION: 'a demandé à ne plus être contacté' };
 function blocages(contact, appelsCeMois, maintenant = new Date(), { entrant = false } = {}) {
   if (entrant) return [];
   const b = [];
+  if (contact.exclu) b.push(`Hors de la file : ${LIB_EXCLU[contact.exclu] || contact.exclu}. À remettre dans la file côté administration avant d’appeler.`);
   if (contact.stop_tel) b.push('Stop téléphone : cette personne ne veut plus être appelée.');
   if (contact.statut === 'NE_PLUS_CONTACTER' || opposee(contact)) b.push('Cette personne a demandé à ne plus être contactée.');
   if (appelsCeMois >= R.PLAFOND_MENSUEL) b.push(`Plafond atteint : ${appelsCeMois} appels ce mois-ci (maximum ${R.PLAFOND_MENSUEL}).`);
-  // Les tests tournent à toute heure : ils seuls peuvent lever la plage.
-  const ignorer = process.env.NODE_ENV === 'test' && process.env.ACQ_IGNORER_PLAGE === '1';
-  const p = R.plageAppelOk(maintenant);
-  if (!p.ok && !ignorer) b.push(p.raison);
   return b;
+}
+// Ce qui mérite un avertissement sans interdire : l'heure.
+function alertes(maintenant = new Date()) {
+  const p = R.plageAppelOk(maintenant);
+  return p.ok ? [] : [p.raison];
 }
 
 // Le moment où l'appel a commencé, tel que l'écran l'a noté à l'ouverture de
@@ -113,4 +127,4 @@ const prioriteModelo = (u) => { const n = Number(u); if (!n) return null;
 const budgetModelo = (b) => (Number(b) > 0 ? Math.round(Number(b) * 1.1) : null);
 
 module.exports = { STATUTS, STATUTS_FINAUX, TENTATIVES_MAX, opposee, oppositions, appelsRecentsAilleurs, appelRecent,
-  blocages, debutAppel, manquesRequalif, prioriteModelo, budgetModelo };
+  blocages, alertes, debutAppel, manquesRequalif, prioriteModelo, budgetModelo };

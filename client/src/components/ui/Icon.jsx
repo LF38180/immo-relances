@@ -6,7 +6,7 @@ import {
   FileText, FileUp, History, LayoutDashboard, LogOut, Mail, MapPin, Pencil, Phone, PhoneCall, PhoneOff,
   Pin, Play, Plus, RefreshCw, Search, Settings, Star, Table, Tag, Trash2, TriangleAlert, Trophy,
   Bold, Italic, Underline, CircleQuestionMark,
-  Upload, User, Users, Voicemail, X,
+  TrendingUp, Upload, User, Users, Voicemail, X,
 } from 'lucide-react'
 
 const SIZES = { sm: 16, md: 20, lg: 24, xl: 32 }
@@ -22,7 +22,7 @@ const MAP = {
   'mail': Mail, 'map-pin': MapPin, 'pencil': Pencil, 'phone': Phone, 'phone-call': PhoneCall, 'phone-off': PhoneOff,
   'pin': Pin, 'play': Play, 'plus': Plus, 'refresh-cw': RefreshCw, 'search': Search, 'settings': Settings,
   'star': Star, 'table': Table, 'tag': Tag, 'trash-2': Trash2, 'alert-triangle': TriangleAlert,
-  'trophy': Trophy, 'upload': Upload, 'user': User, 'users': Users, 'voicemail': Voicemail, 'x': X,
+  'trophy': Trophy, 'trending-up': TrendingUp, 'upload': Upload, 'user': User, 'users': Users, 'voicemail': Voicemail, 'x': X,
   'bold': Bold, 'italic': Italic, 'underline': Underline,
 }
 

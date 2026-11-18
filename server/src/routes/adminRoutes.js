@@ -170,17 +170,21 @@ router.get('/missions', requireRole('admin'), (req, res) => {
   const n = (sql, ...p) => db.prepare(sql).get(...p).n;
   const noms = (sql) => db.prepare(sql).all().map(u => `${u.prenom} ${u.nom}`.trim());
   const jour = "date('now', 'localtime')";
+  // Sept jours glissants, aujourd'hui compris : le lundi matin, « aujourd'hui »
+  // valait zéro partout et ne disait rien.
+  const sept = "date('now', 'localtime', '-6 days')";
+  const M = require('../utils/acqModelo');
   const today = new Date().toISOString().slice(0, 10);
   const missions = [];
 
   missions.push({ id: 'estimes', titre: 'Mission Estimés',
     qui: noms("SELECT prenom, nom FROM users WHERE actif = 1 AND role = 'agent' ORDER BY prenom"),
     chiffres: [
-      { n: n(`SELECT COUNT(*) n FROM relances WHERE type = 'appel' AND date(created_at, 'localtime') = ${jour}`), l: 'appels aujourd’hui' },
+      { n: n(`SELECT COUNT(*) n FROM relances WHERE type = 'appel' AND date(created_at, 'localtime') >= ${sept}`), l: 'appels sur 7 jours', onglet: 'suivi' },
       { n: n(`SELECT COUNT(*) n FROM contacts WHERE supprime_le IS NULL AND statut NOT IN ('pas_interesse','inactif')
           AND (statut = 'a_contacter' OR (statut IN ('tente_sans_reponse','rappel_planifie','a_recontacter')
-            AND prochain_contact IS NOT NULL AND prochain_contact <= ?))`, today), l: 'à appeler' },
-      { n: n(`SELECT COUNT(*) n FROM relances WHERE issue = 'projet' AND strftime('%Y-%m', created_at, 'localtime') = strftime('%Y-%m', 'now', 'localtime')`), l: 'projets ce mois' },
+            AND prochain_contact IS NOT NULL AND prochain_contact <= ?))`, today), l: 'à appeler', onglet: 'contacts' },
+      { n: n(`SELECT COUNT(*) n FROM relances WHERE issue = 'projet' AND date(created_at, 'localtime') >= ${sept}`), l: 'projets sur 7 jours', onglet: 'contacts', sous: 'statut:rdv_obtenu' },
     ] });
 
   const acq = require('./acqRoutes');
@@ -188,18 +192,23 @@ router.get('/missions', requireRole('admin'), (req, res) => {
   missions.push({ id: 'acquereurs', titre: 'Mission Acquéreurs',
     qui: noms("SELECT prenom, nom FROM users WHERE actif = 1 AND acces_acquereurs = 1 ORDER BY prenom"),
     chiffres: [
-      { n: n(`SELECT COUNT(*) n FROM acq_appels WHERE date(horodatage, 'localtime') = ${jour}`), l: 'appels aujourd’hui' },
-      { n: acq.calculerFile(moiAdmin).file.length, l: 'à appeler' },
-      { n: n("SELECT COUNT(*) n FROM acq_contacts WHERE statut = 'REQUALIFIE'"), l: 'requalifiés' },
-    ] });
+      { n: n(`SELECT COUNT(*) n FROM acq_appels WHERE date(horodatage, 'localtime') >= ${sept}`), l: 'appels sur 7 jours', onglet: 'suivi' },
+      { n: acq.calculerFile(moiAdmin).file.length, l: 'à appeler', onglet: 'contacts', sous: 'dans_file' },
+      { n: n(`SELECT COUNT(*) n FROM acq_contacts WHERE statut = 'REQUALIFIE' AND date(statut_le, 'localtime') >= ${sept}`), l: 'requalifiés sur 7 jours', onglet: 'contacts', sous: 'REQUALIFIE' },
+    ],
+    // Ce qui attend l'administration sur cette mission.
+    alertes: [
+      [M.archivagesEnAttente().length, 'archivage', 'à valider', 'report'],
+      [M.aReporter().length, 'contact', 'à reporter dans Modelo', 'report'],
+    ].filter(a => a[0] > 0).map(([nb, mot, suite, onglet]) => ({ l: `${nb} ${mot}${nb > 1 ? 's' : ''} ${suite}`, onglet })) });
 
   missions.push({ id: 'courtage', titre: 'Mission Courtage',
     qui: noms("SELECT prenom, nom FROM users WHERE actif = 1 AND role = 'courtage' ORDER BY prenom"),
     chiffres: [
-      { n: n(`SELECT COUNT(*) n FROM courtage_actions WHERE type IN ('relance','pas_de_reponse','mail_propose') AND date(created_at, 'localtime') = ${jour}`), l: 'relances aujourd’hui' },
+      { n: n(`SELECT COUNT(*) n FROM courtage_actions WHERE type IN ('relance','pas_de_reponse','mail_propose') AND date(created_at, 'localtime') >= ${sept}`), l: 'relances sur 7 jours', onglet: 'suivi' },
       { n: n(`SELECT COUNT(*) n FROM courtage_fiches WHERE statut NOT IN ('gagne','perdu','ne_plus_contacter','faux_numero')
-          AND prochaine_relance IS NOT NULL AND prochaine_relance <= date('now')`), l: 'à relancer' },
-      { n: n("SELECT COUNT(*) n FROM courtage_fiches WHERE statut IN ('simulation_faite','dossier_en_cours')"), l: 'dossiers en cours' },
+          AND prochaine_relance IS NOT NULL AND prochaine_relance <= date('now')`), l: 'à relancer', onglet: 'contacts' },
+      { n: n("SELECT COUNT(*) n FROM courtage_fiches WHERE statut IN ('simulation_faite','dossier_en_cours')"), l: 'dossiers en cours', onglet: 'contacts', sous: 'fiches' },
     ] });
 
   // L'opération anciens clients, tant qu'elle a des fiches.

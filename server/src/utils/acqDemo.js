@@ -40,7 +40,7 @@ const CAS = [
 
 function cas(scripts) {
   return CAS.map(c => ({ situation: c.situation, contact: c.contact, fiches: c.fiches, appels: c.appels || [],
-    dernier_details: null, scripts, blocages: [], appel_recent: null,
+    memoire: { vendre: {}, mandat: null }, scripts, blocages: [], alertes: [], appel_recent: null,
     conseil_tentative: null }));
 }
 

@@ -5,6 +5,7 @@ import Icon from '../components/ui/Icon'
 import ImportCahierModal from '../components/ImportCahierModal'
 import { useAuth } from '../hooks/useAuth'
 import FichiersAdmin, { Corbeille } from './FichiersAdmin'
+import { Chiffre, Titre } from '../components/ui/Briques'
 
 // Date UTC ISO -> "il y a 2 h — 30/06/2026 19:02" (heure française, été/hiver auto).
 function formatConnexion(iso) {
@@ -136,7 +137,7 @@ export default function AdminPage({ onglet = null, partie = null, onVoir = null 
         {tab === 'users' && (
           <div>
             <div className="flex justify-between mb-4">
-              <h2 className="font-semibold text-quai-navy">Gestion des utilisateurs</h2>
+              <Titre>Gestion des utilisateurs</Titre>
               <button onClick={() => setShowNewUser(true)} className="btn-primary btn-sm inline-flex items-center gap-1.5"><Icon name="plus" size="sm" /> Nouvel utilisateur</button>
             </div>
 
@@ -173,38 +174,38 @@ export default function AdminPage({ onglet = null, partie = null, onVoir = null 
               <table className="w-full text-sm">
                 <thead className="bg-quai-light">
                   <tr>
-                    <th className="text-left px-4 py-3 font-medium text-quai-muted">Nom</th>
-                    <th className="text-left px-4 py-3 font-medium text-quai-muted">Email</th>
-                    <th className="text-left px-4 py-3 font-medium text-quai-muted">Rôle</th>
-                    <th className="text-left px-4 py-3 font-medium text-quai-muted">Dernière connexion</th>
-                    <th className="text-left px-4 py-3 font-medium text-quai-muted">Statut</th>
-                    <th className="text-left px-4 py-3 font-medium text-quai-muted">Missions</th>
-                    <th className="text-left px-4 py-3 font-medium text-quai-muted">Actions</th>
+                    <th className="text-left text-xs font-medium text-quai-muted px-4 py-2.5">Nom</th>
+                    <th className="text-left text-xs font-medium text-quai-muted px-4 py-2.5">Email</th>
+                    <th className="text-left text-xs font-medium text-quai-muted px-4 py-2.5">Rôle</th>
+                    <th className="text-left text-xs font-medium text-quai-muted px-4 py-2.5">Dernière connexion</th>
+                    <th className="text-left text-xs font-medium text-quai-muted px-4 py-2.5">Statut</th>
+                    <th className="text-left text-xs font-medium text-quai-muted px-4 py-2.5">Missions</th>
+                    <th className="text-left text-xs font-medium text-quai-muted px-4 py-2.5">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-quai-border">
                   {users.map(u => (
                     <tr key={u.id}>
-                      <td className="px-4 py-3 font-medium text-quai-navy">{u.prenom} {u.nom}</td>
-                      <td className="px-4 py-3 text-quai-muted">{u.email}</td>
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-2.5 font-medium text-quai-navy">{u.prenom} {u.nom}</td>
+                      <td className="px-4 py-2.5 text-quai-muted">{u.email}</td>
+                      <td className="px-4 py-2.5">
                         <span className={`badge ${u.role === 'admin' ? 'bg-quai-navy text-white' : u.role === 'manager' ? 'bg-quai-gold/20 text-quai-navy border border-quai-gold/40' : 'bg-quai-light text-quai-muted border border-quai-border'}`}>
                           {u.role}
                         </span>
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-2.5">
                         {(() => { const { relatif, absolu } = formatConnexion(u.last_login); return (
                           <span className={u.last_login ? 'text-quai-navy' : 'text-quai-muted italic'}>
                             {relatif}{absolu && <span className="text-quai-muted text-xs"> — {absolu}</span>}
                           </span>
                         ) })()}
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-2.5">
                         <span className={`badge ${u.actif ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-quai-light text-quai-muted border border-quai-border'}`}>
                           {u.actif ? 'Actif' : 'Inactif'}
                         </span>
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-2.5">
                         {u.role === 'admin' ? <span className="text-xs text-quai-muted">toutes</span> : (
                           <label className="text-xs inline-flex items-center gap-1.5 whitespace-nowrap cursor-pointer">
                             <input type="checkbox" checked={!!u.acces_acquereurs} onChange={() => basculerAcquereurs(u)} />
@@ -212,7 +213,7 @@ export default function AdminPage({ onglet = null, partie = null, onVoir = null 
                           </label>
                         )}
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-2.5">
                         <div className="flex items-center gap-3 whitespace-nowrap">
                           <button onClick={() => reinitialiserMdp(u)} className="text-xs text-quai-navy hover:text-quai-gold font-medium">
                             Nouveau mot de passe
@@ -237,7 +238,7 @@ export default function AdminPage({ onglet = null, partie = null, onVoir = null 
         {tab === 'params' && (
           <div>
             <div className={partie === 'courtage' ? 'hidden' : ''}>
-            <h2 className="font-semibold text-quai-navy mb-4">Paramètres de relance</h2>
+            <Titre>Paramètres de relance</Titre>
             <div className="card space-y-4">
               <ParamField label="Rappel après « sans réponse » (jours)" cle="delai_sans_reponse_jours" params={params} setParams={setParams} type="number" />
               <ParamField label="Relance après « plus de projet » (jours)" cle="relance_sans_projet_jours" params={params} setParams={setParams} type="number" />
@@ -261,7 +262,7 @@ export default function AdminPage({ onglet = null, partie = null, onVoir = null 
 
             {estAdmin && partie !== 'estimes' && (
               <>
-                <h2 className={`font-semibold text-quai-navy mb-4 ${partie === 'courtage' ? '' : 'mt-8'}`}>Paramètres courtage</h2>
+                <div className={partie === 'courtage' ? '' : 'mt-8'}><Titre>Paramètres courtage</Titre></div>
                 <div className="card space-y-4">
                   <ParamField label="Délai de relance (jours)" cle="courtage_delai_relance_jours" params={params} setParams={setParams} type="number" min={1} />
                   <ParamField label="Tentatives avant Injoignable" cle="courtage_tentatives_max" params={params} setParams={setParams} type="number" min={1} />
@@ -314,7 +315,7 @@ export default function AdminPage({ onglet = null, partie = null, onVoir = null 
 
         {tab === 'donnees' && estAdmin && (
           <div>
-            <h2 className="font-semibold text-quai-navy mb-4">Données</h2>
+            <Titre>Données</Titre>
             {/* La sauvegarde d'abord, l'effacement ensuite : on ne met pas un
                 bouton irréversible seul sur un écran. */}
             <Sauvegardes />
@@ -443,17 +444,17 @@ function Activite() {
       <p className="text-xs text-quai-muted mb-3">Appels, mises à jour de fiche, attributions et oppositions depuis le début de l’opération. Connexions, comptes, courriers revenus, exclusions, vérifications et imports depuis le 4 novembre 2026.</p>
       <div className="card overflow-x-auto p-0">
         <table className="w-full text-sm">
-          <thead><tr className="bg-quai-light text-left text-xs text-quai-muted">
-            <th className="px-3 py-2">Quand</th><th className="px-3 py-2">Qui</th><th className="px-3 py-2">Action</th><th className="px-3 py-2">Fiche</th><th className="px-3 py-2">Détail</th>
+          <thead><tr className="bg-quai-light text-left text-xs font-medium text-quai-muted">
+            <th className="px-4 py-2.5 font-medium">Quand</th><th className="px-4 py-2.5 font-medium">Qui</th><th className="px-4 py-2.5 font-medium">Action</th><th className="px-4 py-2.5 font-medium">Fiche</th><th className="px-4 py-2.5 font-medium">Détail</th>
           </tr></thead>
           <tbody>
             {(data?.lignes || []).map((l, i) => (
               <tr key={i} className="border-t border-quai-border/60 align-top">
-                <td className="px-3 py-1.5 whitespace-nowrap tabular-nums text-quai-muted">{dateActivite(l.le)}</td>
-                <td className="px-3 py-1.5 whitespace-nowrap text-quai-navy">{l.auteur || '—'}</td>
-                <td className="px-3 py-1.5 whitespace-nowrap">{TYPES_ACTIVITE[l.type] || l.type}</td>
-                <td className="px-3 py-1.5 whitespace-nowrap">{l.nom ? `${l.prenom || ''} ${l.nom}`.trim() : l.id_modelo || ''}</td>
-                <td className="px-3 py-1.5 text-quai-text">{detailActivite(l)}</td>
+                <td className="px-4 py-2.5 whitespace-nowrap tabular-nums text-quai-muted">{dateActivite(l.le)}</td>
+                <td className="px-4 py-2.5 whitespace-nowrap text-quai-navy">{l.auteur || '—'}</td>
+                <td className="px-4 py-2.5 whitespace-nowrap">{TYPES_ACTIVITE[l.type] || l.type}</td>
+                <td className="px-4 py-2.5 whitespace-nowrap">{l.nom ? `${l.prenom || ''} ${l.nom}`.trim() : l.id_modelo || ''}</td>
+                <td className="px-4 py-2.5 text-quai-text">{detailActivite(l)}</td>
               </tr>
             ))}
             {data && !data.lignes.length && <tr><td colSpan={5} className="px-3 py-6 text-center text-quai-muted">Rien sur cette période.</td></tr>}
@@ -484,7 +485,7 @@ function ImportsCourtage() {
   return (
     <div>
       <div className="flex flex-wrap justify-between items-center gap-3 mb-4">
-        <h2 className="font-semibold text-quai-navy">Imports courtage</h2>
+        <Titre>Imports courtage</Titre>
         <div className="flex gap-2">
           <button onClick={charger} className="btn-secondary btn-sm inline-flex items-center gap-1.5">
             <Icon name="refresh-cw" size="sm" /> Actualiser
@@ -500,12 +501,12 @@ function ImportsCourtage() {
           <table className="w-full text-sm">
             <thead className="bg-quai-light">
               <tr>
-                <th className="text-left px-4 py-3 font-medium text-quai-muted">Date</th>
-                <th className="text-left px-4 py-3 font-medium text-quai-muted">Auteur</th>
-                <th className="text-left px-4 py-3 font-medium text-quai-muted">Fichier</th>
-                <th className="text-left px-4 py-3 font-medium text-quai-muted">Mode</th>
+                <th className="text-left text-xs font-medium text-quai-muted px-4 py-2.5">Date</th>
+                <th className="text-left text-xs font-medium text-quai-muted px-4 py-2.5">Auteur</th>
+                <th className="text-left text-xs font-medium text-quai-muted px-4 py-2.5">Fichier</th>
+                <th className="text-left text-xs font-medium text-quai-muted px-4 py-2.5">Mode</th>
                 {COLONNES.map(([k, l]) => (
-                  <th key={k} className="text-right px-3 py-3 font-medium text-quai-muted">{l}</th>
+                  <th key={k} className="text-right text-xs font-medium text-quai-muted px-3 py-2.5">{l}</th>
                 ))}
               </tr>
             </thead>
@@ -516,16 +517,16 @@ function ImportsCourtage() {
               )}
               {imports.map(i => (
                 <tr key={i.id}>
-                  <td className="px-4 py-3 text-quai-navy whitespace-nowrap">{formatConnexion(i.created_at).absolu}</td>
-                  <td className="px-4 py-3 text-quai-muted whitespace-nowrap">{[i.user_prenom, i.user_nom].filter(Boolean).join(' ') || '—'}</td>
-                  <td className="px-4 py-3 text-quai-muted max-w-48 truncate">{i.fichier || '—'}</td>
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-2.5 text-quai-navy whitespace-nowrap">{formatConnexion(i.created_at).absolu}</td>
+                  <td className="px-4 py-2.5 text-quai-muted whitespace-nowrap">{[i.user_prenom, i.user_nom].filter(Boolean).join(' ') || '—'}</td>
+                  <td className="px-4 py-2.5 text-quai-muted max-w-48 truncate">{i.fichier || '—'}</td>
+                  <td className="px-4 py-2.5">
                     <span className={`badge ${i.simulation ? 'bg-quai-gold/20 text-quai-navy border border-quai-gold/40' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'}`}>
                       {i.simulation ? 'Simulation' : 'Réel'}
                     </span>
                   </td>
                   {COLONNES.map(([k]) => (
-                    <td key={k} className="px-3 py-3 text-right text-quai-navy">{(i[k] || 0).toLocaleString('fr')}</td>
+                    <td key={k} className="px-3 py-2.5 text-right text-quai-navy">{(i[k] || 0).toLocaleString('fr')}</td>
                   ))}
                 </tr>
               ))}
@@ -581,7 +582,7 @@ function SuiviCourtage({ onVoir = null }) {
 
   return (
     <div>
-      <h2 className="font-semibold text-quai-navy mb-4">Suivi de l'activité — Marine Rosain</h2>
+      <Titre>Suivi de l'activité</Titre>
 
       {/* Chiffres clefs du portefeuille courtage. */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
@@ -590,16 +591,9 @@ function SuiviCourtage({ onVoir = null }) {
           ['Relances (7 jours)', dash?.relancesSemaine, null],
           ['Simulations', dash?.simulations, 'simulation_faite'],
           ['Dossiers en cours', dash?.dossiers, 'dossier_en_cours'],
-        ].map(([lbl, val, cible]) => {
+        ].map(([lbl, val, cible], i) => {
           const clic = onVoir && cible
-          const Tag = clic ? 'button' : 'div'
-          return (
-            <Tag key={lbl} onClick={clic ? () => onVoir(cible) : undefined}
-              className={`text-left bg-white border border-quai-border rounded-lg p-4 ${clic ? 'hover:border-quai-gold hover:shadow-sm transition-all' : ''}`}>
-              <div className="text-2xl font-bold text-quai-navy">{val ?? 0}</div>
-              <div className="text-xs text-quai-muted mt-0.5">{lbl}</div>
-            </Tag>
-          )
+          return <Chiffre key={lbl} fort={i === 0} valeur={val ?? 0} libelle={lbl} onClick={clic ? () => onVoir(cible) : undefined} />
         })}
       </div>
 

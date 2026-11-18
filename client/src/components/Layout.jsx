@@ -61,7 +61,7 @@ export default function Layout({ page, onNavigate, children, extraNav = [], nav 
           <button
             onClick={() => setCollapsed(!collapsed)}
             aria-label={collapsed ? 'Déplier le menu' : 'Replier le menu'}
-            className="text-white/40 hover:text-white p-1 rounded transition-colors ml-auto focus-visible:outline-2 focus-visible:outline-white"
+            className="text-white/60 hover:text-white p-1 rounded transition-colors ml-auto focus-visible:outline-2 focus-visible:outline-white"
           >
             <Icon name={collapsed ? 'chevron-right' : 'chevron-left'} size="sm" />
           </button>
@@ -79,7 +79,7 @@ export default function Layout({ page, onNavigate, children, extraNav = [], nav 
         {/* Navigation */}
         <nav className="flex-1 p-2 space-y-0.5 overflow-y-auto">
           {menu.map(item => item.section ? (
-            !collapsed && <div key={item.section} className="px-3 pt-4 pb-1 text-[10px] uppercase tracking-wider text-white/40">{item.section}</div>
+            !collapsed && <div key={item.section} className="px-3 pt-4 pb-1 text-[10px] uppercase tracking-wider text-white/60">{item.section}</div>
           ) : (
             /* Une entrée avec `logo` (les missions) montre son logo en long à
                la place du texte ; l'entrée active est encadrée plutôt que
@@ -87,8 +87,8 @@ export default function Layout({ page, onNavigate, children, extraNav = [], nav 
             item.logo ? (
               <button key={item.id} onClick={() => onNavigate(item.id)} title={item.label} aria-label={item.label}
                 aria-current={page === item.id ? 'page' : undefined}
-                className={`w-full flex items-center px-3 py-2 rounded-lg transition-all border-l-[3px] ${
-                  page === item.id ? 'bg-white/10 border-quai-taupe' : 'border-transparent opacity-80 hover:opacity-100 hover:bg-white/5'}`}>
+                className={`w-full flex items-center px-3 py-2 rounded-lg transition-all border-l-[3px] focus-clair ${
+                  page === item.id ? 'bg-white/10 border-quai-gold' : 'border-transparent opacity-80 hover:opacity-100 hover:bg-white/5'}`}>
                 {collapsed ? <Marque lettre={item.lettre} taille={22} clair /> : <img src={item.logo} alt="" className="h-7 w-auto" />}
               </button>
             ) : (
@@ -96,7 +96,7 @@ export default function Layout({ page, onNavigate, children, extraNav = [], nav 
               key={item.id}
               onClick={() => onNavigate(item.id)}
               title={collapsed ? item.label : ''}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all focus-clair ${
                 page === item.id
                   ? 'bg-quai-gold text-quai-navy shadow-sm'
                   : 'text-white/70 hover:bg-white/10 hover:text-white'
@@ -114,7 +114,7 @@ export default function Layout({ page, onNavigate, children, extraNav = [], nav 
           <button
             onClick={logout}
             aria-label="Déconnexion"
-            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-white/40 hover:text-white hover:bg-white/10 transition-colors focus-visible:outline-2 focus-visible:outline-white"
+            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-white/60 hover:text-white hover:bg-white/10 transition-colors focus-visible:outline-2 focus-visible:outline-white"
           >
             <Icon name="log-out" size="md" />
             {!collapsed && <span>Déconnexion</span>}
@@ -126,7 +126,7 @@ export default function Layout({ page, onNavigate, children, extraNav = [], nav 
       <main className="flex-1 overflow-hidden flex flex-col">
         {/* Topbar */}
         <div className="bg-white border-b border-quai-border px-4 md:px-6 py-3 flex items-center justify-between flex-shrink-0">
-          <h1 className="text-lg font-semibold text-quai-navy truncate min-w-0">
+          <h1 className="font-display text-lg font-semibold text-quai-navy truncate min-w-0">
             {titre || NAV_ITEMS.find(n => n.id === page)?.label || 'ImmoRelances'}
           </h1>
           <div className="flex items-center gap-3 flex-shrink-0">
@@ -140,7 +140,7 @@ export default function Layout({ page, onNavigate, children, extraNav = [], nav 
             {/* La personne connectée, à droite, comme dans les espaces de mission. */}
             <Personne user={user} sombre className={`hidden ${blocs.length > 1 ? 'lg:inline-flex' : 'md:inline-flex'}`} />
             <button onClick={logout} aria-label="Déconnexion"
-              className="md:hidden text-quai-muted hover:text-quai-navy p-1.5">
+              className="md:hidden text-quai-muted hover:text-quai-navy min-w-[2.75rem] min-h-[2.75rem] grid place-items-center">
               <Icon name="log-out" size="md" />
             </button>
           </div>
