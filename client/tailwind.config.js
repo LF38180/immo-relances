@@ -3,13 +3,15 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Charte Le Quai de l'Immobilier
+        // Charte ImmoRelances : les couleurs des logos (novembre 2026). Avant, un
+        // marine #0D0D2B et un or #C9A96E voisins mais différents : logos et
+        // écrans ne s'accordaient pas tout à fait.
         quai: {
-          navy:    '#0D0D2B',  // bleu marine foncé (carré logo)
-          navymd:  '#1a1a4e',  // navy intermédiaire
-          navylt:  '#2d2d6b',  // navy clair
-          gold:    '#C9A96E',  // or/beige chaleureux (accent)
-          goldlt:  '#e8c98a',  // or clair hover
+          navy:    '#080432',  // marine des logos
+          navymd:  '#15104f',  // marine au survol
+          navylt:  '#2a2470',  // marine clair
+          gold:    '#B6A997',  // taupe des logos (accent)
+          goldlt:  '#CBC1B2',  // taupe clair, au survol
           light:   '#F7F6F3',  // fond crème très clair
           border:  '#E2DDD6',  // bordure douce
           text:    '#1C1C1C',  // texte principal

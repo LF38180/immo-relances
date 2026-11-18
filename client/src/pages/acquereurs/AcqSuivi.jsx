@@ -13,7 +13,7 @@ export default function AcqSuivi({ onVoir }) {
   const voir = (f) => (onVoir && f ? () => onVoir(f) : undefined)
   const bouton = (actif) => `text-xs px-3 py-2 rounded-lg border transition-colors ${actif ? 'bg-quai-navy text-white border-quai-navy' : 'bg-white border-quai-border text-quai-navy hover:border-quai-gold'}`
   return (
-    <div className="p-3 md:p-4 max-w-3xl mx-auto space-y-5">
+    <div className="p-4 md:p-6 max-w-4xl mx-auto space-y-5">
       <div className="flex items-center gap-2 flex-wrap">
         <span className="text-sm text-quai-muted">Depuis le</span>
         <input type="date" value={debut} onChange={e => setDebut(e.target.value)} className="input max-w-[11rem]" />

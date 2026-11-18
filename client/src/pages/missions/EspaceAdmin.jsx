@@ -91,24 +91,27 @@ function ImportEstimes() {
 
 // En tête du Suivi de chaque mission, les deux mêmes accès : voir l'écran de
 // l'agent, et la démonstration (quand elle existe pour la mission).
-function AccesMission({ onEcran, onDemo, ecranActif }) {
+function AccesMission({ onEcran, onDemo, ecranActif, aVenir = false }) {
   return (
-    <div className="flex flex-wrap gap-2">
+    <div className="flex flex-wrap items-center gap-2">
       <button onClick={onEcran} className={`btn-sm inline-flex items-center gap-1.5 ${ecranActif ? 'btn-primary' : 'btn-secondary'}`}><Icon name="eye" size="sm" /> Écran de l’agent</button>
       {onDemo && <button onClick={onDemo} className="btn-secondary btn-sm inline-flex items-center gap-1.5"><Icon name="play" size="sm" /> Démonstration</button>}
+      {/* Le report Modelo d'une mission qui ne l'a pas encore : sa place est
+          marquée, sans prendre une ligne entière. */}
+      {aVenir && (
+        <span className="ml-auto inline-flex items-center gap-1.5 text-[11px] text-quai-muted border border-dashed border-quai-border rounded-full px-3 py-1.5 bg-white"
+          title="Le fichier à reporter et l’import du retour apparaîtront ici, comme pour la Mission Acquéreurs.">
+          <Icon name="file-down" size="sm" /> Report Modelo : à venir
+        </span>
+      )}
     </div>
   )
 }
 
-// Le report Modelo d'une mission qui ne l'a pas encore : la place est prête.
-function ReportAVenir() {
-  return (
-    <div className="rounded-xl border border-dashed border-quai-border bg-white px-3 py-2.5">
-      <div className="text-sm font-semibold text-quai-navy">Report dans Modelo</div>
-      <div className="text-[11px] text-quai-muted leading-snug">À venir pour cette mission : le fichier à reporter et l’import du retour apparaîtront ici, comme pour la Mission Acquéreurs.</div>
-    </div>
-  )
-}
+// La bande du haut d'un onglet, à la même largeur que le contenu en dessous.
+const Bande = ({ largeur = 'max-w-6xl', children }) => (
+  <div className="bg-quai-light px-4 md:px-6 pt-3 shrink-0"><div className={`${largeur} mx-auto space-y-2`}>{children}</div></div>
+)
 
 // L'écran de l'agent de la Mission Estimés, en lecture seule : sa file, ses
 // rappels, ses appels du jour. S'il y a plusieurs agents, on choisit.
@@ -178,15 +181,17 @@ function FichesCourtage({ statutInitial = '' }) {
 }
 
 // Sous-onglets, quand un onglet regroupe plusieurs écrans existants.
-function Pastilles({ choix, valeur, onChange }) {
+function Pastilles({ choix, valeur, onChange, largeur = 'max-w-6xl' }) {
   return (
-    <div className="bg-quai-light px-4 md:px-6 pt-3 flex gap-1.5 overflow-x-auto no-scrollbar shrink-0">
-      {choix.map(([id, l]) => (
-        <button key={id} onClick={() => onChange(id)}
-          className={`text-xs px-3 py-1.5 rounded-full border whitespace-nowrap ${valeur === id ? 'bg-quai-navy text-white border-quai-navy' : 'bg-white border-quai-border text-quai-muted'}`}>
-          {l}
-        </button>
-      ))}
+    <div className="bg-quai-light px-4 md:px-6 pt-3 shrink-0">
+      <div className={`${largeur} mx-auto flex gap-1.5 overflow-x-auto no-scrollbar`}>
+        {choix.map(([id, l]) => (
+          <button key={id} onClick={() => onChange(id)}
+            className={`text-xs px-3 py-1.5 rounded-full border whitespace-nowrap transition-colors ${valeur === id ? 'bg-quai-navy text-white border-quai-navy' : 'bg-white border-quai-border text-quai-muted hover:border-quai-gold'}`}>
+            {l}
+          </button>
+        ))}
+      </div>
     </div>
   )
 }
@@ -196,10 +201,7 @@ function ContenuMission({ mission, onglet, setOnglet, sous, setSous, plein }) {
     if (onglet === 'suivi') {
       const v = sous || 'tableau'
       return (<>
-        <div className="bg-quai-light px-4 md:px-6 pt-3 space-y-2 shrink-0">
-          <AccesMission ecranActif={v === 'ecran'} onEcran={() => setSous(v === 'ecran' ? 'tableau' : 'ecran')} onDemo={() => plein({ type: 'demo', mission: 'estimes' })} />
-          <ReportAVenir />
-        </div>
+        <Bande><AccesMission aVenir ecranActif={v === 'ecran'} onEcran={() => setSous(v === 'ecran' ? 'tableau' : 'ecran')} onDemo={() => plein({ type: 'demo', mission: 'estimes' })} /></Bande>
         {v !== 'ecran' && <Pastilles valeur={v} onChange={setSous} choix={[['tableau', 'Tableau de bord'], ['personnes', 'Par personne']]} />}
         {v === 'tableau' && <DashboardPage
           onNavigate={(p) => p === 'contacts' ? setOnglet('contacts') : p === 'session' ? setSous('ecran') : p === 'supervision' ? setSous('personnes') : null}
@@ -213,7 +215,7 @@ function ContenuMission({ mission, onglet, setOnglet, sous, setSous, plein }) {
     if (onglet === 'report') return <AVenir mission="Mission Estimés" />
     const v = sous || 'delais'
     return (<>
-      <Pastilles valeur={v} onChange={setSous} choix={[['delais', 'Délais de relance'], ['scripts', 'Scripts d’appel'], ['fichiers', 'Fichiers et accès']]} />
+      <Pastilles largeur="max-w-4xl" valeur={v} onChange={setSous} choix={[['delais', 'Délais de relance'], ['scripts', 'Scripts d’appel'], ['fichiers', 'Fichiers et accès']]} />
       {v === 'delais' && <AdminPage onglet="params" partie="estimes" />}
       {v === 'scripts' && <ScriptsPage />}
       {v === 'fichiers' && <AdminPage onglet="fichiers" />}
@@ -221,10 +223,7 @@ function ContenuMission({ mission, onglet, setOnglet, sous, setSous, plein }) {
   }
   if (mission === 'courtage') {
     if (onglet === 'suivi') return (<>
-      <div className="bg-quai-light px-4 md:px-6 pt-3 space-y-2 shrink-0">
-        <AccesMission ecranActif={sous === 'ecran'} onEcran={() => setSous(sous === 'ecran' ? null : 'ecran')} onDemo={() => plein({ type: 'demo', mission: 'courtage' })} />
-        <ReportAVenir />
-      </div>
+      <Bande largeur="max-w-4xl"><AccesMission aVenir ecranActif={sous === 'ecran'} onEcran={() => setSous(sous === 'ecran' ? null : 'ecran')} onDemo={() => plein({ type: 'demo', mission: 'courtage' })} /></Bande>
       {sous === 'ecran'
         ? <Defile><div className="max-w-4xl mx-auto p-4 md:p-6"><span className="inline-block text-xs bg-white border border-quai-border rounded-full px-3 py-1 text-quai-muted mb-3">Lecture seule</span><VueCourtage /></div></Defile>
         : <AdminPage onglet="courtage" onVoir={(cible) => { setSous(cible === 'boites' ? null : 'statut:' + cible); setOnglet('contacts') }} />}
@@ -233,7 +232,7 @@ function ContenuMission({ mission, onglet, setOnglet, sous, setSous, plein }) {
       const filtre = String(sous || '').startsWith('statut:') ? sous.slice(7) : null
       const v = filtre != null || sous === 'fiches' ? 'fiches' : 'boites'
       return (<>
-        <Pastilles valeur={v} onChange={(x) => setSous(x === 'fiches' ? 'fiches' : null)} choix={[['boites', 'Boîtes de relance'], ['fiches', 'Toutes les fiches']]} />
+        <Pastilles largeur="max-w-4xl" valeur={v} onChange={(x) => setSous(x === 'fiches' ? 'fiches' : null)} choix={[['boites', 'Boîtes de relance'], ['fiches', 'Toutes les fiches']]} />
         <Defile><div className="max-w-4xl mx-auto p-4 md:p-6">
           {v === 'boites' ? <VueCourtage /> : <FichesCourtage key={filtre || 'toutes'} statutInitial={filtre || ''} />}
         </div></Defile>
@@ -246,7 +245,7 @@ function ContenuMission({ mission, onglet, setOnglet, sous, setSous, plein }) {
   // Mission Acquéreurs
   if (onglet === 'suivi') return (
     <Defile>
-      <div className="max-w-3xl mx-auto px-3 md:px-4 pt-3 space-y-2">
+      <div className="max-w-4xl mx-auto px-4 md:px-6 pt-3 space-y-2">
         <AccesMission onEcran={() => plein({ type: 'acq', onglet: 'file' })} onDemo={() => plein({ type: 'acq', onglet: 'demo' })} />
         <ReportBandeau onDetail={() => setOnglet('report')} />
       </div>

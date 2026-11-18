@@ -62,7 +62,7 @@ export default function AcqListing({ filtreInitial = '', onOuvrir = null }) {
   }
   const puce = (k, vide) => `text-xs px-2.5 py-1.5 rounded-full border whitespace-nowrap transition-colors ${filtre === k ? 'bg-quai-navy text-white border-quai-navy' : vide ? 'bg-transparent border-quai-border/60 text-quai-muted/60' : 'bg-white border-quai-border text-quai-navy hover:border-quai-gold'}`
   return (
-    <div className="p-3 max-w-5xl mx-auto">
+    <div className="p-4 md:p-6 max-w-5xl mx-auto">
       <div className="flex flex-wrap gap-2 mb-2">
         <div className="relative flex-1 min-w-[12rem]">
           <Icon name="search" size="sm" className="absolute left-2.5 top-1/2 -translate-y-1/2 text-quai-muted" />
