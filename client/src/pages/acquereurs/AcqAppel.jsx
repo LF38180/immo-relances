@@ -681,6 +681,9 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, onPasser, 
                 ))}
               </div>
               <p className="text-[11px] text-quai-muted mt-1">Indispensable = il refuse de visiter sans (champ de rapprochement Modelo). Le reste part dans les Précisions.</p>
+              <div className="mt-2"><Champ label="Autres critères, avec ses mots (étage, exposition, vue, travaux, stationnement, calme…)">
+                <textarea className="input min-h-[4rem] mt-0.5" maxLength={1000} value={p.criteres_libre || ''} onChange={e => set('criteres_libre', e.target.value)} /></Champ>
+                <p className="text-[11px] text-quai-muted mt-1">Texte libre : il part tel quel dans les Précisions de la recherche, dans Modelo.</p></div>
 
               <h4 className="font-display font-semibold text-quai-navy mt-5 mb-2 pt-4 border-t border-quai-border">2.3 Financement</h4>
               {d.scripts?.['2.3'] && <BlocScript>{script('2.3')}</BlocScript>}

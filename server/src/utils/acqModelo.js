@@ -89,6 +89,8 @@ function blocPrecisions(fiche, contact, appel, fusion = null) {
     `IMPORTANT : ${crit('IMPORTANT')}`,
     `OPTIONNEL : ${crit('OPTIONNEL')}`,
     `RÉDHIBITOIRES : ${crit('REDHIBITOIRE')}`,
+    // Ce que l'appelante a noté librement sous la liste des critères.
+    `AUTRES CRITÈRES : ${String(p.criteres_libre || '').replace(/\s*\n+\s*/g, ' ; ').trim()}`,
     `SECTEURS : ${Array.isArray(p.secteurs) ? p.secteurs.join(', ') : (p.secteurs || '')}`,
     `DÉJÀ VU : ${p.deja_vu || ''}`,
     ...(det.mandat ? [`MANDAT DE RECHERCHE : ${texteMandat(det.mandat)}`] : []),

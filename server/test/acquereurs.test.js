@@ -346,7 +346,7 @@ const t = (n, fn) => { try { fn(); console.log('  OK  ' + n) } catch (e) { conso
       mandat: { etat: 'ACCEPTE', type: 'SIMPLE', date_acceptation: '2026-11-20' },
       coordonnees: { tel_portable: { etat: 'CONFIRME', avant: '0699999921' } }, vendre: { statut_logement: 'PROPRIETAIRE', doit_vendre: 'OUI' },
       fiches: { 201: { decision: 'GARDER', projet: { etat_projet: 'ACTIF', budget_max: '300000', secteurs: ['Meylan'], urgence: 8, mode_financement: 'Comptant', financement_valide: 'COMPTANT',
-        origine_fonds: 'vente d un terrain', recherche_depuis: 'six mois' } } } });
+        origine_fonds: 'vente d un terrain', recherche_depuis: 'six mois', criteres_libre: 'Étage élevé\nvue dégagée' } } } });
     t('mandat accepté sans date de signature : accepté (« à fixer »)', () => assert.strictEqual(x.status, 201));
     await valider();
     x = await call('GET', '/acquereurs/admin/report', tAdmin);
@@ -360,7 +360,7 @@ const t = (n, fn) => { try { fn(); console.log('  OK  ' + n) } catch (e) { conso
       assert.ok(l21.commentaire.includes('rendez-vous de signature à fixer'));
     });
     t('report : les champs qui se perdaient sont dans les Précisions', () => {
-      for (const m of ['cherche depuis six mois', 'origine des fonds : vente d un terrain', 'bien à vendre : 3 rue des Lilas 38240 Meylan']) assert.ok(l21.precisions_apres.includes(m), m);
+      for (const m of ['cherche depuis six mois', 'origine des fonds : vente d un terrain', 'bien à vendre : 3 rue des Lilas 38240 Meylan', 'AUTRES CRITÈRES : Étage élevé ; vue dégagée']) assert.ok(l21.precisions_apres.includes(m), m);
     });
     t('report : secteurs et priorité avec leur « avant »', () => { assert.strictEqual(l21.secteurs_apres, 'Meylan'); assert.strictEqual(l21.priorite_apres, 'Court terme'); });
     t('report : la liste des réattributions est donnée à relire', () => assert.ok(x.body.reattributions.some(r => r.id_contact === '21' && r.vers === 'Lilas FERKOUS')));

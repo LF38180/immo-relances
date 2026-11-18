@@ -219,7 +219,11 @@ const compter = (sql, ...a) => { const d = base(); const n = d.prepare(sql).get(
     ajouter.run(id1, idAgent, 'contacte', 'sans_projet', '2026-07-14 21:30:00');   // 23 h 30 à Paris, le 14 juillet
     ds.prepare("INSERT INTO relances (contact_id, agent_id, statut, notes, type, created_at, bloc_id) VALUES (?,?, 'contacte', 'une note', 'note', '2026-04-20 10:00:00', 1)").run(id1, idAgent);
     ds.close();
-    const s90 = (await req('GET', `/api/relances/stats?debut=${dans(-90)}&fin=${dans(0)}`, admin)).body;
+    // Les statistiques comptent en jours de Paris : entre minuit et 1 h (2 h
+    // l'été), le jour UTC de `dans()` est encore la veille et « aujourd'hui »
+    // excluait les appels que ce test vient de passer.
+    const paris = (n) => new Date(Date.now() + n * 86400000).toLocaleDateString('fr-CA', { timeZone: 'Europe/Paris' });
+    const s90 = (await req('GET', `/api/relances/stats?debut=${paris(-90)}&fin=${paris(0)}`, admin)).body;
     const sAn = (await req('GET', '/api/relances/stats?debut=2026-01-01&fin=2026-12-31', admin)).body;
     test('une période d un an : les appels d avril sont là, absents des 90 derniers jours',
       sAn.totaux.appels === s90.totaux.appels + 3 && sAn.periode.granularite === 'semaine', { an: sAn.totaux.appels, j90: s90.totaux.appels });
