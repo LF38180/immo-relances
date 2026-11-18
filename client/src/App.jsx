@@ -17,6 +17,7 @@ const CourtagePage = lazy(() => import('./pages/CourtagePage'))
 const ChangePasswordGate = lazy(() => import('./pages/ChangePasswordGate'))
 const OperationHub = lazy(() => import('./pages/operation/OperationHub'))
 const ChoixEspace = lazy(() => import('./pages/operation/ChoixEspace'))
+const AcqHub = lazy(() => import('./pages/acquereurs/AcqHub'))
 
 function ChargementPage() {
   return (
@@ -55,14 +56,35 @@ function AppConnecte({ user, page, setPage }) {
   const [acces, setAcces] = useState(null)      // null = on ne sait pas encore
   const [espace, setEspace] = useState(null)    // null = pas encore choisi
 
+  // Fichier Acquéreurs (18/11) : un espace de plus pour qui en a le droit.
+  // Sans ce droit, rien ne change.
+  const [acq, setAcq] = useState(null)
+
   useEffect(() => {
     api.get('/operation/mon-acces')
       .then(r => setAcces(r.data))
       .catch(() => setAcces({ participe: false }))   // en cas d'erreur : comportement d'origine
+    api.get('/acquereurs/mon-acces')
+      .then(r => setAcq(r.data))
+      .catch(() => setAcq({ acces: false }))
   }, [])
 
   // Tant qu'on ne sait pas, on n'affiche rien plutôt qu'un écran qui sauterait.
-  if (!acces) return <div className="min-h-screen flex"><ChargementPage /></div>
+  if (!acces || !acq) return <div className="min-h-screen flex"><ChargementPage /></div>
+
+  const espaceAcq = acq.acces
+    ? { id: 'acquereurs', titre: 'Fichier Acquéreurs', icon: 'users',
+        aide: `${acq.contacts} personne${acq.contacts > 1 ? 's' : ''} dans le fichier` }
+    : null
+  if (espace === 'acquereurs') {
+    return (
+      <ErrorBoundary>
+        <Suspense fallback={<div className="min-h-screen flex"><ChargementPage /></div>}>
+          <AcqHub onRetour={() => setEspace(null)} />
+        </Suspense>
+      </ErrorBoundary>
+    )
+  }
 
   const espaceHabituel = user.role === 'courtage' ? 'courtage' : 'agence'
 
@@ -70,12 +92,29 @@ function AppConnecte({ user, page, setPage }) {
   // à son nom atterrissait sur le tableau de bord des relances, vide, sans
   // menu ni explication. Il doit savoir que ce n'est pas lui.
   if (!acces.participe && user.role === 'conseiller') {
+    if (espaceAcq) return (
+      <ErrorBoundary>
+        <Suspense fallback={<div className="min-h-screen flex"><ChargementPage /></div>}>
+          <AcqHub />
+        </Suspense>
+      </ErrorBoundary>
+    )
     return <SansFiche prenom={user.prenom} />
   }
 
-  // Ne participe pas : strictement le comportement d'avant.
+  // Ne participe pas : strictement le comportement d'avant (sauf le Fichier
+  // Acquéreurs, proposé en plus à qui y a droit).
   if (!acces.participe) {
-    return espaceHabituel === 'courtage' ? <EspaceCourtage /> : <EspaceAgence page={page} setPage={setPage} />
+    const habituel = espaceHabituel === 'courtage' ? <EspaceCourtage onRetour={espaceAcq ? () => setEspace(null) : undefined} />
+      : <EspaceAgence page={page} setPage={setPage} onRetour={espaceAcq ? () => setEspace(null) : undefined} />
+    if (!espaceAcq || espace === 'habituel') return habituel
+    return (
+      <Suspense fallback={<div className="min-h-screen flex"><ChargementPage /></div>}>
+        <ChoixEspace prenom={user.prenom} onChoisir={setEspace} espaces={[espaceAcq,
+          { id: 'habituel', titre: espaceHabituel === 'courtage' ? 'Mon espace courtage' : 'Immo Relances',
+            aide: 'Votre espace habituel', icon: espaceHabituel === 'courtage' ? 'table' : 'layout-dashboard' }]} />
+      </Suspense>
+    )
   }
 
   // Qui a un second espace ?
@@ -85,6 +124,21 @@ function AppConnecte({ user, page, setPage }) {
   // travailler — Marine son courtage, Chrystelle ses relances, un manager son
   // pilotage, un admin l'application entière.
   const aUnAutreEspace = user.role !== 'conseiller'
+  if (!aUnAutreEspace && espaceAcq) {
+    if (espace === 'operation') return (
+      <Suspense fallback={<div className="min-h-screen flex"><ChargementPage /></div>}>
+        <OperationHub onRetour={() => setEspace(null)} />
+      </Suspense>
+    )
+    return (
+      <Suspense fallback={<div className="min-h-screen flex"><ChargementPage /></div>}>
+        <ChoixEspace prenom={user.prenom} onChoisir={setEspace} espaces={[
+          { id: 'operation', titre: 'Opération anciens clients', image: '/operation/sceau-badge.png',
+            aide: `${acces.fiches} personne${acces.fiches > 1 ? 's' : ''} à rappeler` },
+          espaceAcq]} />
+      </Suspense>
+    )
+  }
   if (!aUnAutreEspace) {
     return (
       <ErrorBoundary>
@@ -126,6 +180,7 @@ function AppConnecte({ user, page, setPage }) {
           espaces={[
             { id: 'operation', titre: 'Opération anciens clients',
               aide: aideOperation, image: '/operation/sceau-badge.png' },
+            ...(espaceAcq ? [espaceAcq] : []),
             second,
           ]}
         />

@@ -29,6 +29,7 @@ app.use('/api/scripts', require('./routes/scriptRoutes'));
 app.use('/api/admin', require('./routes/adminRoutes'));
 app.use('/api/courtage', require('./routes/courtageRoutes'));
 app.use('/api/operation', require('./routes/opRoutes'));
+app.use('/api/acquereurs', require('./routes/acqRoutes'));
 
 // Public, sans donnée métier ni chemin : de quoi vérifier après un
 // déploiement que le fuseau est bon et que la base a survécu (sa taille

@@ -926,4 +926,83 @@ db.exec(`
   })();
 }
 
+// --- Fichier Acquéreurs (« Madame Fichier Acquéreurs », 18/11/2026) --------
+//
+// Espace cloisonné, sur le modèle de l'opération anciens clients : ses propres
+// tables, ajoutées sans toucher à l'existant. Deux niveaux, parce qu'un
+// contact Modelo peut porter jusqu'à onze fiches acquéreurs : le CONTACT
+// (cont_id) est l'unité d'appel — coordonnées, stops, plafond mensuel — et la
+// FICHE (req_id) porte le projet, les critères et le financement.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS acq_contacts (
+    id_contact TEXT PRIMARY KEY,
+    civilite TEXT, nom TEXT, prenom TEXT, societe TEXT,
+    email TEXT, tel_portable TEXT, tel_fixe TEXT,
+    adresse TEXT, code_postal TEXT, commune TEXT,
+    stop_tel INTEGER NOT NULL DEFAULT 0, stop_mail INTEGER NOT NULL DEFAULT 0,
+    type_contact TEXT, suivi_par TEXT,
+    agence TEXT NOT NULL DEFAULT 'MEYLAN',
+    source TEXT NOT NULL DEFAULT 'ORPHELIN',
+    madame_fichier TEXT,
+    exclu TEXT, exclu_leve INTEGER NOT NULL DEFAULT 0,
+    acheteur_vendeur INTEGER NOT NULL DEFAULT 0,
+    nb_notes INTEGER, derniere_note_date TEXT, derniere_note_auteur TEXT, derniere_note_extrait TEXT,
+    statut TEXT, statut_le TEXT, rappel_le TEXT,
+    consentement_rappel INTEGER, consentement_le TEXT,
+    modelo_reporte_le TEXT,
+    importe_le TEXT NOT NULL DEFAULT (datetime('now')),
+    maj_import_le TEXT
+  );
+  CREATE TABLE IF NOT EXISTS acq_fiches (
+    id_fiche TEXT PRIMARY KEY,
+    id_contact TEXT NOT NULL REFERENCES acq_contacts(id_contact),
+    ancien_conseiller TEXT, type_recherche TEXT, type_bien TEXT,
+    budget_min INTEGER, budget_max INTEGER,
+    surface_min INTEGER, surface_max INTEGER,
+    pieces_min INTEGER, chambres_min INTEGER,
+    localisation_mode TEXT, communes TEXT, codes_postaux TEXT,
+    priorite TEXT, alerte_mail INTEGER, modifiee_periode TEXT,
+    precisions TEXT, observations TEXT, alertes_a_verifier TEXT,
+    criteres_obligatoires TEXT,
+    donnees TEXT,
+    decision TEXT CHECK(decision IN ('GARDER','FUSIONNER','ARCHIVER')),
+    fusion_dans TEXT, motif_archivage TEXT,
+    requalif TEXT,
+    decision_le TEXT, decision_par TEXT,
+    archivage_valide INTEGER, archivage_valide_par TEXT, archivage_valide_le TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_acq_fiches_contact ON acq_fiches(id_contact);
+  CREATE TABLE IF NOT EXISTS acq_appels (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id_contact TEXT NOT NULL REFERENCES acq_contacts(id_contact),
+    madame_fichier TEXT NOT NULL,
+    user_id INTEGER REFERENCES users(id),
+    horodatage TEXT NOT NULL DEFAULT (datetime('now')),
+    canal TEXT NOT NULL DEFAULT 'APPEL' CHECK(canal IN ('APPEL','SMS','MAIL')),
+    issue TEXT NOT NULL CHECK(issue IN ('JOINT','REPONDEUR','PAS_DE_REPONSE','FAUX_NUMERO',
+      'A_RAPPELER','NE_PLUS_CONTACTER','ERREUR_IDENTITE','DECEDE')),
+    statut_final TEXT,
+    prochaine_action TEXT, date_prochaine_action TEXT,
+    duree_sec INTEGER, notes TEXT,
+    details TEXT,
+    cle TEXT UNIQUE
+  );
+  CREATE INDEX IF NOT EXISTS idx_acq_appels_contact ON acq_appels(id_contact, horodatage DESC);
+  CREATE TABLE IF NOT EXISTS acq_reports (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    le TEXT NOT NULL DEFAULT (datetime('now')),
+    par TEXT, jusqu_a TEXT NOT NULL, contacts INTEGER, fiches INTEGER
+  );
+  CREATE TABLE IF NOT EXISTS acq_scripts (
+    partie TEXT PRIMARY KEY,
+    texte TEXT NOT NULL DEFAULT '',
+    modifie_le TEXT, modifie_par TEXT
+  );
+`);
+// Le droit d'entrer dans l'espace : une case sur le compte, pas un rôle.
+// Lilas est conseillère dans l'opération anciens clients ; un second rôle lui
+// aurait retiré l'un des deux accès.
+if (!db.prepare('PRAGMA table_info(users)').all().some(c => c.name === 'acces_acquereurs'))
+  db.exec('ALTER TABLE users ADD COLUMN acces_acquereurs INTEGER NOT NULL DEFAULT 0');
+
 module.exports = { db, recalculerScore, DB_PATH };

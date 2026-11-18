@@ -1,0 +1,165 @@
+// Import du Fichier Acquéreurs : l'extraction préparée par Exploration Modelo
+// (une ligne par fiche acquéreur, croisée avec la fiche contact).
+//
+// Les colonnes sont lues par leur NOM, jamais par leur place : une version
+// suivante du fichier peut ajouter une colonne (la civilité, par exemple)
+// sans casser l'import.
+//
+// Rien n'est jamais effacé. Une fiche déjà importée voit ses données Modelo
+// rafraîchies, mais ce que Lilas a saisi (décisions, requalification,
+// statut, appels) n'est pas touché.
+const Papa = require('papaparse');
+const { db } = require('../database');
+const { cleTel } = require('../blocs');
+
+const OBLIGATOIRES = ['id_fiche', 'id_contact', 'nom', 'tel_portable', 'stop_tel', 'type_recherche'];
+const OPTIONS = ['balcon', 'terrasse', 'jardin', 'ascenseur', 'dernier_etage', 'cave', 'piscine', 'pmr'];
+
+const vide = (v) => (v == null || String(v).trim() === '' ? null : String(v).trim());
+const entier = (v) => { const n = parseInt(String(v || '').replace(/\D/g, ''), 10); return Number.isFinite(n) && n > 0 ? n : null; };
+const oui = (v) => /^(oui|1|true)$/i.test(String(v || '').trim()) ? 1 : 0;
+const sansAccent = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+
+function lire(texte) {
+  const r = Papa.parse(String(texte).replace(/^﻿/, ''), { header: true, delimiter: ';', skipEmptyLines: true });
+  return { lignes: r.data, colonnes: r.meta.fields || [] };
+}
+
+// Les contacts que l'audit des doublons propose d'archiver : l'autre agence
+// garde la personne, Lilas ne l'appelle pas.
+function doublonsAArchiver(texte) {
+  if (!texte || !String(texte).trim()) return new Set();
+  const { lignes } = lire(texte);
+  return new Set(lignes.filter(l => /^archiver/i.test(String(l.proposition || '').trim()))
+    .map(l => String(l.id_contact || '').trim()).filter(Boolean));
+}
+
+// Pourquoi ce contact ne va pas dans la file. null = il y va.
+function motifExclusion(c, fiches, { doublons, suiveursRepris }) {
+  const alertes = fiches.map(f => f.alertes_a_verifier || '').join(' | ').toLowerCase();
+  if (c.stop_brut == null || alertes.includes('contact archivé')) return 'CONTACT_ARCHIVE';
+  if (c.stop_tel) return 'STOP_TEL';
+  if (!cleTel(c.tel_portable) && !cleTel(c.tel_fixe)) return 'SANS_TELEPHONE';
+  if (alertes.includes('décès') || alertes.includes('deces')) return 'DECES_POSSIBLE';
+  if (doublons.has(c.id_contact)) return 'DOUBLON_AUTRE_AGENCE';
+  if (c.suivi_par && !suiveursRepris.has(sansAccent(c.suivi_par))) return 'SUIVI_PAR_AGENT';
+  if (fiches.every(f => sansAccent(f.type_recherche) === 'location')) return 'LOCATION_SEULE';
+  return null;
+}
+
+const LIBELLES_EXCLUSION = {
+  CONTACT_ARCHIVE: 'Contact archivé ou absent de Modelo',
+  STOP_TEL: 'Stop téléphone',
+  SANS_TELEPHONE: 'Sans téléphone',
+  DECES_POSSIBLE: 'Décès possible (note Modelo)',
+  DOUBLON_AUTRE_AGENCE: 'Doublon avec Saint-Égrève, à archiver',
+  SUIVI_PAR_AGENT: 'Contact suivi par un agent en poste',
+  LOCATION_SEULE: 'Recherche en location uniquement',
+  OPPOSITION: 'A demandé à ne plus être contacté',
+};
+
+function importer(texte, { doublonsCsv = null, madameFichier, suiveursRepris = ['Loick FERRUCCI'], simulation = true } = {}) {
+  if (!madameFichier) return { ok: false, error: 'Précisez qui traite ce fichier.' };
+  const { lignes, colonnes } = lire(texte);
+  const manquantes = OBLIGATOIRES.filter(c => !colonnes.includes(c));
+  if (manquantes.length) return { ok: false, error: `Colonnes absentes du fichier : ${manquantes.join(', ')}.`, colonnes };
+  if (!lignes.length) return { ok: false, error: 'Le fichier ne contient aucune ligne.' };
+
+  const doublons = doublonsAArchiver(doublonsCsv);
+  const repris = new Set([madameFichier, ...suiveursRepris].map(sansAccent));
+
+  // Regroupement par contact : une personne, toutes ses fiches.
+  const parContact = new Map();
+  const erreurs = [];
+  lignes.forEach((l, i) => {
+    const idf = vide(l.id_fiche), idc = vide(l.id_contact);
+    if (!idf || !idc) { erreurs.push(`Ligne ${i + 2} : identifiant manquant.`); return; }
+    if (!parContact.has(idc)) {
+      parContact.set(idc, {
+        contact: {
+          id_contact: idc, civilite: vide(l.civilite), nom: vide(l.nom), prenom: vide(l.prenom), societe: vide(l.societe),
+          email: vide(l.email), tel_portable: vide(l.tel_portable), tel_fixe: vide(l.tel_fixe),
+          adresse: vide(l.adresse_contact), code_postal: vide(l.cp_contact), commune: vide(l.commune_contact),
+          stop_brut: vide(l.stop_tel), stop_tel: oui(l.stop_tel), stop_mail: oui(l.stop_mail),
+          type_contact: vide(l.type_contact), suivi_par: vide(l.suivi_par_contact),
+          nb_notes: entier(l.nb_notes_contact), derniere_note_date: vide(l.derniere_note_date),
+          derniere_note_auteur: vide(l.derniere_note_auteur), derniere_note_extrait: vide(l.derniere_note_extrait),
+          acheteur_vendeur: /vendeur/i.test(l.type_contact || '') ? 1 : 0,
+        },
+        fiches: [],
+      });
+    }
+    parContact.get(idc).fiches.push({
+      id_fiche: idf, id_contact: idc,
+      ancien_conseiller: vide(l.ancien_conseiller_fiche), type_recherche: vide(l.type_recherche), type_bien: vide(l.type_bien),
+      budget_min: entier(l.budget_min), budget_max: entier(l.budget_max),
+      surface_min: entier(l.surface_min), surface_max: entier(l.surface_max),
+      pieces_min: entier(l.pieces_min), chambres_min: entier(l.chambres_min),
+      localisation_mode: vide(l.localisation_mode), communes: vide(l.communes), codes_postaux: vide(l.codes_postaux),
+      priorite: vide(l.priorite), alerte_mail: oui(l.alerte_mail), modifiee_periode: vide(l.fiche_modifiee_periode),
+      precisions: vide(l.precisions), observations: vide(l.observations), alertes_a_verifier: vide(l.alertes_a_verifier),
+      criteres_obligatoires: OPTIONS.filter(o => /obligatoire/i.test(l[o] || '')).join(', ') || null,
+      donnees: JSON.stringify(l),
+    });
+  });
+
+  const bilan = { ok: true, simulation, lignes: lignes.length, fiches: 0, contacts: parContact.size,
+    nouveaux_contacts: 0, contacts_mis_a_jour: 0, dans_la_file: 0, fiches_dans_la_file: 0, exclus: {}, erreurs };
+  const ecrire = db.transaction(() => {
+    const existe = db.prepare('SELECT id_contact, exclu_leve, statut FROM acq_contacts WHERE id_contact = ?');
+    const insC = db.prepare(`INSERT INTO acq_contacts (id_contact, civilite, nom, prenom, societe, email, tel_portable, tel_fixe,
+        adresse, code_postal, commune, stop_tel, stop_mail, type_contact, suivi_par, madame_fichier, exclu,
+        acheteur_vendeur, nb_notes, derniere_note_date, derniere_note_auteur, derniere_note_extrait)
+      VALUES (@id_contact, @civilite, @nom, @prenom, @societe, @email, @tel_portable, @tel_fixe,
+        @adresse, @code_postal, @commune, @stop_tel, @stop_mail, @type_contact, @suivi_par, @madame_fichier, @exclu,
+        @acheteur_vendeur, @nb_notes, @derniere_note_date, @derniere_note_auteur, @derniere_note_extrait)`);
+    // Mise à jour : les données Modelo, jamais le travail fait dans l'appli.
+    // Un stop posé dans Modelo depuis s'applique ; un stop levé dans Modelo
+    // ne lève pas celui posé ici.
+    const majC = db.prepare(`UPDATE acq_contacts SET civilite = COALESCE(@civilite, civilite), nom = @nom, prenom = @prenom,
+        societe = @societe, email = @email, tel_portable = @tel_portable, tel_fixe = @tel_fixe,
+        adresse = @adresse, code_postal = @code_postal, commune = @commune,
+        stop_tel = MAX(stop_tel, @stop_tel), stop_mail = MAX(stop_mail, @stop_mail),
+        type_contact = @type_contact, suivi_par = @suivi_par, acheteur_vendeur = MAX(acheteur_vendeur, @acheteur_vendeur),
+        nb_notes = @nb_notes, derniere_note_date = @derniere_note_date, derniere_note_auteur = @derniere_note_auteur,
+        derniere_note_extrait = @derniere_note_extrait,
+        exclu = CASE WHEN exclu_leve = 1 THEN exclu ELSE @exclu END,
+        maj_import_le = datetime('now')
+      WHERE id_contact = @id_contact`);
+    const insF = db.prepare(`INSERT INTO acq_fiches (id_fiche, id_contact, ancien_conseiller, type_recherche, type_bien,
+        budget_min, budget_max, surface_min, surface_max, pieces_min, chambres_min, localisation_mode, communes,
+        codes_postaux, priorite, alerte_mail, modifiee_periode, precisions, observations, alertes_a_verifier,
+        criteres_obligatoires, donnees)
+      VALUES (@id_fiche, @id_contact, @ancien_conseiller, @type_recherche, @type_bien, @budget_min, @budget_max,
+        @surface_min, @surface_max, @pieces_min, @chambres_min, @localisation_mode, @communes, @codes_postaux,
+        @priorite, @alerte_mail, @modifiee_periode, @precisions, @observations, @alertes_a_verifier,
+        @criteres_obligatoires, @donnees)
+      ON CONFLICT(id_fiche) DO UPDATE SET ancien_conseiller = excluded.ancien_conseiller,
+        type_recherche = excluded.type_recherche, type_bien = excluded.type_bien,
+        budget_min = excluded.budget_min, budget_max = excluded.budget_max,
+        surface_min = excluded.surface_min, surface_max = excluded.surface_max,
+        pieces_min = excluded.pieces_min, chambres_min = excluded.chambres_min,
+        localisation_mode = excluded.localisation_mode, communes = excluded.communes,
+        codes_postaux = excluded.codes_postaux, priorite = excluded.priorite, alerte_mail = excluded.alerte_mail,
+        modifiee_periode = excluded.modifiee_periode, precisions = excluded.precisions,
+        observations = excluded.observations, alertes_a_verifier = excluded.alertes_a_verifier,
+        criteres_obligatoires = excluded.criteres_obligatoires, donnees = excluded.donnees`);
+    for (const { contact, fiches } of parContact.values()) {
+      const exclu = motifExclusion(contact, fiches, { doublons, suiveursRepris: repris });
+      bilan.fiches += fiches.length;
+      if (exclu) bilan.exclus[exclu] = (bilan.exclus[exclu] || 0) + 1;
+      else { bilan.dans_la_file++; bilan.fiches_dans_la_file += fiches.filter(f => sansAccent(f.type_recherche) !== 'location').length; }
+      const ligne = { ...contact, madame_fichier: madameFichier, exclu };
+      delete ligne.stop_brut;
+      if (existe.get(contact.id_contact)) { bilan.contacts_mis_a_jour++; majC.run(ligne); }
+      else { bilan.nouveaux_contacts++; insC.run(ligne); }
+      for (const f of fiches) insF.run(f);
+    }
+    if (simulation) throw new Error('__simulation__');
+  });
+  try { ecrire(); } catch (e) { if (e.message !== '__simulation__') throw e; }
+  bilan.exclus_libelles = Object.fromEntries(Object.entries(bilan.exclus).map(([k, v]) => [LIBELLES_EXCLUSION[k] || k, v]));
+  return bilan;
+}
+
+module.exports = { importer, lire, motifExclusion, LIBELLES_EXCLUSION, sansAccent };
