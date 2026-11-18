@@ -2,7 +2,6 @@ import { useState, lazy, Suspense } from 'react'
 import Layout from '../../components/Layout'
 import ErrorBoundary from '../../components/ErrorBoundary'
 import Icon from '../../components/ui/Icon'
-import Marque from '../../components/ui/Marque'
 import { ONGLETS } from './onglets'
 
 // L'espace de l'admin, rangé par MISSION (18/11/2026).
@@ -182,14 +181,14 @@ export default function EspaceAdmin({ operation }) {
   const menu = [
     { id: 'accueil', label: 'Accueil', icon: 'layout-dashboard' },
     { section: 'Missions' },
-    ...Object.entries(MISSIONS).map(([id, m]) => ({ id, label: m.titre, court: m.court, icon: m.icon, lettre: m.lettre })),
+    ...Object.entries(MISSIONS).map(([id, m]) => ({ id, label: m.titre, court: m.court, icon: m.icon, lettre: m.lettre, logo: `/marque/mission-${id}-long-clair.png` })),
     ...(operation ? [{ id: 'operation', label: 'Anciens clients', court: 'Anc. clients', icon: 'star' }] : []),
     { section: 'Toute l’appli' },
     ...Object.entries(AUTRES).map(([id, a]) => ({ id, label: a.titre, icon: a.icon })),
   ]
   const mission = MISSIONS[page]
   const titre = page === 'accueil' ? 'Accueil' : page === 'plus' ? 'Plus'
-    : mission ? <span className="inline-flex items-center gap-2.5"><Marque lettre={mission.lettre} taille={28} />{mission.titre}</span>
+    : mission ? <img src={`/marque/mission-${page}-long-sombre.png`} alt={mission.titre} className="h-8 w-auto" />
     : AUTRES[page]?.titre
   // Sur téléphone, huit onglets dans la barre du bas, c'était trop : l'accueil,
   // les trois missions, et « Plus » pour le reste.

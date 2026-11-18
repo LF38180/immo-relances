@@ -4,7 +4,7 @@ import { blocCourant, choisirBloc } from '../utils/blocCourant'
 import { useAuth } from '../hooks/useAuth'
 import Icon from './ui/Icon'
 import BottomTabBar from './BottomTabBar'
-import Marque, { LogoImmoRelances } from './ui/Marque'
+import Marque from './ui/Marque'
 
 const NAV_ITEMS = [
   { id: 'dashboard',  label: 'Tableau de bord', icon: 'layout-dashboard', roles: ['agent', 'manager', 'admin'] },
@@ -52,20 +52,11 @@ export default function Layout({ page, onNavigate, children, extraNav = [], nav 
 
         {/* Logo */}
         <div className={`flex items-center justify-between border-b border-white/10 ${collapsed ? 'p-3' : 'p-4'}`}>
-          {nav ? (
-            /* L'espace de l'admin porte le logo de l'appli. */
-            <LogoImmoRelances compact={collapsed} />
-          ) : !collapsed ? (
-            <div className="flex items-center gap-3">
-              <img
-                src="https://img.netty.fr/logo/company55382byt/2/logo_web.png"
-                alt="Le Quai de l'Immobilier"
-                className="h-10 w-auto object-contain"
-              />
-            </div>
-          ) : (
-            <div className="w-8 h-8 bg-white/10 rounded flex items-center justify-center text-white font-bold text-xs">LQ</div>
-          )}
+          {/* Le logo de l'appli (novembre 2026), détouré pour se poser sur le
+              marine du menu. Replié : son pictogramme seul. */}
+          {!collapsed
+            ? <img src="/marque/immorelances-long-clair.png" alt="ImmoRelances — Le Quai de l'Immobilier" className="h-9 w-auto object-contain" />
+            : <Marque lettre="iR" taille={32} clair />}
           <button
             onClick={() => setCollapsed(!collapsed)}
             aria-label={collapsed ? 'Déplier le menu' : 'Replier le menu'}
@@ -89,6 +80,17 @@ export default function Layout({ page, onNavigate, children, extraNav = [], nav 
           {menu.map(item => item.section ? (
             !collapsed && <div key={item.section} className="px-3 pt-4 pb-1 text-[10px] uppercase tracking-wider text-white/40">{item.section}</div>
           ) : (
+            /* Une entrée avec `logo` (les missions) montre son logo en long à
+               la place du texte ; l'entrée active est encadrée plutôt que
+               remplie d'or, pour que le logo reste lisible. */
+            item.logo ? (
+              <button key={item.id} onClick={() => onNavigate(item.id)} title={item.label} aria-label={item.label}
+                aria-current={page === item.id ? 'page' : undefined}
+                className={`w-full flex items-center px-3 py-2 rounded-lg transition-all border-l-[3px] ${
+                  page === item.id ? 'bg-white/10 border-quai-taupe' : 'border-transparent opacity-80 hover:opacity-100 hover:bg-white/5'}`}>
+                {collapsed ? <Marque lettre={item.lettre} taille={22} clair /> : <img src={item.logo} alt="" className="h-7 w-auto" />}
+              </button>
+            ) : (
             <button
               key={item.id}
               onClick={() => onNavigate(item.id)}
@@ -102,6 +104,7 @@ export default function Layout({ page, onNavigate, children, extraNav = [], nav 
               {item.lettre ? <Marque lettre={item.lettre} taille={22} clair={page !== item.id} /> : <Icon name={item.icon} size="md" className="flex-shrink-0" />}
               {!collapsed && <span className="truncate">{item.label}</span>}
             </button>
+            )
           ))}
         </nav>
 

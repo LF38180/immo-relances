@@ -36,14 +36,10 @@ export default function LoginPage() {
         </div>
 
         <div className="relative z-10 text-center">
-          <img
-            src="https://img.netty.fr/logo/company55382byt/2/logo_web.png"
-            alt="Le Quai de l'Immobilier"
-            className="h-24 lg:h-28 w-auto object-contain mx-auto mb-5 lg:mb-6"
-          />
-          <h1 className="font-display text-3xl lg:text-4xl font-semibold text-white tracking-tight">
-            Immo<span className="text-quai-gold">Relances</span>
-          </h1>
+          {/* Le logo de l'appli porte déjà son nom et « Le Quai de l'Immobilier ». */}
+          <img src="/marque/immorelances-long-clair.png" alt="ImmoRelances — Le Quai de l'Immobilier"
+            className="h-16 lg:h-20 w-auto max-w-full object-contain mx-auto" />
+          <h1 className="sr-only">ImmoRelances</h1>
           <p className="text-white/60 text-sm italic max-w-xs mx-auto leading-relaxed mt-5">
             "Le symbole d'un départ, d'une rencontre, d'une destination"
           </p>

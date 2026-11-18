@@ -3,7 +3,6 @@ import api from '../../utils/api'
 import { useAuth } from '../../hooks/useAuth'
 import Icon from '../../components/ui/Icon'
 import ErrorBoundary from '../../components/ErrorBoundary'
-import Marque from '../../components/ui/Marque'
 
 const AcqFile = lazy(() => import('./AcqFile'))
 const AcqAccueil = lazy(() => import('./AcqAccueil'))
@@ -34,9 +33,9 @@ export default function AcqHub({ onRetour, libelleRetour = 'Mon espace', ongletI
     <div className="h-ecran flex flex-col bg-quai-light">
       <header className="bg-quai-navy text-white px-3 py-2 flex items-center gap-2 shrink-0"
         style={{ paddingTop: 'max(0.5rem, env(safe-area-inset-top))' }}>
-        <Marque lettre="A" taille={32} clair />
+        <img src="/marque/mission-acquereurs-long-clair.png" alt="Mission Acquéreurs" className="h-8 w-auto shrink-0" />
         <div className="min-w-0 flex-1">
-          <div className="font-display font-semibold text-sm leading-tight truncate">Mission Acquéreurs</div>
+          <div className="sr-only">Mission Acquéreurs</div>
           <div className="text-[11px] text-white/60 truncate">{user?.prenom} {user?.nom}{acces?.contacts != null ? ` · ${acces.contacts} personnes` : ''}</div>
         </div>
         {onRetour && (
