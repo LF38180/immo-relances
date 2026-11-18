@@ -304,6 +304,12 @@ router.get('/effectues', acces, (req, res) => {
     .map(l => ({ ...l, texte: json(l.details)?.texte || null, details: undefined })));
 });
 
+// --- Démonstration : trois acquéreurs fictifs, rien d'enregistré ----------
+router.get('/demo', admin, (req, res) => {
+  const scripts = Object.fromEntries(db.prepare('SELECT partie, texte FROM acq_scripts').all().map(x => [x.partie, x.texte]));
+  res.json({ cas: require('../utils/acqDemo').cas(scripts) });
+});
+
 // --- Suivi (cahier, section 6) ---------------------------------------------
 router.get('/suivi', acces, (req, res) => {
   const { where, params } = perimetre(req.moi);

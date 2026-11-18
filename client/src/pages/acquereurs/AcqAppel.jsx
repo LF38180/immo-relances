@@ -82,7 +82,7 @@ const effacerBrouillon = (id) => { try { localStorage.removeItem(cleBrouillon(id
 const CLE_DERNIER_SMS = 'acq-dernier-sms'
 const dernierSms = () => { try { return localStorage.getItem(CLE_DERNIER_SMS) || '' } catch { return '' } }
 
-export default function AcqAppel({ id, position, onSuivant, onRetour, horsFile, revenir }) {
+export default function AcqAppel({ id, position, onSuivant, onRetour, horsFile, revenir, demo }) {
   const [d, setD] = useState(null)
   const [s, setS] = useState(null)       // la saisie
   const [ouv, setOuv] = useState({ fiches: true, p0: true })
@@ -91,7 +91,9 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, horsFile, 
 
   useEffect(() => {
     setD(null); setS(null); cle.current = `${id}-${Date.now()}`
-    api.get(`/acquereurs/contacts/${id}`).then(r => {
+    // Démonstration : les données arrivent toutes faites, rien n'est lu ni
+    // écrit sur le serveur.
+    ;(demo ? Promise.resolve({ data: demo }) : api.get(`/acquereurs/contacts/${id}`)).then(r => {
       setD(r.data)
       const c = r.data.contact
       const init = {
@@ -115,14 +117,14 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, horsFile, 
       }
       // Le brouillon porte l'identifiant de sa fiche : on ne reprend jamais
       // celui d'une autre personne.
-      const b = lireBrouillon(id)
+      const b = demo ? null : lireBrouillon(id)
       setS(b && b._id === id ? b : { ...init, _id: id })
     }).catch(() => setD({ erreur: true }))
   }, [id])
   // Au changement de fiche, `s` est encore celle d'avant pendant un rendu :
   // sans ce contrôle, la saisie de la personne précédente était recopiée
   // dans le brouillon de la suivante.
-  useEffect(() => { if (s && s._id === id) ecrireBrouillon(id, s) }, [id, s])
+  useEffect(() => { if (s && s._id === id && !demo) ecrireBrouillon(id, s) }, [id, s, demo])
 
   const c = d?.contact
   const gardees = useMemo(() => s ? Object.entries(s.fiches).filter(([, f]) => f.decision === 'GARDER').map(([k]) => k) : [], [s])
@@ -144,8 +146,10 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, horsFile, 
   }
   const basculer = (k) => setOuv(o => ({ ...o, [k]: !o[k] }))
 
+  const finDemo = (msg) => { toast.success(`Démonstration : ${msg}. Rien n’est enregistré.`); onSuivant() }
   const tentative = async (issue, canal = 'APPEL') => {
     if (envoi) return
+    if (demo) return finDemo(canal === 'SMS' ? 'SMS noté' : canal === 'MAIL' ? 'mail noté' : 'tentative notée')
     // Repris de l'opération : une fiche déjà remplie qu'on enregistre en
     // « répondeur » ou « pas de réponse », c'est presque toujours une erreur
     // de bouton. On demande avant de perdre la conversation.
@@ -176,6 +180,7 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, horsFile, 
         criteres: (f.projet.criteres || []).filter(x => x.niveau) } : null,
     }]))
     const coordonnees = Object.fromEntries(Object.entries(s.coordonnees).filter(([, x]) => x.etat))
+    if (demo) return finDemo('appel enregistré')
     setEnvoi(true)
     try {
       await api.post(`/acquereurs/contacts/${id}/cloture`, {
@@ -190,6 +195,7 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, horsFile, 
   }
   const neplus = async () => {
     if (!window.confirm('Enregistrer que cette personne ne souhaite plus être contactée ? Elle sortira de toutes les files, dans tous les modules.')) return
+    if (demo) return finDemo('opposition notée')
     setEnvoi(true)
     try {
       await api.post(`/acquereurs/contacts/${id}/cloture`, { cle: cle.current + '-npc', statut_final: 'NE_PLUS_CONTACTER', notes: s.notes || null })
@@ -205,6 +211,7 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, horsFile, 
     if (i === 'REFUS_FERME') return neplus()
     if (i === 'JOINT') return cloturer()
     if (i === 'A_RAPPELER' && !s.rappel_le) return toast.error('Précisez quand rappeler.')
+    if (demo) return finDemo('appel enregistré')
     setEnvoi(true)
     try {
       await api.post(`/acquereurs/contacts/${id}/cloture`, { cle: cle.current + '-' + i, statut_final: i,

@@ -6,6 +6,7 @@ import ErrorBoundary from '../../components/ErrorBoundary'
 
 const AcqFile = lazy(() => import('./AcqFile'))
 const AcqAccueil = lazy(() => import('./AcqAccueil'))
+const AcqDemo = lazy(() => import('./AcqDemo'))
 const AcqSuivi = lazy(() => import('./AcqSuivi'))
 const AcqAdmin = lazy(() => import('./AcqAdmin'))
 
@@ -22,7 +23,7 @@ export default function AcqHub({ onRetour, libelleRetour = 'Mon espace' }) {
     { id: 'accueil', label: 'Accueil', icon: 'file-text' },
     { id: 'file', label: 'Mes appels', icon: 'phone' },
     { id: 'suivi', label: 'Suivi', icon: 'layout-dashboard' },
-    ...(estAdmin ? [{ id: 'admin', label: 'Administration', icon: 'settings' }] : []),
+    ...(estAdmin ? [{ id: 'admin', label: 'Administration', icon: 'settings' }, { id: 'demo', label: 'Démonstration', icon: 'play' }] : []),
   ]
   return (
     <div className="h-ecran flex flex-col bg-quai-light">
@@ -58,6 +59,7 @@ export default function AcqHub({ onRetour, libelleRetour = 'Mon espace' }) {
             {onglet === 'file' && <AcqFile />}
             {onglet === 'suivi' && <AcqSuivi />}
             {onglet === 'admin' && estAdmin && <AcqAdmin />}
+            {onglet === 'demo' && estAdmin && <AcqDemo />}
           </Suspense>
         </ErrorBoundary>
       </main>
