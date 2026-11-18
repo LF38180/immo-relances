@@ -82,7 +82,7 @@ const effacerBrouillon = (id) => { try { localStorage.removeItem(cleBrouillon(id
 const CLE_DERNIER_SMS = 'acq-dernier-sms'
 const dernierSms = () => { try { return localStorage.getItem(CLE_DERNIER_SMS) || '' } catch { return '' } }
 
-export default function AcqAppel({ id, position, onSuivant, onRetour, horsFile, onContacts, revenir }) {
+export default function AcqAppel({ id, position, onSuivant, onRetour, horsFile, revenir }) {
   const [d, setD] = useState(null)
   const [s, setS] = useState(null)       // la saisie
   const [ouv, setOuv] = useState({ fiches: true, p0: true })
@@ -224,11 +224,11 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, horsFile, 
         <button onClick={onRetour} className="inline-flex items-center gap-1 hover:text-quai-navy"><Icon name="arrow-left" size="sm" /> Ma file</button>
         {revenir && <button onClick={revenir.aller} className="inline-flex items-center gap-1 text-quai-navy underline">{revenir.libelle}</button>}
         <span className="ml-auto">{position}</span>
-        {onContacts && <button onClick={onContacts} className="inline-flex items-center gap-1 text-quai-navy border border-quai-border rounded-lg px-2 py-1 bg-white"><Icon name="users" size="sm" /> Mes contacts</button>}
+
       </div>
 
       {/* En-tête, toujours visible */}
-      <div className="bg-white border border-quai-border rounded-xl p-3 mb-2.5 sticky top-0 z-10">
+      <div className="bg-white border border-quai-border rounded-xl p-3 mb-2.5">
         <div className="flex items-start gap-2 flex-wrap">
           <div className="min-w-0 flex-1">
             <div className="font-semibold text-quai-navy">{c.civilite ? c.civilite + ' ' : ''}{c.prenom} {c.nom}</div>

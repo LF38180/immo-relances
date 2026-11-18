@@ -100,6 +100,50 @@ function Effectues({ onChoisir, onFermer }) {
   )
 }
 
+// La barre du haut, toujours là, comme dans l'opération anciens clients : où
+// j'en suis, « À faire », « Effectués », « Mes contacts », et la recherche
+// « Il vous rappelle ? » qui ouvre la fiche sans perdre l'appel en cours.
+function Barre({ index, total, horsFile, faits, plage, contacts, onOuvrir, onAFaire, onEffectues, onContacts }) {
+  const [q, setQ] = useState('')
+  const motif = q.trim().toLowerCase(), chiffres = motif.replace(/\D/g, '')
+  const res = motif.length < 2 ? [] : (contacts || []).filter(c =>
+    `${c.nom || ''} ${c.prenom || ''} ${c.nom || ''} ${c.email || ''}`.toLowerCase().includes(motif)
+    || (chiffres.length >= 3 && `${c.tel_portable || ''} ${c.tel_fixe || ''}`.replace(/\D/g, '').includes(chiffres))).slice(0, 8)
+  const pct = total ? Math.round(((index ?? 0) / total) * 100) : 0
+  const pastille = 'inline-flex items-center gap-1 px-2 py-1 rounded-full border border-quai-border text-quai-navy hover:border-quai-gold bg-white'
+  return (
+    <div className="bg-white border-b border-quai-border px-3 py-2 sticky top-0 z-20">
+      <div className="max-w-3xl mx-auto">
+        <div className="flex items-center justify-between gap-2 text-xs mb-1.5 flex-wrap">
+          <span className="text-quai-muted">{horsFile ? <span className="text-quai-gold font-medium">Fiche ouverte hors de la file</span>
+            : index != null ? <>Fiche <b className="text-quai-navy">{index + 1}</b> / {total}</> : <>{total} à appeler</>}</span>
+          <div className="flex items-center gap-2 text-[11px]">
+            <button onClick={onAFaire} className={pastille}><Icon name="table" size="sm" /> À faire <b>{total}</b></button>
+            <button onClick={onEffectues} className={pastille}><Icon name="history" size="sm" /> Effectués <b>{faits}</b></button>
+            <button onClick={onContacts} className={pastille}><Icon name="users" size="sm" /> Mes contacts</button>
+          </div>
+        </div>
+        <div className="h-1.5 bg-quai-border rounded-full overflow-hidden"><div className="h-full bg-quai-gold rounded-full transition-all" style={{ width: `${pct}%` }} /></div>
+        <div className="relative mt-2">
+          <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-quai-muted pointer-events-none"><Icon name="search" size="sm" /></span>
+          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Il vous rappelle ? Nom ou numéro…" className="input pl-8 min-h-[2.75rem] md:min-h-0" />
+          {res.length > 0 && (
+            <ul className="absolute z-[1100] left-0 right-0 mt-1 bg-white border border-quai-border rounded-lg shadow-lg overflow-hidden max-h-72 overflow-y-auto">
+              {res.map(c => (
+                <li key={c.id_contact}><button onClick={() => { setQ(''); onOuvrir(c.id_contact) }} className="w-full text-left px-3 py-2.5 hover:bg-quai-light">
+                  <div className="text-sm text-quai-navy truncate">{c.civilite} {c.prenom} {c.nom}</div>
+                  <div className="text-[11px] text-quai-muted">{[c.tel_portable || c.tel_fixe, c.commune, c.exclu_libelle ? `hors file : ${c.exclu_libelle}` : null].filter(Boolean).join(' · ')}</div>
+                </button></li>
+              ))}
+            </ul>
+          )}
+        </div>
+        {plage && !plage.ok && <div className="text-[11px] text-amber-800 mt-1.5"><Icon name="alert-triangle" size="sm" className="inline mr-0.5" />{plage.raison}</div>}
+      </div>
+    </div>
+  )
+}
+
 export default function AcqFile() {
   const [d, setD] = useState(null)
   const [ouvert, setOuvert] = useState(null)   // id_contact en cours
@@ -107,6 +151,13 @@ export default function AcqFile() {
   const [precedent, setPrecedent] = useState(null)   // l'appel interrompu pour un client qui rappelle
   const [fenetre, setFenetre] = useState(null)       // 'contacts' | 'effectues'
   const [recherche, setRecherche] = useState('')
+  const [contacts, setContacts] = useState(null)   // pour la recherche de la barre
+  const [faits, setFaits] = useState(0)
+  const rafraichirBarre = useCallback(() => {
+    api.get('/acquereurs/mes-contacts').then(r => setContacts(r.data)).catch(() => {})
+    api.get('/acquereurs/effectues').then(r => setFaits(r.data.length)).catch(() => {})
+  }, [])
+  useEffect(() => { rafraichirBarre() }, [rafraichirBarre, ouvert])
   // Ouvrir quelqu'un hors de l'ordre de la file (il rappelle, on le
   // retrouve) : l'appel en cours est mis de côté, son brouillon est gardé.
   const ouvrirHorsFile = (id) => {
@@ -141,8 +192,11 @@ export default function AcqFile() {
     }
     return (
       <Suspense fallback={<div className="p-6 text-sm text-quai-muted animate-pulse">Chargement…</div>}>
+        <Barre index={horsFile || idx < 0 ? null : idx} total={d?.file?.length || 0} horsFile={horsFile} faits={faits} plage={d?.plage}
+          contacts={contacts} onOuvrir={ouvrirHorsFile} onAFaire={() => { setOuvert(null); setHorsFile(false); setPrecedent(null); charger() }}
+          onEffectues={() => setFenetre('effectues')} onContacts={() => setFenetre('contacts')} />
         <AcqAppel key={ouvert} id={ouvert} position={horsFile ? 'Hors de la file' : idx >= 0 ? `${idx + 1} / ${d.file.length}` : ''}
-          horsFile={horsFile} onContacts={() => setFenetre('contacts')}
+          horsFile={horsFile}
           revenir={precedent ? { libelle: 'Revenir à l’appel en cours', aller: () => { const p = precedent; setPrecedent(null); setHorsFile(false); setOuvert(p) } } : null}
           onSuivant={suivant} onRetour={() => { setOuvert(null); setHorsFile(false); setPrecedent(null); charger() }} />
         {outils}
@@ -153,17 +207,11 @@ export default function AcqFile() {
   if (d.erreur) return <p className="p-6 text-sm text-red-700">La file n’a pas pu être chargée. Réessayez.</p>
   const g = d.groupes
   return (
+    <>
+    <Barre index={null} total={d.file.length} faits={faits} plage={null} contacts={contacts} onOuvrir={ouvrirHorsFile}
+      onAFaire={() => {}} onEffectues={() => setFenetre('effectues')} onContacts={() => setFenetre('contacts')} />
     <div className="p-3 max-w-3xl mx-auto">
       {outils}
-      <div className="flex flex-wrap gap-2 mb-3">
-        <div className="relative flex-1 min-w-[12rem]">
-          <input value={recherche} onChange={e => { setRecherche(e.target.value); if (e.target.value.trim().length >= 2) setFenetre('contacts') }}
-            placeholder="Un client rappelle ? Nom ou numéro…" className="input pl-9 min-h-[2.75rem]" />
-          <Icon name="search" size="sm" className="absolute left-3 top-1/2 -translate-y-1/2 text-quai-muted" />
-        </div>
-        <button className="btn-secondary inline-flex items-center gap-1.5" onClick={() => setFenetre('effectues')}><Icon name="history" size="sm" /> Effectués</button>
-        <button className="btn-secondary inline-flex items-center gap-1.5" onClick={() => setFenetre('contacts')}><Icon name="users" size="sm" /> Mes contacts</button>
-      </div>
       <div className={`rounded-xl p-3 mb-3 text-sm ${d.plage.ok ? 'bg-emerald-50 text-emerald-900' : 'bg-amber-50 text-amber-900'}`}>
         {d.plage.ok ? 'Plage d’appel ouverte : 10h-13h et 14h-20h, du lundi au vendredi.' : d.plage.raison}
       </div>
@@ -204,5 +252,6 @@ export default function AcqFile() {
         </>
       )}
     </div>
+    </>
   )
 }
