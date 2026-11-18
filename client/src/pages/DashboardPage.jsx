@@ -10,7 +10,10 @@ import ChoixPeriode, { enParametres, periodeEnClair } from '../components/ChoixP
 
 const PIE_COLORS = ['#0D0D2B','#C9A96E','#2d2d6b','#e8c98a','#1a1a4e','#94a3b8']
 
-export default function DashboardPage({ onNavigate }) {
+// `onVoir` : fourni par l'espace de l'admin, il rend les quatre cases
+// cliquables (vers les contacts, le suivi par personne…). Sans lui, l'écran
+// est celui de toujours.
+export default function DashboardPage({ onNavigate, onVoir = null }) {
   const [stats, setStats] = useState(null)
   // La période n'est plus plafonnée à 90 jours : 6 mois, 12 mois, depuis le
   // début, ou deux dates au choix.
@@ -73,10 +76,10 @@ export default function DashboardPage({ onNavigate }) {
           </div>
         )}
         <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6 transition-opacity ${loading ? 'opacity-50' : ''}`}>
-          <KpiCard label="Fiches dans le fichier" value={stats.totalContacts.toLocaleString('fr')} icon="users" variant="navy" />
-          <KpiCard label="Appels (période)" value={appels} icon="phone" variant="gold" />
-          <KpiCard label="Taux de contact (période)" value={`${tauxContact}%`} icon="trending-up" variant="light" />
-          <KpiCard label="Projets (période)" value={t.projets ?? 0} icon="calendar-check" variant="success" />
+          <KpiCard label="Fiches dans le fichier" value={stats.totalContacts.toLocaleString('fr')} icon="users" variant="navy" onClick={onVoir ? () => onVoir('fiches') : undefined} />
+          <KpiCard label="Appels (période)" value={appels} icon="phone" variant="gold" onClick={onVoir ? () => onVoir('appels') : undefined} />
+          <KpiCard label="Taux de contact (période)" value={`${tauxContact}%`} icon="trending-up" variant="light" onClick={onVoir ? () => onVoir('appels') : undefined} />
+          <KpiCard label="Projets (période)" value={t.projets ?? 0} icon="calendar-check" variant="success" onClick={onVoir ? () => onVoir('projets') : undefined} />
         </div>
 
         {stats.parAgent?.length > 0 && (

@@ -23,7 +23,7 @@ function formatConnexion(iso) {
 // `onglet` : n'afficher qu'une partie, sans la barre d'onglets (l'espace de
 // l'admin range ces parties par mission). `partie` : pour les paramètres,
 // 'estimes' ou 'courtage'.
-export default function AdminPage({ onglet = null, partie = null } = {}) {
+export default function AdminPage({ onglet = null, partie = null, onVoir = null } = {}) {
   const { user } = useAuth()
   const estAdmin = user?.role === 'admin'
   const [tabLibre, setTab] = useState('users')
@@ -304,7 +304,7 @@ export default function AdminPage({ onglet = null, partie = null } = {}) {
           </div>
         )}
 
-        {tab === 'courtage' && <SuiviCourtage />}
+        {tab === 'courtage' && <SuiviCourtage onVoir={onVoir} />}
 
         {tab === 'imports' && estAdmin && <ImportsCourtage />}
 
@@ -542,7 +542,8 @@ function ImportsCourtage() {
 
 // Suivi de l'activite courtage de Marine : ses journees d'appels, le detail de chacune,
 // et l'etat de son portefeuille. Lecture seule (le backend refuse toute ecriture au manager).
-function SuiviCourtage() {
+// `onVoir(statut)` : rend les cases et les statuts cliquables (espace de l'admin).
+function SuiviCourtage({ onVoir = null }) {
   const [dash, setDash] = useState(null)
   const [activite, setActivite] = useState({ jours: [], date: null, detail: [] })
   const [jour, setJour] = useState(null)
@@ -585,24 +586,33 @@ function SuiviCourtage() {
       {/* Chiffres clefs du portefeuille courtage. */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
         {[
-          ['À relancer aujourd\'hui', dash?.aRelancerAujourdhui],
-          ['Relances (7 jours)', dash?.relancesSemaine],
-          ['Simulations', dash?.simulations],
-          ['Dossiers en cours', dash?.dossiers],
-        ].map(([lbl, val]) => (
-          <div key={lbl} className="bg-white border border-quai-border rounded-lg p-4">
-            <div className="text-2xl font-bold text-quai-navy">{val ?? 0}</div>
-            <div className="text-xs text-quai-muted mt-0.5">{lbl}</div>
-          </div>
-        ))}
+          ['À relancer aujourd\'hui', dash?.aRelancerAujourdhui, 'boites'],
+          ['Relances (7 jours)', dash?.relancesSemaine, null],
+          ['Simulations', dash?.simulations, 'simulation_faite'],
+          ['Dossiers en cours', dash?.dossiers, 'dossier_en_cours'],
+        ].map(([lbl, val, cible]) => {
+          const clic = onVoir && cible
+          const Tag = clic ? 'button' : 'div'
+          return (
+            <Tag key={lbl} onClick={clic ? () => onVoir(cible) : undefined}
+              className={`text-left bg-white border border-quai-border rounded-lg p-4 ${clic ? 'hover:border-quai-gold hover:shadow-sm transition-all' : ''}`}>
+              <div className="text-2xl font-bold text-quai-navy">{val ?? 0}</div>
+              <div className="text-xs text-quai-muted mt-0.5">{lbl}</div>
+            </Tag>
+          )
+        })}
       </div>
 
       {/* Repartition du portefeuille par statut. */}
       <div className="flex flex-wrap gap-2 mb-6">
         {Object.entries(LIB_STATUT).map(([cle, lbl]) => (
-          <span key={cle} className="text-xs bg-quai-light border border-quai-border rounded-full px-3 py-1 text-quai-navy">
-            {lbl} <b>{parStatut[cle] || 0}</b>
-          </span>
+          onVoir
+            ? <button key={cle} onClick={() => onVoir(cle)} className="text-xs bg-quai-light border border-quai-border rounded-full px-3 py-1 text-quai-navy hover:border-quai-gold transition-colors">
+                {lbl} <b>{parStatut[cle] || 0}</b>
+              </button>
+            : <span key={cle} className="text-xs bg-quai-light border border-quai-border rounded-full px-3 py-1 text-quai-navy">
+                {lbl} <b>{parStatut[cle] || 0}</b>
+              </span>
         ))}
       </div>
 

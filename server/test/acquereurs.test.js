@@ -130,7 +130,13 @@ const t = (n, fn) => { try { fn(); console.log('  OK  ' + n) } catch (e) { conso
     coordonnees: { tel_portable: { etat: 'MODIFIE', avant: '0600000011', apres: '0611111111' }, adresse: { etat: 'AJOUTE', apres: { adresse: '1 rue Test', code_postal: '38240', commune: 'Meylan' } } },
     vendre: { statut_logement: 'PROPRIETAIRE', doit_vendre: 'OUI', estimation_proposee: true, estimation_acceptee: true },
     marine: { proposee: false }, consentement_rappel: true,
+    mandat: { etat: 'ACCEPTE', type: 'EXCLUSIF', date_acceptation: '2026-11-20' }, prochaine_action: 'Rendez-vous de signature', date_prochaine_action: '2026-11-27T10:00',
     fiches: { '101': { decision: 'GARDER', projet }, '102': { decision: 'FUSIONNER', fusion_dans: '101' } } });
+  {
+    const refus = await call('POST', '/acquereurs/contacts/11/cloture', tLilas, { statut_final: 'REQUALIFIE', mandat: { etat: 'ACCEPTE' },
+      fiches: { '101': { decision: 'GARDER', projet }, '102': { decision: 'FUSIONNER', fusion_dans: '101' } } });
+    t('mandat accepté sans date d acceptation : refusé', () => { assert.strictEqual(refus.status, 400); assert.ok(/date d’acceptation/.test(refus.body.error)); });
+  }
   t('clôture requalifiée : coordonnées à jour', () => {
     assert.strictEqual(r.status, 201);
     const c = db.prepare("SELECT * FROM acq_contacts WHERE id_contact = '11'").get();
@@ -154,6 +160,8 @@ const t = (n, fn) => { try { fn(); console.log('  OK  ' + n) } catch (e) { conso
     assert.strictEqual(f.archiver_fiche, 'oui'); assert.ok(f.commentaire_fiche.includes('doublon de la recherche n° 101'));
     assert.strictEqual(g.tel_portable_avant, '0600000011'); assert.strictEqual(g.tel_portable_apres, '0611111111');
     assert.strictEqual(g.type_contact_ajout, 'Vendeur');
+    assert.ok(g.note_contact.includes('Mandat de recherche accepté le 20/11 (exclusif).'));
+    assert.ok(g.precisions_apres.includes('MANDAT DE RECHERCHE : accepté le 20/11 (exclusif)'));
     const n = r.body.lignes.find(x => x.id_contact === '12');
     assert.ok(n.note_contact.includes('Non joint') && n.note_contact.includes('SMS envoyé le') && n.note_contact.includes('« Bonjour, Lilas du Quai. »'));
   });
@@ -183,7 +191,7 @@ const t = (n, fn) => { try { fn(); console.log('  OK  ' + n) } catch (e) { conso
   r = await call('GET', '/acquereurs/file', tLilas);
   t('file vide une fois tout traité', () => assert.strictEqual(r.body.file.length, 0));
   r = await call('GET', '/acquereurs/suivi', tLilas);
-  t('suivi : requalifiés, vendeurs, estimations', () => { assert.strictEqual(r.body.requalifies, 1); assert.strictEqual(r.body.vendeurs, 1); assert.strictEqual(r.body.estimations_acceptees, 1); });
+  t('suivi : requalifiés, vendeurs, estimations', () => { assert.strictEqual(r.body.requalifies, 1); assert.strictEqual(r.body.mandats_proposes, 1); assert.strictEqual(r.body.mandats_acceptes, 1); assert.strictEqual(r.body.vendeurs, 1); assert.strictEqual(r.body.estimations_acceptees, 1); });
 
   r = await call('GET', '/acquereurs/admin/listing', tAdmin);
   t('listing : requalifié, vendeur, estimation, reporté', () => {

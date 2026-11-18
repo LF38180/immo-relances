@@ -8,14 +8,15 @@ import ImportModal from '../components/ImportModal'
 import Icon from '../components/ui/Icon'
 import { format } from 'date-fns'
 
-export default function ContactsPage() {
+// `statutInitial` : filtre posé à l'ouverture (une case du Suivi cliquée).
+export default function ContactsPage({ statutInitial = '' } = {}) {
   const [contacts, setContacts] = useState([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
   const [loading, setLoading] = useState(false)
   const [search, setSearch] = useState('')
   const [categorie, setCategorie] = useState('')
-  const [statut, setStatut] = useState('')
+  const [statut, setStatut] = useState(statutInitial)
   const [sort, setSort] = useState('score_priorite')
   const [order, setOrder] = useState('DESC')
   const [assigned, setAssigned] = useState('')

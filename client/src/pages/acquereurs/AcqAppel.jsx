@@ -24,7 +24,11 @@ const ISSUES = [['JOINT', 'Joint', 'emerald'], ['REPONDEUR', 'Répondeur'], ['PA
 const TENTATIVES = ['REPONDEUR', 'PAS_DE_REPONSE', 'SMS', 'MAIL', 'FAUX_NUMERO']
 // Joint : la suite donnée au projet.
 const STATUTS = [['REQUALIFIE', 'Requalifié'], ['A_RAPPELER', 'À rappeler'], ['EN_PAUSE', 'En pause'], ['ABANDONNE', 'Abandonné'], ['DEJA_ACHETE', 'Déjà acheté']]
-const ACTIONS = ['Visite', 'Estimation', 'Alerte Modelo à créer', 'Rappel', 'Retour au conseiller']
+const ACTIONS = ['Visite', 'Estimation', 'Rendez-vous de signature', 'Alerte Modelo à créer', 'Rappel', 'Retour au conseiller']
+// Le mandat de recherche (complément au cahier, 18/11).
+const RDV_SIGNATURE = 'Rendez-vous de signature'
+const ETATS_MANDAT = [['NON_PROPOSE', 'Pas proposé'], ['PROPOSE', 'Proposé'], ['ACCEPTE', 'Accepté'], ['REFUSE', 'Refusé'], ['A_REPROPOSER', 'À reproposer']]
+const aujourdhui = () => new Date().toLocaleDateString('fr-CA')
 const jj = (s) => s ? new Date(String(s).includes('T') || String(s).length <= 10 ? s : String(s).replace(' ', 'T') + 'Z').toLocaleDateString('fr-FR') : ''
 const euros = (n) => Number(n) > 0 ? Math.round(Number(n)).toLocaleString('fr-FR') + ' €' : ''
 
@@ -141,7 +145,8 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, horsFile, 
             criteres: CRITERES.map(k => ({ critere: k, valeur: '', niveau: (f.criteres_obligatoires || '').split(', ').map(x => DEPUIS_MODELO[x]).includes(k) ? 'INDISPENSABLE' : '' })),
           },
         }])),
-        vendre: {}, marine: {}, statut_final: null, prochaine_action: null, date_prochaine_action: '',
+        vendre: {}, marine: {}, mandat: { etat: null, type: 'NON_PRECISE', date_acceptation: '', motif_refus: '' },
+        statut_final: null, prochaine_action: null, date_prochaine_action: '',
       }
       // Le brouillon porte l'identifiant de sa fiche : on ne reprend jamais
       // celui d'une autre personne.
@@ -198,8 +203,12 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, horsFile, 
 
   const cloturer = async () => {
     if (envoi) return
+    const mandat = s.mandat || { etat: null }
+    const mandatVisible = s.statut_final === 'REQUALIFIE' || Object.values(s.fiches).some(f => f.decision === 'GARDER' && f.projet?.etat_projet === 'ACTIF')
     const sansProjet = ['A_RAPPELER', 'ERREUR_IDENTITE', 'DECEDE'].includes(s.statut_final)
     if (!s.statut_final) return toast.error('Choisissez l’issue de l’appel.')
+    if (mandat.etat === 'ACCEPTE' && !mandat.date_acceptation) return toast.error('Mandat de recherche accepté : indiquez la date d’acceptation.')
+    if (mandat.etat === 'ACCEPTE' && !s.date_prochaine_action) return toast.error('Mandat de recherche accepté : indiquez la date du rendez-vous de signature.')
     if (!sansProjet) {
       const oubli = Object.values(s.fiches).filter(f => !f.decision).length
       if (oubli) return toast.error(`Décision manquante sur ${oubli} recherche${oubli > 1 ? 's' : ''}.`)
@@ -217,6 +226,7 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, horsFile, 
         cle: cle.current + '-cloture', statut_final: s.statut_final, prochaine_action: s.prochaine_action,
         date_prochaine_action: s.date_prochaine_action || null, notes: s.notes || null, consentement_rappel: s.consentement_rappel,
         joint: true, coordonnees, vendre: s.vendre, marine: s.marine, fiches,
+        mandat: mandatVisible && mandat.etat ? mandat : null,
       })
       effacerBrouillon(id)
       toast.success('Appel enregistré')
@@ -252,12 +262,17 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, horsFile, 
 
   const statutChoisi = s.statut_final
   const joint = s.issue === 'JOINT'
+  // Le mandat de recherche se propose à un contact requalifié ou en passe de
+  // l'être : dès qu'une recherche est gardée avec un projet actif.
+  const mandat = s.mandat || { etat: null, type: 'NON_PRECISE', date_acceptation: '', motif_refus: '' }
+  const mandatVisible = statutChoisi === 'REQUALIFIE' || gardees.some(k => s.fiches[k].projet?.etat_projet === 'ACTIF')
   const etapes = [
     { k: 'fiches', ancre: 'acq-fiches', l: 'Recherches', fait: Object.values(s.fiches).every(f => f.decision) },
     { k: 'p0', ancre: 'acq-p0', l: 'Ouverture', fait: s.ouverture === 'OK' },
     { k: 'p1', ancre: 'acq-p1', l: 'Coordonnées', fait: Object.values(s.coordonnees).every(x => x.etat) },
     ...gardees.map(k => ({ k: 'p2' + k, ancre: 'acq-p2' + k, l: gardees.length > 1 ? `Projet ${k}` : 'Projet', fait: manques(s.fiches[k].projet).length === 0 })),
     { k: 'p3', ancre: 'acq-p3', l: 'Vendre', fait: !!s.vendre.statut_logement },
+    ...(mandatVisible ? [{ k: 'pm', ancre: 'acq-pm', l: 'Mandat', fait: !!mandat.etat }] : []),
     { k: 'p4', ancre: 'acq-p4', l: 'Suite', fait: !!s.statut_final },
   ]
   const manquesReq = gardees.length ? gardees.flatMap(k => manques(s.fiches[k].projet).map(m => gardees.length > 1 ? `${m} (recherche ${k})` : m)) : ['au moins une recherche gardée']
@@ -551,7 +566,47 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, horsFile, 
         </div>
       </Partie>
 
-      <Partie num="4" ancre="acq-p4" titre="Suite donnée" script={script('4')} ouverte={ouv.p4 ?? true} onBasculer={() => basculer('p4')} faite={!!statutChoisi}>
+      {mandatVisible && (
+        <Partie num="4" ancre="acq-pm" titre="Le mandat de recherche" aide="pour un contact requalifié" script={d.scripts?.mandat ? script('mandat') : null}
+          ouverte={ouv.pm} onBasculer={() => basculer('pm')} faite={!!mandat.etat}>
+          <div className="rounded-lg bg-quai-light border border-quai-border px-3 py-2.5 text-[13px] text-quai-text mb-3">
+            <div className="font-medium text-quai-navy mb-1">À qui le proposer</div>
+            <ul className="list-disc pl-4 space-y-0.5 text-quai-muted">
+              <li>Celui qui cherche depuis des mois.</li>
+              <li>Celui qui est inscrit dans plusieurs agences et ne reçoit rien.</li>
+              <li>Celui qui a un besoin rare ou très précis.</li>
+              <li>L’investisseur.</li>
+            </ul>
+          </div>
+          <div className="space-y-2.5">
+            <Champ label="Mandat de recherche"><Choix petit valeur={mandat.etat} options={ETATS_MANDAT}
+              onChange={v => setS(prev => {
+                const n = structuredClone(prev)
+                n.mandat = { type: 'NON_PRECISE', date_acceptation: '', motif_refus: '', ...(n.mandat || {}), etat: v }
+                // Accepté : la date d'aujourd'hui par défaut, et la suite est le rendez-vous de signature.
+                if (v === 'ACCEPTE') { if (!n.mandat.date_acceptation) n.mandat.date_acceptation = aujourdhui(); n.prochaine_action = RDV_SIGNATURE }
+                else if (n.prochaine_action === RDV_SIGNATURE) n.prochaine_action = null
+                return n
+              })} /></Champ>
+            {['PROPOSE', 'ACCEPTE', 'A_REPROPOSER'].includes(mandat.etat) && (
+              <Champ label="Type de mandat (facultatif)"><Choix petit valeur={mandat.type} onChange={v => maj(['mandat'], { ...mandat, type: v || 'NON_PRECISE' })}
+                options={[['SIMPLE', 'Simple'], ['EXCLUSIF', 'Exclusif'], ['NON_PRECISE', 'À préciser']]} /></Champ>
+            )}
+            {mandat.etat === 'ACCEPTE' && (
+              <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-2.5 space-y-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <Champ label="Accepté le"><input type="date" className="input" value={mandat.date_acceptation} onChange={e => maj(['mandat'], { ...mandat, date_acceptation: e.target.value })} /></Champ>
+                  <Champ label="Rendez-vous de signature le"><input type="datetime-local" className="input" value={s.date_prochaine_action} onChange={e => maj(['date_prochaine_action'], e.target.value)} /></Champ>
+                </div>
+                <p className="text-[11px] text-emerald-900">La prochaine action devient « Rendez-vous de signature ». La signature se fait hors de l’appli.</p>
+              </div>
+            )}
+            {mandat.etat === 'REFUSE' && <Champ label="Motif du refus (court)"><input className="input" maxLength={300} value={mandat.motif_refus} onChange={e => maj(['mandat'], { ...mandat, motif_refus: e.target.value })} /></Champ>}
+          </div>
+        </Partie>
+      )}
+
+      <Partie num={mandatVisible ? '5' : '4'} ancre="acq-p4" titre="Suite donnée" script={script('4')} ouverte={ouv.p4 ?? true} onBasculer={() => basculer('p4')} faite={!!statutChoisi}>
         <div className="space-y-2.5">
           <Choix valeur={statutChoisi} onChange={v => maj(['statut_final'], v)} options={STATUTS} />
           {statutChoisi === 'REQUALIFIE' && manquesReq.length > 0 && <p className="text-sm text-red-700">Requalifié impossible, il manque : {manquesReq.join(', ')}.</p>}

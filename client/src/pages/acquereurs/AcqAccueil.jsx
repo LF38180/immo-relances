@@ -56,11 +56,12 @@ export default function AcqAccueil({ onCommencer, onAdmin, estAdmin }) {
 
       <section>
         <Titre>Ce que ça a donné</Titre>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
           <Chiffre valeur={d.joints} libelle="personnes jointes" icon="phone-call" />
           <Chiffre valeur={d.requalifies} libelle="requalifiés" icon="check-circle-2" />
           <Chiffre valeur={d.estimations_acceptees} libelle={`estimations calées${d.estimations_proposees ? ` (${d.estimations_proposees} proposées)` : ''}`} icon="calendar-check" />
           <Chiffre valeur={d.courtage_accords} libelle={`rendez-vous courtage${d.courtage_proposes ? ` (${d.courtage_proposes} proposés)` : ''}`} icon="users" />
+          <Chiffre valeur={d.mandats_acceptes} libelle={`mandats de recherche acceptés${d.mandats_proposes ? ` (${d.mandats_proposes} proposés)` : ''}`} icon="file-check" />
         </div>
       </section>
 

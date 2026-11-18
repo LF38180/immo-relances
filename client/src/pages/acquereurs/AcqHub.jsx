@@ -3,6 +3,7 @@ import api from '../../utils/api'
 import { useAuth } from '../../hooks/useAuth'
 import Icon from '../../components/ui/Icon'
 import ErrorBoundary from '../../components/ErrorBoundary'
+import EnTeteMission from '../../components/EnTeteMission'
 
 const AcqFile = lazy(() => import('./AcqFile'))
 const AcqAccueil = lazy(() => import('./AcqAccueil'))
@@ -29,28 +30,7 @@ export default function AcqHub({ onRetour, libelleRetour = 'Mon espace', ongletI
   ]
   return (
     <div className="h-ecran flex flex-col bg-quai-light">
-      <header className="bg-quai-navy text-white px-3 py-2 flex items-center gap-2 shrink-0"
-        style={{ paddingTop: 'max(0.5rem, env(safe-area-inset-top))' }}>
-        <img src="/marque/mission-acquereurs-long-clair.png" alt="Mission Acquéreurs" className="h-8 w-auto shrink-0" />
-        <h1 className="sr-only">Mission Acquéreurs</h1>
-        <div className="flex-1" />
-        {/* Qui est connecté, discrètement, à droite — comme dans le menu des
-            autres espaces. Le nombre de personnes est sur l'accueil. */}
-        <div className="hidden sm:flex items-center gap-2 text-xs text-white/70 min-w-0">
-          <span className="w-7 h-7 rounded-full bg-white/10 grid place-items-center text-[10px] font-semibold text-quai-taupe shrink-0">
-            {`${user?.prenom?.[0] || ''}${user?.nom?.[0] || ''}`.toUpperCase()}
-          </span>
-          <span className="truncate">{user?.prenom} {user?.nom}</span>
-        </div>
-        {onRetour && (
-          <button onClick={onRetour} className="text-white/80 hover:text-white text-xs inline-flex items-center gap-1 px-2 py-2">
-            <Icon name="arrow-left" size="sm" /> {libelleRetour}
-          </button>
-        )}
-        <button onClick={logout} className="text-white/60 hover:text-white p-2 min-w-[2.75rem] min-h-[2.75rem] inline-flex items-center justify-center" aria-label="Déconnexion">
-          <Icon name="log-out" size="sm" />
-        </button>
-      </header>
+      <EnTeteMission mission="acquereurs" user={user} onRetour={onRetour} libelleRetour={libelleRetour} logout={logout} />
       <nav className="bg-white border-b border-quai-border flex gap-0.5 px-2 pt-1 shrink-0 overflow-x-auto no-scrollbar">
         {onglets.map(o => (
           <button key={o.id} onClick={() => { setFiltre(''); setOnglet(o.id) }}

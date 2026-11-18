@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import toast from 'react-hot-toast'
 import api from '../utils/api'
+import EnTeteMission from '../components/EnTeteMission'
 import { useAuth } from '../hooks/useAuth'
 import Icon from '../components/ui/Icon'
 import Modal from '../components/ui/Modal'
@@ -183,17 +184,9 @@ export default function CourtagePage() {
 
   return (
     <div className="min-h-screen bg-quai-light flex flex-col">
-      <header className="bg-quai-navy text-white sticky top-0 z-30">
-        <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
-          <div>
-            <div className="font-display font-semibold leading-tight">Courtage — Financement</div>
-            <div className="text-xs text-quai-gold">{user?.prenom} {user?.nom}</div>
-          </div>
-          <button onClick={logout} className="inline-flex items-center gap-1.5 text-sm text-white/80 hover:text-white transition-colors">
-            <Icon name="log-out" size="sm" /> Déconnexion
-          </button>
-        </div>
-      </header>
+      {/* L'en-tête commun à toutes les missions (18/11) : le logo de la
+          mission à gauche, la personne à droite. Rien d'autre ne change. */}
+      <EnTeteMission mission="courtage" user={user} logout={logout} collant largeur="max-w-5xl mx-auto" />
 
       <div className="flex-1 overflow-y-auto p-4 md:p-6">
         <div className="max-w-5xl mx-auto">

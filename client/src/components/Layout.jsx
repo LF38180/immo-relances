@@ -5,6 +5,7 @@ import { useAuth } from '../hooks/useAuth'
 import Icon from './ui/Icon'
 import BottomTabBar from './BottomTabBar'
 import Marque from './ui/Marque'
+import { Personne } from './EnTeteMission'
 
 const NAV_ITEMS = [
   { id: 'dashboard',  label: 'Tableau de bord', icon: 'layout-dashboard', roles: ['agent', 'manager', 'admin'] },
@@ -136,7 +137,8 @@ export default function Layout({ page, onNavigate, children, extraNav = [], nav 
                 {blocs.map(b => <option key={b.id} value={b.id}>{b.libelle}</option>)}
               </select>
             )}
-            <span className={`text-xs text-quai-muted hidden ${blocs.length > 1 ? 'lg:inline' : 'md:inline'}`}>Le Quai de l'Immobilier — Gestion des relances</span>
+            {/* La personne connectée, à droite, comme dans les espaces de mission. */}
+            <Personne user={user} sombre className={`hidden ${blocs.length > 1 ? 'lg:inline-flex' : 'md:inline-flex'}`} />
             <button onClick={logout} aria-label="Déconnexion"
               className="md:hidden text-quai-muted hover:text-quai-navy p-1.5">
               <Icon name="log-out" size="md" />

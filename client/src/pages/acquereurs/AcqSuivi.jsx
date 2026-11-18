@@ -36,6 +36,7 @@ export default function AcqSuivi({ onVoir }) {
             <Chiffre valeur={d.vendeurs} libelle="vendeurs repérés" icon="tag" onClick={voir('vendeurs')} />
             <Chiffre valeur={d.estimations_acceptees} libelle={`estimations calées (${d.estimations_proposees} proposées)`} icon="calendar-check" onClick={voir('est_acc')} />
             <Chiffre valeur={d.marine} libelle="orientés vers Marine" icon="users" onClick={voir('marine')} />
+            <Chiffre valeur={d.mandats_acceptes} libelle={`mandats de recherche acceptés (${d.mandats_proposes} proposés)`} icon="file-check" onClick={voir('mandat_ok')} />
             <Chiffre valeur={d.archives} libelle="archivés (abandon, déjà acheté, ne plus contacter)" icon="file-check" />
             <Chiffre valeur={d.restants} libelle="jamais appelés, au total" icon="phone-off" onClick={voir('jamais')} />
           </div>

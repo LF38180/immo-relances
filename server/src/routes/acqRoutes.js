@@ -129,6 +129,8 @@ router.get('/accueil', acces, (req, res) => {
     estimations_acceptees: det.filter(d => d.vendre?.estimation_acceptee).length,
     courtage_proposes: det.filter(d => d.marine?.proposee).length,
     courtage_accords: det.filter(d => d.marine?.accord).length,
+    mandats_proposes: det.filter(d => d.mandat).length,
+    mandats_acceptes: det.filter(d => d.mandat?.etat === 'ACCEPTE').length,
     // Ce qui est déjà dans Modelo : contacts dont tout le travail est reporté,
     // et ceux qui ont du nouveau depuis.
     reportes_modelo: n(`SELECT COUNT(*) n FROM acq_contacts c WHERE ${where} AND c.modelo_reporte_le IS NOT NULL
@@ -231,7 +233,24 @@ router.post('/contacts/:id/cloture', acces, (req, res) => {
     }
   }
 
-  const details = { coordonnees: b.coordonnees || {}, vendre: b.vendre || {}, marine: b.marine || {}, consentement_rappel: !!b.consentement_rappel };
+  // Le mandat de recherche (complément au cahier, 18/11) : proposé pendant
+  // l'appel à un contact requalifié ou en passe de l'être. Un mandat accepté
+  // porte sa date d'acceptation, et la suite est le rendez-vous de signature
+  // (la signature elle-même se fait hors du module).
+  const ETATS_MANDAT = ['NON_PROPOSE', 'PROPOSE', 'ACCEPTE', 'REFUSE', 'A_REPROPOSER'];
+  const m0 = b.mandat || {};
+  const mandat = ETATS_MANDAT.includes(m0.etat) && m0.etat !== 'NON_PROPOSE' ? {
+    etat: m0.etat,
+    type: ['SIMPLE', 'EXCLUSIF'].includes(m0.type) ? m0.type : 'NON_PRECISE',
+    date_acceptation: m0.etat === 'ACCEPTE' ? (m0.date_acceptation || null) : null,
+    motif_refus: m0.etat === 'REFUSE' ? (String(m0.motif_refus || '').trim().slice(0, 300) || null) : null,
+  } : null;
+  if (mandat?.etat === 'ACCEPTE') {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(mandat.date_acceptation || '')) return res.status(400).json({ error: 'Mandat de recherche accepté : indiquez la date d’acceptation.' });
+    if (!b.date_prochaine_action) return res.status(400).json({ error: 'Mandat de recherche accepté : indiquez la date du rendez-vous de signature.' });
+  }
+  const details = { coordonnees: b.coordonnees || {}, vendre: b.vendre || {}, marine: b.marine || {}, consentement_rappel: !!b.consentement_rappel,
+    ...(mandat ? { mandat } : {}) };
   const ecrire = db.transaction(() => {
     const issue = ['NE_PLUS_CONTACTER', 'ERREUR_IDENTITE', 'DECEDE'].includes(statut) ? statut : statut === 'A_RAPPELER' && !b.joint ? 'A_RAPPELER' : 'JOINT';
     const id = db.prepare(`INSERT INTO acq_appels (id_contact, madame_fichier, user_id, canal, issue, statut_final,
@@ -328,6 +347,8 @@ router.get('/suivi', acces, (req, res) => {
     estimations_proposees: d.filter(x => x.d.vendre?.estimation_proposee).length,
     estimations_acceptees: d.filter(x => x.d.vendre?.estimation_acceptee).length,
     marine: d.filter(x => x.d.marine?.proposee).length,
+    mandats_proposes: d.filter(x => x.d.mandat).length,
+    mandats_acceptes: d.filter(x => x.d.mandat?.etat === 'ACCEPTE').length,
     restants: db.prepare(`SELECT COUNT(*) n FROM acq_contacts c WHERE ${where} AND c.exclu IS NULL
       AND NOT EXISTS (SELECT 1 FROM acq_appels a WHERE a.id_contact = c.id_contact)`).get(...params).n,
   });
@@ -384,6 +405,7 @@ router.get('/admin/listing', admin, (req, res) => {
       vendeur: d.vendre?.doit_vendre === 'OUI' ? 1 : 0, estimation_proposee: d.vendre?.estimation_proposee ? 1 : 0,
       estimation_acceptee: d.vendre?.estimation_acceptee ? 1 : 0, date_rdv_estimation: d.vendre?.date_rdv_estimation || null,
       marine_proposee: d.marine?.proposee ? 1 : 0, marine_accord: d.marine?.accord ? 1 : 0,
+      mandat: d.mandat?.etat || null, mandat_type: d.mandat?.type || null,
       consentement_rappel: l.consentement_rappel, modelo_reporte_le: l.modelo_reporte_le, a_reporter: l.a_reporter ? 1 : 0 };
   }) });
 });
@@ -462,7 +484,7 @@ router.get('/admin/transmettre', admin, (req, res) => {
   });
 });
 
-const PARTIES = ['accueil', '0', '1', '2.1', '2.2', '2.3', '3', '4', 'repondeur', 'sms'];
+const PARTIES = ['accueil', '0', '1', '2.1', '2.2', '2.3', '3', 'mandat', '4', 'repondeur', 'sms'];
 router.get('/admin/scripts', admin, (req, res) => {
   const s = Object.fromEntries(db.prepare('SELECT partie, texte FROM acq_scripts').all().map(x => [x.partie, x.texte]));
   res.json({ parties: PARTIES.map(p => ({ partie: p, texte: s[p] || '' })) });

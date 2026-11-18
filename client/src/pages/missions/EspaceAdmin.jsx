@@ -134,6 +134,49 @@ function EcranEstimes() {
   )
 }
 
+// Les fiches du courtage, en lecture seule, filtrables par statut : c'est là
+// qu'arrivent les cases du Suivi (« Simulations », « Dossiers en cours »…).
+const STATUTS_COURTAGE = { '': 'Toutes', a_qualifier: 'À qualifier', en_relance: 'En relance', injoignable: 'Injoignable', simulation_faite: 'Simulation faite',
+  dossier_en_cours: 'Dossier en cours', gagne: 'Gagné', perdu: 'Perdu', faux_numero: 'Faux numéro', ne_plus_contacter: 'Ne plus contacter' }
+function FichesCourtage({ statutInitial = '' }) {
+  const [statut, setStatut] = useState(statutInitial), [fiches, setFiches] = useState(null), [q, setQ] = useState('')
+  useEffect(() => {
+    setFiches(null)
+    api.get('/courtage/fiches', { params: statut ? { statut } : {} }).then(r => setFiches(r.data)).catch(() => setFiches([]))
+  }, [statut])
+  const jour = (d) => d ? new Date(String(d).slice(0, 10) + 'T12:00:00').toLocaleDateString('fr-FR') : ''
+  const m = q.trim().toLowerCase()
+  const visibles = (fiches || []).filter(f => !m || `${f.nom} ${f.prenom} ${f.telephone} ${f.mail}`.toLowerCase().includes(m))
+  return (
+    <div>
+      <div className="flex flex-wrap gap-2 mb-3">
+        <input className="input flex-1 min-w-[12rem]" placeholder="Nom, téléphone ou e-mail…" value={q} onChange={e => setQ(e.target.value)} />
+        <select className="input w-auto" value={statut} onChange={e => setStatut(e.target.value)} aria-label="Filtrer par statut">
+          {Object.entries(STATUTS_COURTAGE).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+        </select>
+      </div>
+      {!fiches ? <p className="text-sm text-quai-muted animate-pulse">Chargement…</p> : (
+        <ul className="bg-white border border-quai-border rounded-xl divide-y divide-quai-border">
+          {visibles.slice(0, 300).map(f => (
+            <li key={f.id} className="px-3 py-2.5">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-sm font-medium text-quai-navy">{f.prenom} {f.nom}</span>
+                <span className="text-[11px] text-quai-muted">{[f.telephone, f.mail].filter(Boolean).join(' · ')}</span>
+                <span className="ml-auto text-[11px] px-2 py-0.5 rounded-full border border-quai-border bg-quai-light text-quai-navy">{STATUTS_COURTAGE[f.statut] || f.statut}</span>
+              </div>
+              <div className="text-[11px] text-quai-muted mt-0.5">
+                {[f.montant_projet, f.reference_bien, f.date_contact && `message du ${jour(f.date_contact)}`, f.prochaine_relance && `relance le ${jour(f.prochaine_relance)}`].filter(Boolean).join(' · ')}
+              </div>
+            </li>
+          ))}
+          {!visibles.length && <li className="p-4 text-sm text-quai-muted">Aucune fiche.</li>}
+        </ul>
+      )}
+      {visibles.length > 300 && <p className="text-[11px] text-quai-muted text-center mt-2">300 premières affichées sur {visibles.length}.</p>}
+    </div>
+  )
+}
+
 // Sous-onglets, quand un onglet regroupe plusieurs écrans existants.
 function Pastilles({ choix, valeur, onChange }) {
   return (
@@ -158,12 +201,14 @@ function ContenuMission({ mission, onglet, setOnglet, sous, setSous, plein }) {
           <ReportAVenir />
         </div>
         {v !== 'ecran' && <Pastilles valeur={v} onChange={setSous} choix={[['tableau', 'Tableau de bord'], ['personnes', 'Par personne']]} />}
-        {v === 'tableau' && <DashboardPage onNavigate={(p) => p === 'contacts' ? setOnglet('contacts') : p === 'session' ? setSous('ecran') : p === 'supervision' ? setSous('personnes') : null} />}
+        {v === 'tableau' && <DashboardPage
+          onNavigate={(p) => p === 'contacts' ? setOnglet('contacts') : p === 'session' ? setSous('ecran') : p === 'supervision' ? setSous('personnes') : null}
+          onVoir={(cible) => { if (cible === 'appels') return setSous('personnes'); setSous(cible === 'projets' ? 'statut:rdv_obtenu' : null); setOnglet('contacts') }} />}
         {v === 'personnes' && <SupervisionPage />}
         {v === 'ecran' && <Defile><EcranEstimes /></Defile>}
       </>)
     }
-    if (onglet === 'contacts') return <ContactsPage />
+    if (onglet === 'contacts') return <ContactsPage statutInitial={String(sous || '').startsWith('statut:') ? sous.slice(7) : ''} />
     if (onglet === 'import') return <ImportEstimes />
     if (onglet === 'report') return <AVenir mission="Mission Estimés" />
     const v = sous || 'delais'
@@ -182,9 +227,18 @@ function ContenuMission({ mission, onglet, setOnglet, sous, setSous, plein }) {
       </div>
       {sous === 'ecran'
         ? <Defile><div className="max-w-4xl mx-auto p-4 md:p-6"><span className="inline-block text-xs bg-white border border-quai-border rounded-full px-3 py-1 text-quai-muted mb-3">Lecture seule</span><VueCourtage /></div></Defile>
-        : <AdminPage onglet="courtage" />}
+        : <AdminPage onglet="courtage" onVoir={(cible) => { setSous(cible === 'boites' ? null : 'statut:' + cible); setOnglet('contacts') }} />}
     </>)
-    if (onglet === 'contacts') return <Defile><div className="max-w-4xl mx-auto p-4 md:p-6"><VueCourtage /></div></Defile>
+    if (onglet === 'contacts') {
+      const filtre = String(sous || '').startsWith('statut:') ? sous.slice(7) : null
+      const v = filtre != null || sous === 'fiches' ? 'fiches' : 'boites'
+      return (<>
+        <Pastilles valeur={v} onChange={(x) => setSous(x === 'fiches' ? 'fiches' : null)} choix={[['boites', 'Boîtes de relance'], ['fiches', 'Toutes les fiches']]} />
+        <Defile><div className="max-w-4xl mx-auto p-4 md:p-6">
+          {v === 'boites' ? <VueCourtage /> : <FichesCourtage key={filtre || 'toutes'} statutInitial={filtre || ''} />}
+        </div></Defile>
+      </>)
+    }
     if (onglet === 'import') return <AdminPage onglet="imports" />
     if (onglet === 'report') return <AVenir mission="Mission Courtage" />
     return <AdminPage onglet="params" partie="courtage" />

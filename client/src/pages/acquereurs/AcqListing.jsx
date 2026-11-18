@@ -18,11 +18,12 @@ export const FILTRES = {
   vendeurs: { l: 'Vendeurs repérés', f: c => c.vendeur }, est_prop: { l: 'Estimations proposées', f: c => c.estimation_proposee },
   est_acc: { l: 'Estimations calées', f: c => c.estimation_acceptee }, marine: { l: 'Courtage proposé', f: c => c.marine_proposee },
   marine_ok: { l: 'Courtage accepté', f: c => c.marine_accord },
+  mandat: { l: 'Mandat proposé', f: c => !!c.mandat }, mandat_ok: { l: 'Mandat accepté', f: c => c.mandat === 'ACCEPTE' },
   a_reporter: { l: 'À reporter dans Modelo', f: c => c.a_reporter }, reporte: { l: 'Reportés dans Modelo', f: c => c.modelo_reporte_le && !c.a_reporter },
   hors_file: { l: 'Hors file', f: c => !!c.exclu },
 }
 const GROUPES = [['Tous', ['', 'dans_file', 'jamais']], ['Statut', Object.keys(STATUTS)],
-  ['Obtenu', ['vendeurs', 'est_prop', 'est_acc', 'marine', 'marine_ok']], ['Modelo', ['a_reporter', 'reporte']], ['Écartés', ['hors_file']]]
+  ['Obtenu', ['vendeurs', 'est_prop', 'est_acc', 'marine', 'marine_ok', 'mandat', 'mandat_ok']], ['Modelo', ['a_reporter', 'reporte']], ['Écartés', ['hors_file']]]
 const jour = (d) => d ? new Date(String(d).replace(' ', 'T') + (String(d).includes('T') ? '' : 'Z')).toLocaleDateString('fr-FR') : ''
 
 // `onOuvrir` : l'espace de l'admin ouvre la fiche en plein écran ; sans lui,
@@ -52,7 +53,8 @@ export default function AcqListing({ filtreInitial = '', onOuvrir = null }) {
       tel_fixe: c.tel_fixe, email: c.email, commune: c.commune, statut: STATUTS[c.statut] || (c.exclu ? 'hors file' : c.appels ? 'en cours' : 'jamais appelé'),
       hors_file: c.exclu ? (d.libelles[c.exclu] || c.exclu) : '', recherches: c.nb_fiches, gardees: c.fiches_gardees, archivees: c.fiches_archivees,
       appels: c.appels, dernier_appel: jour(c.dernier_appel_le), vendeur: c.vendeur ? 'oui' : '', estimation: c.estimation_acceptee ? 'calée' : c.estimation_proposee ? 'proposée' : '',
-      courtage: c.marine_accord ? 'accepté' : c.marine_proposee ? 'proposé' : '', ancien_conseiller: c.anciens_conseillers, traite_par: c.madame_fichier,
+      courtage: c.marine_accord ? 'accepté' : c.marine_proposee ? 'proposé' : '',
+      mandat_recherche: { ACCEPTE: 'accepté', REFUSE: 'refusé', A_REPROPOSER: 'à reproposer', PROPOSE: 'proposé' }[c.mandat] || '', ancien_conseiller: c.anciens_conseillers, traite_par: c.madame_fichier,
       modelo: c.a_reporter ? 'à reporter' : c.modelo_reporte_le ? `reporté le ${jour(c.modelo_reporte_le)}` : '' }))
     const blob = new Blob(['﻿' + Papa.unparse(lignes, { delimiter: ';' })], { type: 'text/csv;charset=utf-8' })
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob)
@@ -91,6 +93,7 @@ export default function AcqListing({ filtreInitial = '', onOuvrir = null }) {
                   {c.vendeur ? <Pastille ton="or">vendeur</Pastille> : null}
                   {c.estimation_acceptee ? <Pastille ton="vert">estimation</Pastille> : null}
                   {c.marine_proposee ? <Pastille ton="or">courtage</Pastille> : null}
+                  {c.mandat ? <Pastille ton={c.mandat === 'ACCEPTE' ? 'vert' : 'or'}>mandat {c.mandat === 'ACCEPTE' ? 'accepté' : c.mandat === 'REFUSE' ? 'refusé' : c.mandat === 'A_REPROPOSER' ? 'à reproposer' : 'proposé'}</Pastille> : null}
                   {c.a_reporter ? <Pastille ton="ambre">à reporter</Pastille> : null}
                 </span>
               </div>

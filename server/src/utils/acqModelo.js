@@ -16,6 +16,17 @@ const LIB_STATUT = { REQUALIFIE: 'requalifié', A_RAPPELER: 'à rappeler', EN_PA
   FAUX_NUMERO: 'faux numéro' };
 const LIB_ISSUE = { REPONDEUR: 'répondeur', PAS_DE_REPONSE: 'pas de réponse', FAUX_NUMERO: 'faux numéro' };
 
+// Le mandat de recherche, en clair : « accepté le 20/11 (exclusif) ».
+const TYPE_MANDAT = { SIMPLE: 'simple', EXCLUSIF: 'exclusif', NON_PRECISE: 'à préciser' };
+function texteMandat(m) {
+  if (!m) return null;
+  const jour = (d) => (d ? String(d).slice(8, 10) + '/' + String(d).slice(5, 7) : '');
+  if (m.etat === 'ACCEPTE') return `accepté le ${jour(m.date_acceptation)} (${TYPE_MANDAT[m.type] || 'à préciser'})`;
+  if (m.etat === 'REFUSE') return `refusé${m.motif_refus ? ` (${m.motif_refus})` : ''}`;
+  if (m.etat === 'A_REPROPOSER') return 'à reproposer';
+  return 'proposé';
+}
+
 const jj = (s) => { if (!s) return ''; const d = new Date(String(s).replace(' ', 'T') + (String(s).length <= 19 && !/Z$/.test(s) && s.includes(':') ? 'Z' : ''));
   return Number.isNaN(d.getTime()) ? String(s) : d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' }); };
 const json = (s) => { try { return s ? JSON.parse(s) : {}; } catch { return {}; } };
@@ -39,6 +50,7 @@ function blocPrecisions(fiche, contact, appel) {
     `RÉDHIBITOIRES : ${crit('REDHIBITOIRE')}`,
     `SECTEURS : ${Array.isArray(p.secteurs) ? p.secteurs.join(', ') : (p.secteurs || '')}`,
     `DÉJÀ VU : ${p.deja_vu || ''}`,
+    ...(json(appel?.details).mandat ? [`MANDAT DE RECHERCHE : ${texteMandat(json(appel.details).mandat)}`] : []),
     `MAJ : ${jj(appel?.horodatage)} ${initiales(appel?.madame_fichier)}`];
   if (fiche.precisions) lignes.push('', '─── Précisions précédentes ───', fiche.precisions);
   return lignes.join('\n');
@@ -66,6 +78,7 @@ function noteContact(contact, appels) {
     if (d.coordonnees?.adresse?.etat === 'A_SUPPRIMER') morceaux.push('Adresse postale fausse (NPAI).');
     if (d.marine?.proposee) morceaux.push(`Rendez-vous courtage proposé${d.marine.accord ? ', client d’accord' : ''}.`);
     if (d.vendre?.estimation_proposee) morceaux.push(`Estimation proposée${d.vendre.estimation_acceptee ? `, acceptée${d.vendre.date_rdv_estimation ? ' (rdv le ' + jj(d.vendre.date_rdv_estimation) + ')' : ''}` : ''}.`);
+    if (d.mandat) morceaux.push(`Mandat de recherche ${texteMandat(d.mandat)}.`);
     if (d.consentement_rappel) morceaux.push('Accepte d’être rappelé.');
     if (fin.notes) morceaux.push(fin.notes);
   } else if (!tent.length && !messages.length) return null;
