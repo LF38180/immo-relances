@@ -118,7 +118,8 @@ router.get('/contacts/:id', acces, (req, res) => {
   const c = chargerContact(req, res); if (!c) return;
   const fiches = db.prepare('SELECT * FROM acq_fiches WHERE id_contact = ? ORDER BY modifiee_periode DESC, id_fiche DESC').all(c.id_contact)
     .map(f => ({ ...f, donnees: undefined, requalif: json(f.requalif) }));
-  const appels = db.prepare('SELECT id, horodatage, canal, issue, statut_final, prochaine_action, date_prochaine_action, notes, madame_fichier FROM acq_appels WHERE id_contact = ? ORDER BY horodatage DESC').all(c.id_contact);
+  const appels = db.prepare('SELECT id, horodatage, canal, issue, statut_final, prochaine_action, date_prochaine_action, notes, madame_fichier, details FROM acq_appels WHERE id_contact = ? ORDER BY horodatage DESC').all(c.id_contact)
+    .map(a => ({ ...a, texte: json(a.details)?.texte || null, details: undefined }));
   const dernier = db.prepare("SELECT details FROM acq_appels WHERE id_contact = ? AND details IS NOT NULL ORDER BY horodatage DESC LIMIT 1").get(c.id_contact);
   const scripts = Object.fromEntries(db.prepare('SELECT partie, texte FROM acq_scripts').all().map(s => [s.partie, s.texte]));
   const prochainSansRep = c.sans_reponse_de_suite + 1;
@@ -143,8 +144,11 @@ router.post('/contacts/:id/tentative', acces, (req, res) => {
   if (canal === 'MAIL') { if (c.stop_mail) return res.status(409).json({ error: 'Stop mail : envoi de mail impossible.' }); }
   else if (bl.length) return res.status(409).json({ error: bl[0], blocages: bl });
   const r = db.transaction(() => {
-    const id = db.prepare(`INSERT INTO acq_appels (id_contact, madame_fichier, user_id, canal, issue, notes, cle)
-      VALUES (?, ?, ?, ?, ?, ?, ?)`).run(c.id_contact, req.moi.nom_complet, req.moi.id, canal, issue, b.notes || null, b.cle || null).lastInsertRowid;
+    // Le texte du SMS ou du mail, s'il a été noté : il part dans la note Modelo.
+    const texte = canal !== 'APPEL' && String(b.texte || '').trim() ? String(b.texte).trim().slice(0, 2000) : null;
+    const id = db.prepare(`INSERT INTO acq_appels (id_contact, madame_fichier, user_id, canal, issue, notes, details, cle)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(c.id_contact, req.moi.nom_complet, req.moi.id, canal, issue, b.notes || null,
+      texte ? JSON.stringify({ texte }) : null, b.cle || null).lastInsertRowid;
     // Faux numéro : la fiche sort de la file, à corriger côté admin.
     // Quatrième tentative sans réponse : SANS_REPONSE, elle sort aussi.
     let statut = c.statut;
@@ -235,6 +239,34 @@ router.post('/contacts/:id/cloture', acces, (req, res) => {
   });
   const id = ecrire();
   res.status(201).json({ id, statut });
+});
+
+// --- Retrouver quelqu'un : un client rappelle, ou on veut rouvrir sa fiche ---
+// Tout le portefeuille, appelé ou non, y compris les fiches hors file (avec
+// leur motif). Comme « Mes contacts » de l'opération anciens clients.
+router.get('/mes-contacts', acces, (req, res) => {
+  const { where, params } = perimetre(req.moi);
+  const lignes = db.prepare(`SELECT c.id_contact, c.civilite, c.nom, c.prenom, c.tel_portable, c.tel_fixe, c.email, c.commune,
+      c.statut, c.exclu, c.stop_tel, c.rappel_le,
+      (SELECT COUNT(*) FROM acq_appels a WHERE a.id_contact = c.id_contact) AS appels,
+      (SELECT MAX(a.horodatage) FROM acq_appels a WHERE a.id_contact = c.id_contact) AS dernier_le,
+      (SELECT a.issue FROM acq_appels a WHERE a.id_contact = c.id_contact ORDER BY a.horodatage DESC, a.id DESC LIMIT 1) AS derniere_issue,
+      (SELECT a.canal FROM acq_appels a WHERE a.id_contact = c.id_contact ORDER BY a.horodatage DESC, a.id DESC LIMIT 1) AS dernier_canal,
+      (SELECT COUNT(*) FROM acq_fiches f WHERE f.id_contact = c.id_contact) AS nb_fiches
+    FROM acq_contacts c WHERE ${where} ORDER BY c.nom, c.prenom`).all(...params);
+  res.json(lignes.map(l => ({ ...l, exclu_libelle: l.exclu ? (I.LIBELLES_EXCLUSION[l.exclu] || l.exclu) : null })));
+});
+
+// Ce que j'ai fait aujourd'hui (bouton « Effectués »), pour rouvrir une fiche.
+router.get('/effectues', acces, (req, res) => {
+  const { where, params } = perimetre(req.moi);
+  res.json(db.prepare(`SELECT a.id, a.id_contact, a.horodatage, a.canal, a.issue, a.statut_final, a.details,
+      c.civilite, c.nom, c.prenom
+    FROM acq_appels a JOIN acq_contacts c ON c.id_contact = a.id_contact
+    WHERE date(a.horodatage, 'localtime') = date('now', 'localtime') AND ${where}
+      AND (sans_casse(a.madame_fichier) = sans_casse(?) OR ?)
+    ORDER BY a.horodatage DESC`).all(...params, req.moi.nom_complet, req.moi.admin ? 1 : 0)
+    .map(l => ({ ...l, texte: json(l.details)?.texte || null, details: undefined })));
 });
 
 // --- Suivi (cahier, section 6) ---------------------------------------------
@@ -363,7 +395,7 @@ router.get('/admin/transmettre', admin, (req, res) => {
   });
 });
 
-const PARTIES = ['0', '1', '2.1', '2.2', '2.3', '3', '4'];
+const PARTIES = ['0', '1', '2.1', '2.2', '2.3', '3', '4', 'repondeur', 'sms'];
 router.get('/admin/scripts', admin, (req, res) => {
   const s = Object.fromEntries(db.prepare('SELECT partie, texte FROM acq_scripts').all().map(x => [x.partie, x.texte]));
   res.json({ parties: PARTIES.map(p => ({ partie: p, texte: s[p] || '' })) });

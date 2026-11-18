@@ -47,10 +47,15 @@ function blocPrecisions(fiche, contact, appel) {
 // La note d'appel, une par contact : toutes les tentatives et l'appel abouti
 // depuis le dernier report.
 function noteContact(contact, appels) {
-  const tent = appels.filter(a => LIB_ISSUE[a.issue]).map(a => `${jj(a.horodatage).slice(0, 5)} ${a.canal === 'SMS' ? 'SMS envoyé' : a.canal === 'MAIL' ? 'mail envoyé' : LIB_ISSUE[a.issue]}`);
+  // Comme pour l'opération : les appels dans le vide sur une ligne, chaque SMS
+  // ou mail dans une phrase à part, avec son texte s'il a été noté.
+  const tent = appels.filter(a => LIB_ISSUE[a.issue] && a.canal === 'APPEL').map(a => `${jj(a.horodatage).slice(0, 5)} ${LIB_ISSUE[a.issue]}`);
+  const messages = appels.filter(a => a.canal !== 'APPEL').map(a => { const t = json(a.details).texte;
+    return `${a.canal === 'SMS' ? 'SMS' : 'Mail'} envoyé le ${jj(a.horodatage).slice(0, 5)}${t ? ` : « ${t} »` : ''}.`; });
   const fin = [...appels].reverse().find(a => a.statut_final);
   const morceaux = [PREFIXE];
   if (tent.length) morceaux.push(`Tentatives : ${tent.join(', ')}.`);
+  morceaux.push(...messages);
   if (fin) {
     const d = json(fin.details);
     morceaux.push(`Appel du ${jj(fin.horodatage)} : ${LIB_STATUT[fin.statut_final] || fin.statut_final}.`);
@@ -62,7 +67,7 @@ function noteContact(contact, appels) {
     if (d.vendre?.estimation_proposee) morceaux.push(`Estimation proposée${d.vendre.estimation_acceptee ? `, acceptée${d.vendre.date_rdv_estimation ? ' (rdv le ' + jj(d.vendre.date_rdv_estimation) + ')' : ''}` : ''}.`);
     if (d.consentement_rappel) morceaux.push('Accepte d’être rappelé.');
     if (fin.notes) morceaux.push(fin.notes);
-  } else if (!tent.length) return null;
+  } else if (!tent.length && !messages.length) return null;
   else morceaux.splice(1, 0, 'Non joint.');
   return morceaux.join(' ');
 }

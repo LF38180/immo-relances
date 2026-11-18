@@ -99,10 +99,20 @@ const t = (n, fn) => { try { fn(); console.log('  OK  ' + n) } catch (e) { conso
   r = await call('GET', '/acquereurs/file', tLilas);
   t('sans-réponse : revient après 48 h', () => assert.strictEqual(r.body.file.find(c => c.id_contact === '12')?.groupe, 'RELANCE'));
   for (const k of ['k2', 'k3']) await call('POST', '/acquereurs/contacts/12/tentative', tLilas, { issue: 'REPONDEUR', cle: k });
-  r = await call('POST', '/acquereurs/contacts/12/tentative', tLilas, { issue: 'PAS_DE_REPONSE', canal: 'SMS', cle: 'k4' });
+  r = await call('POST', '/acquereurs/contacts/12/tentative', tLilas, { issue: 'PAS_DE_REPONSE', canal: 'SMS', cle: 'k4', texte: 'Bonjour, Lilas du Quai.' });
   t('quatrième tentative : SANS_REPONSE', () => assert.strictEqual(r.body.statut, 'SANS_REPONSE'));
   r = await call('POST', '/acquereurs/contacts/12/tentative', tLilas, { issue: 'PAS_DE_REPONSE', cle: 'k5' });
   t('plafond de 4 par mois : cinquième appel refusé', () => { assert.strictEqual(r.status, 409); assert.ok(/Plafond/.test(r.body.error)); });
+
+  r = await call('GET', '/acquereurs/mes-contacts', tLilas);
+  t('mes contacts : tout le portefeuille, fiches hors file comprises avec leur motif', () => {
+    assert.strictEqual(r.body.length, 8);
+    assert.strictEqual(r.body.find(c => c.id_contact === '13').exclu_libelle, 'Sans téléphone');
+  });
+  r = await call('GET', '/acquereurs/effectues', tLilas);
+  t('effectués : les tentatives du jour, avec le texte du SMS', () => {
+    assert.ok(r.body.length >= 3); assert.ok(r.body.some(a => a.texte === 'Bonjour, Lilas du Quai.'));
+  });
 
   // Clôture : décision sur chaque fiche, requalification complète.
   const projet = { etat_projet: 'ACTIF', budget_max: 320000, secteurs: ['Meylan'], urgence: 8, mode_financement: 'Crédit', financement_valide: 'ACCORD', type_bien: 'Appartement' };
@@ -140,7 +150,7 @@ const t = (n, fn) => { try { fn(); console.log('  OK  ' + n) } catch (e) { conso
     assert.strictEqual(g.tel_portable_avant, '0600000011'); assert.strictEqual(g.tel_portable_apres, '0611111111');
     assert.strictEqual(g.type_contact_ajout, 'Vendeur');
     const n = r.body.lignes.find(x => x.id_contact === '12');
-    assert.ok(n.note_contact.includes('Non joint') && n.note_contact.includes('SMS envoyé'));
+    assert.ok(n.note_contact.includes('Non joint') && n.note_contact.includes('SMS envoyé le') && n.note_contact.includes('« Bonjour, Lilas du Quai. »'));
   });
   // Retour d'Exploration Modelo : le fichier, plus « statut ». Un échec
   // laisse le contact à reporter, avec son motif.

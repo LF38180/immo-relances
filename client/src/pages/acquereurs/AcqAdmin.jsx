@@ -177,7 +177,7 @@ function Transmettre() {
   )
 }
 
-const NOMS_PARTIES = { '0': 'Ouverture', '1': 'Coordonnées', '2.1': 'Projet et motivation', '2.2': 'Critères', '2.3': 'Financement', '3': 'Vendre pour acheter', '4': 'Issue de l’appel' }
+const NOMS_PARTIES = { '0': 'Ouverture', '1': 'Coordonnées', '2.1': 'Projet et motivation', '2.2': 'Critères', '2.3': 'Financement', '3': 'Vendre pour acheter', '4': 'Suite donnée', repondeur: 'Message sur le répondeur', sms: 'Modèle de SMS' }
 function Scripts() {
   const [p, setP] = useState(null)
   useEffect(() => { api.get('/acquereurs/admin/scripts').then(r => setP(r.data.parties)).catch(err) }, [])
@@ -188,7 +188,7 @@ function Scripts() {
       <p className="text-xs text-quai-muted mb-2">Variables remplacées à l’écran : {'{civilite}'}, {'{prenom}'}, {'{nom}'}.</p>
       {p.map((x, i) => (
         <div key={x.partie} className="mb-2">
-          <div className="text-sm font-medium">{x.partie}. {NOMS_PARTIES[x.partie]}</div>
+          <div className="text-sm font-medium">{/^\d/.test(x.partie) ? `${x.partie}. ` : ''}{NOMS_PARTIES[x.partie]}</div>
           <textarea className="input min-h-[4rem]" value={x.texte} onChange={e => setP(l => l.map((y, j) => j === i ? { ...y, texte: e.target.value } : y))} />
           <button className="btn-secondary btn-sm mt-1" onClick={() => sauver(x)}>Enregistrer</button>
         </div>

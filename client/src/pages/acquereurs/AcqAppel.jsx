@@ -77,7 +77,12 @@ const lireBrouillon = (id) => { try { return JSON.parse(localStorage.getItem(cle
 const ecrireBrouillon = (id, v) => { try { localStorage.setItem(cleBrouillon(id), JSON.stringify(v)) } catch { /* stockage indisponible */ } }
 const effacerBrouillon = (id) => { try { localStorage.removeItem(cleBrouillon(id)) } catch { /* idem */ } }
 
-export default function AcqAppel({ id, position, onSuivant, onRetour }) {
+// Le dernier SMS envoyé, gardé sur l'appareil : on envoie souvent le même
+// (repris de l'opération anciens clients).
+const CLE_DERNIER_SMS = 'acq-dernier-sms'
+const dernierSms = () => { try { return localStorage.getItem(CLE_DERNIER_SMS) || '' } catch { return '' } }
+
+export default function AcqAppel({ id, position, onSuivant, onRetour, horsFile, onContacts, revenir }) {
   const [d, setD] = useState(null)
   const [s, setS] = useState(null)       // la saisie
   const [ouv, setOuv] = useState({ fiches: true, p0: true })
@@ -90,7 +95,7 @@ export default function AcqAppel({ id, position, onSuivant, onRetour }) {
       setD(r.data)
       const c = r.data.contact
       const init = {
-        issue: null, rappel_le: '', ouverture: null, notes: '', consentement_rappel: false,
+        issue: null, rappel_le: '', texte: '', ouverture: null, notes: '', consentement_rappel: false,
         coordonnees: {
           tel_portable: { etat: null, avant: c.tel_portable || '', apres: '' },
           tel_fixe: { etat: null, avant: c.tel_fixe || '', apres: '' },
@@ -141,9 +146,16 @@ export default function AcqAppel({ id, position, onSuivant, onRetour }) {
 
   const tentative = async (issue, canal = 'APPEL') => {
     if (envoi) return
+    // Repris de l'opération : une fiche déjà remplie qu'on enregistre en
+    // « répondeur » ou « pas de réponse », c'est presque toujours une erreur
+    // de bouton. On demande avant de perdre la conversation.
+    const remplie = s.ouverture === 'OK' || Object.values(s.fiches).some(f => f.decision)
+    if (remplie && !window.confirm(`La fiche est remplie, mais l’issue choisie est « ${ISSUES.find(x => x[0] === s.issue)?.[1]} ». Enregistrer quand même ?`)) return
     setEnvoi(true)
     try {
-      await api.post(`/acquereurs/contacts/${id}/tentative`, { issue, canal, cle: cle.current + '-' + issue + canal, notes: s.notes || null })
+      await api.post(`/acquereurs/contacts/${id}/tentative`, { issue, canal, cle: cle.current + '-' + issue + canal, notes: s.notes || null,
+        texte: canal !== 'APPEL' ? (s.texte || '').trim() || null : null })
+      if (canal === 'SMS' && (s.texte || '').trim()) { try { localStorage.setItem(CLE_DERNIER_SMS, s.texte.trim()) } catch { /* stockage indisponible */ } }
       effacerBrouillon(id)
       toast.success(canal === 'SMS' ? 'SMS noté' : canal === 'MAIL' ? 'Mail noté' : issue === 'FAUX_NUMERO' ? 'Faux numéro noté' : 'Tentative notée')
       onSuivant()
@@ -210,7 +222,9 @@ export default function AcqAppel({ id, position, onSuivant, onRetour }) {
     <div className="p-3 max-w-3xl mx-auto pb-24">
       <div className="flex items-center gap-2 mb-2 text-xs text-quai-muted">
         <button onClick={onRetour} className="inline-flex items-center gap-1 hover:text-quai-navy"><Icon name="arrow-left" size="sm" /> Ma file</button>
+        {revenir && <button onClick={revenir.aller} className="inline-flex items-center gap-1 text-quai-navy underline">{revenir.libelle}</button>}
         <span className="ml-auto">{position}</span>
+        {onContacts && <button onClick={onContacts} className="inline-flex items-center gap-1 text-quai-navy border border-quai-border rounded-lg px-2 py-1 bg-white"><Icon name="users" size="sm" /> Mes contacts</button>}
       </div>
 
       {/* En-tête, toujours visible */}
@@ -235,6 +249,15 @@ export default function AcqAppel({ id, position, onSuivant, onRetour }) {
           {c.derniere_note_date && <span className="badge bg-quai-light text-quai-muted">Dernière note Modelo : {jj(c.derniere_note_date)}{c.derniere_note_auteur ? ` (${c.derniere_note_auteur})` : ''}</span>}
         </div>
         {c.derniere_note_extrait && <p className="text-[11px] text-quai-muted mt-1.5 line-clamp-2">« {c.derniere_note_extrait} »</p>}
+        {horsFile && <p className="text-[11px] text-amber-800 mt-1.5">Fiche ouverte hors de l’ordre de la file.</p>}
+        {d.appels.length > 0 && (
+          <details className="mt-1.5">
+            <summary className="text-[11px] text-quai-navy cursor-pointer">Historique dans l’appli ({d.appels.length})</summary>
+            <ul className="text-[11px] text-quai-muted mt-1 space-y-0.5">
+              {d.appels.map(a => <li key={a.id}>{new Date(String(a.horodatage).replace(' ', 'T') + 'Z').toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} · {a.canal === 'SMS' ? 'SMS envoyé' : a.canal === 'MAIL' ? 'mail envoyé' : (STATUTS.find(x => x[0] === a.statut_final)?.[1] || ISSUES.find(x => x[0] === a.issue)?.[1] || a.issue)}{a.texte ? ` : « ${a.texte} »` : ''}{a.notes ? ` · ${a.notes}` : ''} · {a.madame_fichier}</li>)}
+            </ul>
+          </details>
+        )}
         {bloque && <div className="mt-2 rounded-lg bg-red-50 text-red-800 text-sm px-3 py-2">{d.blocages.map(b => <div key={b}>{b}</div>)}</div>}
       </div>
 
@@ -245,6 +268,18 @@ export default function AcqAppel({ id, position, onSuivant, onRetour }) {
         <Choix valeur={s.issue} onChange={v => maj(['issue'], v)}
           options={ISSUES.filter(([v]) => v !== 'MAIL' || !c.stop_mail)} />
         {s.issue === 'A_RAPPELER' && <Champ label="Rappeler le"><input type="datetime-local" className="input max-w-[14rem] mt-0.5" value={s.rappel_le} onChange={e => maj(['rappel_le'], e.target.value)} /></Champ>}
+        {s.issue === 'REPONDEUR' && d.scripts?.repondeur && <div className="border-l-4 border-quai-gold/60 bg-quai-light px-3 py-2 text-[13px] mt-2 whitespace-pre-line">{script('repondeur')}</div>}
+        {['SMS', 'MAIL'].includes(s.issue) && (
+          <div className="mt-2">
+            <span className="text-[11px] text-quai-muted">Texte {s.issue === 'SMS' ? 'du SMS' : 'du mail'} que vous avez envoyé (facultatif, il part dans la note Modelo)</span>
+            <textarea className="input min-h-[4rem] mt-0.5" value={s.texte} onChange={e => maj(['texte'], e.target.value)} />
+            <div className="flex flex-wrap gap-1.5 mt-1">
+              {d.scripts?.sms && <button type="button" className="btn-secondary btn-sm" onClick={() => maj(['texte'], script('sms'))}>Utiliser le modèle</button>}
+              {s.issue === 'SMS' && dernierSms() && <button type="button" className="btn-secondary btn-sm" onClick={() => maj(['texte'], dernierSms())}>Reprendre mon dernier SMS</button>}
+              {s.texte && <button type="button" className="btn-secondary btn-sm" onClick={() => { try { navigator.clipboard.writeText(s.texte); toast.success('Texte copié') } catch { /* presse-papiers indisponible */ } }}>Copier</button>}
+            </div>
+          </div>
+        )}
         {s.issue === 'REFUS_FERME' && <p className="text-sm text-red-700 mt-2">La personne sortira de toutes les files, dans tous les modules, et un stop téléphone partira dans Modelo.</p>}
         {['ERREUR_IDENTITE', 'DECEDE'].includes(s.issue) && <p className="text-sm text-quai-muted mt-2">Toutes ses recherches seront proposées à l’archivage, après validation.</p>}
         {s.issue && s.issue !== 'JOINT' && <Champ label="Note (facultatif)"><textarea className="input min-h-[3rem] mt-0.5" value={s.notes} onChange={e => maj(['notes'], e.target.value)} /></Champ>}
