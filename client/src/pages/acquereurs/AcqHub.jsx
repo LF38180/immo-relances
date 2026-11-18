@@ -5,6 +5,7 @@ import Icon from '../../components/ui/Icon'
 import ErrorBoundary from '../../components/ErrorBoundary'
 
 const AcqFile = lazy(() => import('./AcqFile'))
+const AcqAccueil = lazy(() => import('./AcqAccueil'))
 const AcqSuivi = lazy(() => import('./AcqSuivi'))
 const AcqAdmin = lazy(() => import('./AcqAdmin'))
 
@@ -13,11 +14,12 @@ const AcqAdmin = lazy(() => import('./AcqAdmin'))
 export default function AcqHub({ onRetour }) {
   const { user, logout } = useAuth()
   const estAdmin = user?.role === 'admin'
-  const [onglet, setOnglet] = useState('file')
+  const [onglet, setOnglet] = useState('accueil')
   const [acces, setAcces] = useState(null)
   useEffect(() => { api.get('/acquereurs/mon-acces').then(r => setAcces(r.data)).catch(() => {}) }, [])
 
   const onglets = [
+    { id: 'accueil', label: 'Accueil', icon: 'file-text' },
     { id: 'file', label: 'Mes appels', icon: 'phone' },
     { id: 'suivi', label: 'Suivi', icon: 'layout-dashboard' },
     ...(estAdmin ? [{ id: 'admin', label: 'Administration', icon: 'settings' }] : []),
@@ -52,6 +54,7 @@ export default function AcqHub({ onRetour }) {
       <main className="flex-1 overflow-y-auto">
         <ErrorBoundary>
           <Suspense fallback={<div className="p-6 text-sm text-quai-muted animate-pulse">Chargement…</div>}>
+            {onglet === 'accueil' && <AcqAccueil onCommencer={() => setOnglet('file')} onAdmin={() => setOnglet('admin')} />}
             {onglet === 'file' && <AcqFile />}
             {onglet === 'suivi' && <AcqSuivi />}
             {onglet === 'admin' && estAdmin && <AcqAdmin />}

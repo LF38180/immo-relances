@@ -104,6 +104,11 @@ const t = (n, fn) => { try { fn(); console.log('  OK  ' + n) } catch (e) { conso
   r = await call('POST', '/acquereurs/contacts/12/tentative', tLilas, { issue: 'PAS_DE_REPONSE', cle: 'k5' });
   t('plafond de 4 par mois : cinquième appel refusé', () => { assert.strictEqual(r.status, 409); assert.ok(/Plafond/.test(r.body.error)); });
 
+  r = await call('GET', '/acquereurs/accueil', tLilas);
+  t('accueil : contacts, projets, à appeler', () => {
+    assert.strictEqual(r.status, 200); assert.strictEqual(r.body.contacts, 3); assert.strictEqual(r.body.projets, 4);
+    assert.strictEqual(r.body.a_reporter, undefined);
+  });
   r = await call('GET', '/acquereurs/mes-contacts', tLilas);
   t('mes contacts : tout le portefeuille, fiches hors file comprises avec leur motif', () => {
     assert.strictEqual(r.body.length, 8);

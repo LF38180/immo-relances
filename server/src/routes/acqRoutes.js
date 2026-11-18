@@ -47,8 +47,9 @@ const SQL_COMPTEURS = `
   (SELECT GROUP_CONCAT(DISTINCT f.ancien_conseiller) FROM acq_fiches f WHERE f.id_contact = c.id_contact) AS anciens_conseillers`;
 
 // --- La file (cahier, section 3 : l'ordre de la file) ----------------------
-router.get('/file', acces, (req, res) => {
-  const m = req.moi;
+router.get('/file', acces, (req, res) => res.json(calculerFile(req.moi)));
+
+function calculerFile(m) {
   const { where, params } = perimetre(m);
   const maintenant = new Date();
   const tous = db.prepare(`SELECT c.*, ${SQL_COMPTEURS} FROM acq_contacts c
@@ -95,12 +96,38 @@ router.get('/file', acces, (req, res) => {
     appel_recent: A.appelRecent(c, recents),
     groupe: rappels.includes(c) ? 'RAPPEL' : delegues.includes(c) ? 'DELEGUE' : vendeurs.includes(c) ? 'VENDEUR' : aRelancer.includes(c) ? 'RELANCE' : 'NOUVEAU',
   }));
-  res.json({
+  return ({
     plage: R.plageAppelOk(maintenant), file,
     groupes: { rappels: rappels.length, delegues: delegues.length, vendeurs: vendeurs.length, nouveaux: autres.length,
       relances: aRelancer.length, en_attente: enAttente.length, plafonnes: plafonnes.length,
       rappels_a_venir: possibles.filter(c => c.statut === 'A_RAPPELER' && !rappels.includes(c)).length },
     prochain_retour: prochain ? new Date(prochain).toISOString() : null,
+  });
+}
+
+// --- Page d'accueil : où j'en suis, en un coup d'œil ----------------------
+router.get('/accueil', acces, (req, res) => {
+  const m = req.moi;
+  const { where, params } = perimetre(m);
+  const f = calculerFile(m);
+  const n = (sql) => db.prepare(sql).get(...params).n;
+  const det = db.prepare(`SELECT a.details FROM acq_appels a JOIN acq_contacts c ON c.id_contact = a.id_contact
+    WHERE ${where} AND a.details IS NOT NULL AND a.statut_final IS NOT NULL`).all(...params).map(x => json(x.details) || {});
+  res.json({
+    a_appeler: f.file.length, rappels_dus: f.groupes.rappels, en_attente: f.groupes.en_attente, prochain_retour: f.prochain_retour,
+    contacts: n(`SELECT COUNT(*) n FROM acq_contacts c WHERE ${where} AND c.exclu IS NULL`),
+    projets: n(`SELECT COUNT(*) n FROM acq_fiches x JOIN acq_contacts c ON c.id_contact = x.id_contact WHERE ${where} AND c.exclu IS NULL AND COALESCE(x.type_recherche,'') <> 'Location'`),
+    jamais_appeles: n(`SELECT COUNT(*) n FROM acq_contacts c WHERE ${where} AND c.exclu IS NULL AND NOT EXISTS (SELECT 1 FROM acq_appels a WHERE a.id_contact = c.id_contact)`),
+    joints: n(`SELECT COUNT(DISTINCT a.id_contact) n FROM acq_appels a JOIN acq_contacts c ON c.id_contact = a.id_contact WHERE ${where} AND a.issue = 'JOINT'`),
+    requalifies: n(`SELECT COUNT(*) n FROM acq_contacts c WHERE ${where} AND c.statut = 'REQUALIFIE'`),
+    projets_gardes: n(`SELECT COUNT(*) n FROM acq_fiches x JOIN acq_contacts c ON c.id_contact = x.id_contact WHERE ${where} AND x.decision = 'GARDER'`),
+    fiches_nettoyees: n(`SELECT COUNT(*) n FROM acq_fiches x JOIN acq_contacts c ON c.id_contact = x.id_contact WHERE ${where} AND x.decision IN ('ARCHIVER','FUSIONNER')`),
+    vendeurs: det.filter(d => d.vendre?.doit_vendre === 'OUI').length,
+    estimations_proposees: det.filter(d => d.vendre?.estimation_proposee).length,
+    estimations_acceptees: det.filter(d => d.vendre?.estimation_acceptee).length,
+    courtage_proposes: det.filter(d => d.marine?.proposee).length,
+    courtage_accords: det.filter(d => d.marine?.accord).length,
+    ...(m.admin ? { a_reporter: M.aReporter().length, a_valider: M.archivagesEnAttente().length } : {}),
   });
 });
 

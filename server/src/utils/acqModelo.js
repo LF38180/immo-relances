@@ -63,6 +63,7 @@ function noteContact(contact, appels) {
     const anc = Object.entries(d.coordonnees || {}).filter(([, c]) => ['MODIFIE', 'A_SUPPRIMER'].includes(c.etat) && c.avant)
       .map(([k, c]) => `${k.replace('_', ' ')} : ${typeof c.avant === 'object' ? Object.values(c.avant).filter(Boolean).join(' ') : c.avant}`);
     if (anc.length) morceaux.push(`Anciennes coordonnées : ${anc.join(' ; ')}.`);
+    if (d.coordonnees?.adresse?.etat === 'A_SUPPRIMER') morceaux.push('Adresse postale fausse (NPAI).');
     if (d.marine?.proposee) morceaux.push(`Rendez-vous courtage proposé${d.marine.accord ? ', client d’accord' : ''}.`);
     if (d.vendre?.estimation_proposee) morceaux.push(`Estimation proposée${d.vendre.estimation_acceptee ? `, acceptée${d.vendre.date_rdv_estimation ? ' (rdv le ' + jj(d.vendre.date_rdv_estimation) + ')' : ''}` : ''}.`);
     if (d.consentement_rappel) morceaux.push('Accepte d’être rappelé.');
@@ -114,7 +115,9 @@ function lignesReport(jusquA) {
     const vendeur = d.vendre?.doit_vendre === 'OUI' && !/vendeur/i.test(c.type_contact || '');
     const fiches = db.prepare('SELECT * FROM acq_fiches WHERE id_contact = ? ORDER BY id_fiche').all(c.id_contact);
     const av = (k) => { const x = co[k]; return x && ['MODIFIE', 'A_SUPPRIMER'].includes(x.etat) ? (typeof x.avant === 'object' ? Object.values(x.avant || {}).filter(Boolean).join(' ') : x.avant || '') : ''; };
-    const ap = (k) => { const x = co[k]; if (!x) return ''; if (x.etat === 'A_SUPPRIMER') return '(supprimer)';
+    // Une adresse « à supprimer » est une adresse fausse : NPAI, comme dans
+    // l'opération anciens clients.
+    const ap = (k) => { const x = co[k]; if (!x) return ''; if (x.etat === 'A_SUPPRIMER') return k === 'adresse' ? '(NPAI : adresse fausse)' : '(supprimer)';
       return ['MODIFIE', 'AJOUTE'].includes(x.etat) ? (typeof x.apres === 'object' ? [x.apres.adresse, x.apres.code_postal, x.apres.commune].filter(Boolean).join(' ') : x.apres || '') : ''; };
     fiches.forEach((f, i) => {
       const p = json(f.requalif);
