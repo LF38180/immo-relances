@@ -31,6 +31,7 @@ const AcqAdmin = lazy(() => import('../acquereurs/AcqAdmin'))
 const AcqHub = lazy(() => import('../acquereurs/AcqHub'))
 const AcqAppel = lazy(() => import('../acquereurs/AcqAppel'))
 const OperationHub = lazy(() => import('../operation/OperationHub'))
+const DemoMission = lazy(() => import('./DemoMission'))
 
 // `lettre` : le pictogramme du logo de la mission (E, A, C).
 const MISSIONS = {
@@ -153,7 +154,7 @@ function ContenuMission({ mission, onglet, setOnglet, sous, setSous, plein }) {
       const v = sous || 'tableau'
       return (<>
         <div className="bg-quai-light px-4 md:px-6 pt-3 space-y-2 shrink-0">
-          <AccesMission ecranActif={v === 'ecran'} onEcran={() => setSous(v === 'ecran' ? 'tableau' : 'ecran')} />
+          <AccesMission ecranActif={v === 'ecran'} onEcran={() => setSous(v === 'ecran' ? 'tableau' : 'ecran')} onDemo={() => plein({ type: 'demo', mission: 'estimes' })} />
           <ReportAVenir />
         </div>
         {v !== 'ecran' && <Pastilles valeur={v} onChange={setSous} choix={[['tableau', 'Tableau de bord'], ['personnes', 'Par personne']]} />}
@@ -176,7 +177,7 @@ function ContenuMission({ mission, onglet, setOnglet, sous, setSous, plein }) {
   if (mission === 'courtage') {
     if (onglet === 'suivi') return (<>
       <div className="bg-quai-light px-4 md:px-6 pt-3 space-y-2 shrink-0">
-        <AccesMission ecranActif={sous === 'ecran'} onEcran={() => setSous(sous === 'ecran' ? null : 'ecran')} />
+        <AccesMission ecranActif={sous === 'ecran'} onEcran={() => setSous(sous === 'ecran' ? null : 'ecran')} onDemo={() => plein({ type: 'demo', mission: 'courtage' })} />
         <ReportAVenir />
       </div>
       {sous === 'ecran'
@@ -221,6 +222,7 @@ export default function EspaceAdmin({ operation }) {
       <ErrorBoundary>
         <Suspense fallback={<div className="min-h-screen flex"><Attente /></div>}>
           {plein.type === 'operation' && <OperationHub onRetour={fermer} />}
+          {plein.type === 'demo' && <DemoMission mission={plein.mission} onFermer={fermer} />}
           {plein.type === 'acq' && <AcqHub onRetour={fermer} libelleRetour="Mission Acquéreurs" ongletInitial={plein.onglet} />}
           {plein.type === 'fiche' && (
             <div className="h-ecran flex flex-col bg-quai-light">
