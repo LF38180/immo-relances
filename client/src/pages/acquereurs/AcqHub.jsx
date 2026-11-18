@@ -11,7 +11,7 @@ const AcqAdmin = lazy(() => import('./AcqAdmin'))
 
 // Espace « Fichier Acquéreurs » (cahier des charges du 18/11/2026).
 // Cloisonné comme l'opération anciens clients : il ne mène nulle part ailleurs.
-export default function AcqHub({ onRetour }) {
+export default function AcqHub({ onRetour, libelleRetour = 'Mon espace' }) {
   const { user, logout } = useAuth()
   const estAdmin = user?.role === 'admin'
   const [onglet, setOnglet] = useState('accueil')
@@ -35,7 +35,7 @@ export default function AcqHub({ onRetour }) {
         </div>
         {onRetour && (
           <button onClick={onRetour} className="text-white/80 hover:text-white text-xs inline-flex items-center gap-1 px-2 py-2">
-            <Icon name="arrow-left" size="sm" /> Mon espace
+            <Icon name="arrow-left" size="sm" /> {libelleRetour}
           </button>
         )}
         <button onClick={logout} className="text-white/60 hover:text-white p-2 min-w-[2.75rem] min-h-[2.75rem] inline-flex items-center justify-center" aria-label="Déconnexion">

@@ -14,7 +14,7 @@ const NAV_ITEMS = [
   { id: 'admin',      label: 'Administration',  icon: 'settings',         roles: ['admin'] },
 ]
 
-export default function Layout({ page, onNavigate, children }) {
+export default function Layout({ page, onNavigate, children, extraNav = [] }) {
   const { user, logout } = useAuth()
   const [collapsed, setCollapsed] = useState(false)
   // Les fichiers ouverts à la personne. Avec un seul (le cas de toujours), rien ne
@@ -36,7 +36,9 @@ export default function Layout({ page, onNavigate, children }) {
     const id = v ? Number(v) : null; choisirBloc(id); setBloc(id)
   }
 
-  const visibleNav = NAV_ITEMS.filter(n => n.roles.includes(user?.role))
+  // `extraNav` : entrées ajoutées selon les missions du compte (Fichier
+  // Acquéreurs). Vide pour tous les autres : leur menu ne change pas.
+  const visibleNav = [...NAV_ITEMS.filter(n => n.roles.includes(user?.role)), ...extraNav]
 
   return (
     <div className="espace-agence flex h-ecran bg-quai-light overflow-hidden">

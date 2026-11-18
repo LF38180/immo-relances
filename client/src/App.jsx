@@ -106,7 +106,7 @@ function AppConnecte({ user, page, setPage }) {
   // Acquéreurs, proposé en plus à qui y a droit).
   if (!acces.participe) {
     const habituel = espaceHabituel === 'courtage' ? <EspaceCourtage onRetour={espaceAcq ? () => setEspace(null) : undefined} />
-      : <EspaceAgence page={page} setPage={setPage} onRetour={espaceAcq ? () => setEspace(null) : undefined} />
+      : <EspaceAgence acq={!!espaceAcq} page={page} setPage={setPage} onRetour={espaceAcq ? () => setEspace(null) : undefined} />
     if (!espaceAcq || espace === 'habituel') return habituel
     return (
       <Suspense fallback={<div className="min-h-screen flex"><ChargementPage /></div>}>
@@ -197,7 +197,7 @@ function AppConnecte({ user, page, setPage }) {
   }
   return espace === 'courtage'
     ? <EspaceCourtage onRetour={() => setEspace(null)} />
-    : <EspaceAgence page={page} setPage={setPage} onRetour={() => setEspace(null)} />
+    : <EspaceAgence acq={!!espaceAcq} page={page} setPage={setPage} onRetour={() => setEspace(null)} />
 }
 
 // L'espace courtage de Marine. La page elle-même n'est pas touchée : le bouton
@@ -212,7 +212,18 @@ function EspaceCourtage({ onRetour }) {
 }
 
 // L'espace habituel de l'agence, inchangé lui aussi.
-function EspaceAgence({ page, setPage, onRetour }) {
+function EspaceAgence({ page, setPage, onRetour, acq }) {
+  // Fichier Acquéreurs ouvert depuis le menu : l'espace complet, avec un
+  // retour vers Immo Relances.
+  if (page === 'acquereurs' && acq) {
+    return (
+      <ErrorBoundary>
+        <Suspense fallback={<div className="min-h-screen flex"><ChargementPage /></div>}>
+          <AcqHub onRetour={() => setPage('dashboard')} libelleRetour="Immo Relances" />
+        </Suspense>
+      </ErrorBoundary>
+    )
+  }
 
   const renderPage = () => {
     switch (page) {
@@ -229,7 +240,8 @@ function EspaceAgence({ page, setPage, onRetour }) {
   return (
     <>
       {onRetour && <RetourOperation onRetour={onRetour} />}
-      <Layout page={page} onNavigate={setPage}>
+      <Layout page={page} onNavigate={setPage}
+        extraNav={acq ? [{ id: 'acquereurs', label: 'Fichier Acquéreurs', icon: 'users' }] : []}>
         <Suspense fallback={<ChargementPage />}>
           {renderPage()}
         </Suspense>
