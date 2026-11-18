@@ -8,7 +8,7 @@ import Icon from '../components/ui/Icon'
 import PageHeader from '../components/ui/PageHeader'
 import ChoixPeriode, { enParametres, periodeEnClair } from '../components/ChoixPeriode'
 
-const PIE_COLORS = ['#080432','#B6A997','#2a2470','#CBC1B2','#15104f','#94a3b8']
+const PIE_COLORS = ['#0D0D2B','#C9A96E','#2d2d6b','#e8c98a','#1a1a4e','#94a3b8']
 
 // `onVoir` : fourni par l'espace de l'admin, il rend les quatre cases
 // cliquables (vers les contacts, le suivi par personne…). Sans lui, l'écran
@@ -109,7 +109,7 @@ export default function DashboardPage({ onNavigate, onVoir = null }) {
                   <XAxis dataKey="jour" tick={{ fontSize: 11, fill: '#6B6660' }} axisLine={false} tickLine={false} />
                   <YAxis tick={{ fontSize: 11, fill: '#6B6660' }} axisLine={false} tickLine={false} />
                   <Tooltip contentStyle={{ borderRadius: 8, border: '1px solid #E2DDD6', fontSize: 12 }} />
-                  <Bar dataKey="relances" fill="#080432" radius={[4,4,0,0]} />
+                  <Bar dataKey="relances" fill="#0D0D2B" radius={[4,4,0,0]} />
                 </BarChart>
               </ResponsiveContainer>
             ) : <div className="h-48 flex items-center justify-center text-quai-muted text-sm">Aucune donnée sur cette période</div>}

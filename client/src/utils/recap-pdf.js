@@ -21,7 +21,7 @@ export async function genererRecapPdf(actions, meta) {
   const { default: jsPDF } = await import('jspdf')
   const { default: autoTable } = await import('jspdf-autotable')
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
-  const navy = [8, 4, 50] // #080432
+  const navy = [13, 13, 43] // #0D0D2B
 
   // En-tête
   doc.setFontSize(16)
