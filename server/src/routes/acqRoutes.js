@@ -114,6 +114,8 @@ router.get('/accueil', acces, (req, res) => {
   const det = db.prepare(`SELECT a.details FROM acq_appels a JOIN acq_contacts c ON c.id_contact = a.id_contact
     WHERE ${where} AND a.details IS NOT NULL AND a.statut_final IS NOT NULL`).all(...params).map(x => json(x.details) || {});
   res.json({
+    // Le texte d'accueil, écrit par Loïck dans Administration › Scripts.
+    texte: db.prepare("SELECT texte FROM acq_scripts WHERE partie = 'accueil'").get()?.texte || '',
     a_appeler: f.file.length, rappels_dus: f.groupes.rappels, en_attente: f.groupes.en_attente, prochain_retour: f.prochain_retour,
     contacts: n(`SELECT COUNT(*) n FROM acq_contacts c WHERE ${where} AND c.exclu IS NULL`),
     projets: n(`SELECT COUNT(*) n FROM acq_fiches x JOIN acq_contacts c ON c.id_contact = x.id_contact WHERE ${where} AND c.exclu IS NULL AND COALESCE(x.type_recherche,'') <> 'Location'`),
@@ -428,7 +430,7 @@ router.get('/admin/transmettre', admin, (req, res) => {
   });
 });
 
-const PARTIES = ['0', '1', '2.1', '2.2', '2.3', '3', '4', 'repondeur', 'sms'];
+const PARTIES = ['accueil', '0', '1', '2.1', '2.2', '2.3', '3', '4', 'repondeur', 'sms'];
 router.get('/admin/scripts', admin, (req, res) => {
   const s = Object.fromEntries(db.prepare('SELECT partie, texte FROM acq_scripts').all().map(x => [x.partie, x.texte]));
   res.json({ parties: PARTIES.map(p => ({ partie: p, texte: s[p] || '' })) });

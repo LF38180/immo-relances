@@ -177,7 +177,7 @@ function Transmettre() {
   )
 }
 
-const NOMS_PARTIES = { '0': 'Ouverture', '1': 'Coordonnées', '2.1': 'Projet et motivation', '2.2': 'Critères', '2.3': 'Financement', '3': 'Vendre pour acheter', '4': 'Suite donnée', repondeur: 'Message sur le répondeur', sms: 'Modèle de SMS' }
+const NOMS_PARTIES = { accueil: 'Page d’accueil (texte de présentation)', '0': 'Ouverture', '1': 'Coordonnées', '2.1': 'Projet et motivation', '2.2': 'Critères', '2.3': 'Financement', '3': 'Vendre pour acheter', '4': 'Suite donnée', repondeur: 'Message sur le répondeur', sms: 'Modèle de SMS' }
 function Scripts() {
   const [p, setP] = useState(null)
   useEffect(() => { api.get('/acquereurs/admin/scripts').then(r => setP(r.data.parties)).catch(err) }, [])

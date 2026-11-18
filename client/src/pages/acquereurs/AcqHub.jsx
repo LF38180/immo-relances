@@ -54,7 +54,7 @@ export default function AcqHub({ onRetour }) {
       <main className="flex-1 overflow-y-auto">
         <ErrorBoundary>
           <Suspense fallback={<div className="p-6 text-sm text-quai-muted animate-pulse">Chargement…</div>}>
-            {onglet === 'accueil' && <AcqAccueil onCommencer={() => setOnglet('file')} onAdmin={() => setOnglet('admin')} />}
+            {onglet === 'accueil' && <AcqAccueil estAdmin={estAdmin} onCommencer={() => setOnglet('file')} onAdmin={() => setOnglet('admin')} />}
             {onglet === 'file' && <AcqFile />}
             {onglet === 'suivi' && <AcqSuivi />}
             {onglet === 'admin' && estAdmin && <AcqAdmin />}

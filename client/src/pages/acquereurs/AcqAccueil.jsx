@@ -15,7 +15,7 @@ function Chiffre({ valeur, libelle, accent }) {
 }
 const Titre = ({ children }) => <div className="text-[11px] font-semibold text-quai-muted uppercase tracking-wide mb-1.5">{children}</div>
 
-export default function AcqAccueil({ onCommencer, onAdmin }) {
+export default function AcqAccueil({ onCommencer, onAdmin, estAdmin }) {
   const [d, setD] = useState(null)
   useEffect(() => { api.get('/acquereurs/accueil').then(r => setD(r.data)).catch(() => setD({})) }, [])
   if (!d) return <p className="p-6 text-sm text-quai-muted">Chargement…</p>
@@ -27,6 +27,10 @@ export default function AcqAccueil({ onCommencer, onAdmin }) {
         <h1 className="font-display text-2xl font-bold text-quai-navy">Fichier Acquéreurs</h1>
         <p className="text-sm text-quai-muted mt-1">On remet à jour les projets d’achat qui dorment dans Modelo, un appel à la fois.</p>
       </div>
+
+      {d.texte
+        ? <div className="bg-white border border-quai-border rounded-xl p-4 text-sm text-quai-text whitespace-pre-line leading-relaxed">{d.texte}</div>
+          : estAdmin && <p className="text-[11px] text-quai-muted text-center">Le texte de présentation se rédige dans Administration › Scripts › Page d’accueil.</p>}
 
       <div>
         <Titre>Aujourd’hui</Titre>
