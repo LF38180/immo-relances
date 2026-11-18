@@ -127,6 +127,12 @@ router.get('/accueil', acces, (req, res) => {
     estimations_acceptees: det.filter(d => d.vendre?.estimation_acceptee).length,
     courtage_proposes: det.filter(d => d.marine?.proposee).length,
     courtage_accords: det.filter(d => d.marine?.accord).length,
+    // Ce qui est déjà dans Modelo : contacts dont tout le travail est reporté,
+    // et ceux qui ont du nouveau depuis.
+    reportes_modelo: n(`SELECT COUNT(*) n FROM acq_contacts c WHERE ${where} AND c.modelo_reporte_le IS NOT NULL
+      AND NOT EXISTS (SELECT 1 FROM acq_appels a WHERE a.id_contact = c.id_contact AND a.horodatage > c.modelo_reporte_le)`),
+    en_attente_modelo: n(`SELECT COUNT(*) n FROM acq_contacts c WHERE ${where}
+      AND EXISTS (SELECT 1 FROM acq_appels a WHERE a.id_contact = c.id_contact AND a.horodatage > COALESCE(c.modelo_reporte_le, ''))`),
     ...(m.admin ? { a_reporter: M.aReporter().length, a_valider: M.archivagesEnAttente().length } : {}),
   });
 });

@@ -60,6 +60,14 @@ export default function AcqAccueil({ onCommencer, onAdmin }) {
         </div>
       </div>
 
+      <div>
+        <Titre>Dans Modelo</Titre>
+        <div className="grid grid-cols-2 gap-2">
+          <Chiffre valeur={d.reportes_modelo} libelle="contacts reportés dans Modelo" />
+          <Chiffre valeur={d.en_attente_modelo} libelle="contacts en attente de report" />
+        </div>
+      </div>
+
       {d.a_reporter != null && (
         <button onClick={onAdmin} className={`w-full text-left rounded-xl border px-3 py-2.5 text-sm ${d.a_reporter || d.a_valider ? 'border-amber-300 bg-amber-50 text-quai-navy' : 'border-quai-border bg-white text-quai-muted'}`}>
           {d.a_valider > 0 && <div><b>{d.a_valider}</b> archivage{d.a_valider > 1 ? 's' : ''} à valider</div>}
