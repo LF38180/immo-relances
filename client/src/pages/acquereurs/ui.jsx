@@ -43,12 +43,12 @@ export function Chiffre({ valeur, libelle, icon, fort, onClick }) {
   const Tag = onClick ? 'button' : 'div'
   return (
     <Tag onClick={onClick}
-      className={`text-left rounded-xl border p-3 w-full transition-colors ${fort ? 'bg-quai-navy border-quai-navy text-white' : 'bg-white border-quai-border'} ${onClick ? 'hover:border-quai-gold' : ''}`}>
+      className={`text-left rounded-xl border p-3 w-full transition-all ${fort ? 'bg-quai-navy border-quai-navy text-white' : 'bg-white border-quai-border'} ${onClick ? 'hover:border-quai-gold hover:shadow-sm cursor-pointer' : ''}`}>
       <div className="flex items-start justify-between gap-2">
         <div className={`text-3xl font-display font-semibold leading-none ${fort ? 'text-quai-gold' : 'text-quai-navy'}`}>{valeur ?? '–'}</div>
         {icon && <Icon name={icon} size="sm" className={fort ? 'text-white/50' : 'text-quai-gold'} />}
       </div>
-      <div className={`text-xs leading-snug mt-1.5 ${fort ? 'text-white/80' : 'text-quai-muted'}`}>{libelle}{onClick && <span className={fort ? 'text-quai-gold' : 'text-quai-navy'}> · voir</span>}</div>
+      <div className={`text-xs leading-snug mt-1.5 ${fort ? 'text-white/80' : 'text-quai-muted'}`}>{libelle}</div>
     </Tag>
   )
 }

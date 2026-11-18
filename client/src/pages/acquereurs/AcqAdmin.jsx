@@ -163,6 +163,56 @@ function Report({ cle }) {
   )
 }
 
+// Le report Modelo en une ligne, pour l'écran de Suivi : combien de contacts
+// attendent, le fichier à télécharger, le retour à importer — comme dans
+// l'opération anciens clients. Le détail reste dans l'onglet Report Modelo.
+export function ReportBandeau({ onDetail }) {
+  const [d, setD] = useState(null), [bloque, setBloque] = useState(null), [envoi, setEnvoi] = useState(false)
+  const charger = useCallback(() => api.get('/acquereurs/admin/report').then(r => { setD(r.data); setBloque(null) })
+    .catch(e => { if (e.response?.status === 409) { setBloque(e.response.data); setD(null) } else err(e) }), [])
+  useEffect(() => { charger() }, [charger])
+  const telecharger = async () => {
+    try {
+      const r = await api.get('/acquereurs/admin/report', { params: { format: 'csv' }, responseType: 'blob' })
+      const url = URL.createObjectURL(r.data); const a = document.createElement('a')
+      a.href = url; a.download = `Report_Modelo_Acquereurs_${d.jusqu_a.slice(0, 10)}.csv`; a.click(); URL.revokeObjectURL(url)
+    } catch (e) { err(e) }
+  }
+  const importer = async (ev) => {
+    const f = ev.target.files?.[0]; ev.target.value = ''
+    if (!f) return
+    setEnvoi(true)
+    try {
+      const r = await api.post('/acquereurs/admin/report/retour', { csv: await lireFichier(f) })
+      toast.success(`${r.data.reportes} contact${r.data.reportes > 1 ? 's' : ''} reporté${r.data.reportes > 1 ? 's' : ''}, ${r.data.echecs} en échec${r.data.inconnus.length ? `, ${r.data.inconnus.length} inconnu(s)` : ''}`, { duration: 7000 })
+      charger()
+    } catch (e) { err(e) } finally { setEnvoi(false) }
+  }
+  const n = d?.contacts || 0
+  return (
+    <div className={`rounded-xl border px-3 py-2.5 flex flex-wrap items-center gap-2 ${n || bloque ? 'bg-amber-50 border-amber-200' : 'bg-white border-quai-border'}`}>
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-semibold text-quai-navy">Report dans Modelo</div>
+        <div className="text-[11px] text-quai-muted leading-snug">
+          {bloque ? `${bloque.attente} archivage${bloque.attente > 1 ? 's' : ''} à valider avant de pouvoir reporter.`
+            : !d ? 'Chargement…'
+            : n ? <><b className="text-quai-navy">{n}</b> contact{n > 1 ? 's' : ''} avec du nouveau à reporter ({d.fiches} ligne{d.fiches > 1 ? 's' : ''}).</>
+            : 'Tout est reporté.'}
+          {' '}Téléchargez, donnez le fichier à Exploration Modelo, puis importez son retour.
+        </div>
+      </div>
+      {bloque
+        ? <button onClick={onDetail} className="text-xs px-3 py-2 rounded-lg bg-quai-navy text-white">Valider les archivages</button>
+        : <button onClick={telecharger} disabled={!n} className="text-xs px-3 py-2 rounded-lg bg-quai-navy text-white disabled:opacity-40">À reporter{n ? ` (${n})` : ''}</button>}
+      <label className={`text-xs px-3 py-2 rounded-lg border border-quai-border bg-white text-quai-navy cursor-pointer ${envoi ? 'opacity-40' : ''}`}>
+        Importer le retour
+        <input type="file" accept=".csv,.txt" className="hidden" onChange={importer} disabled={envoi} />
+      </label>
+      {onDetail && !bloque && <button onClick={onDetail} className="text-xs text-quai-muted underline">Détail</button>}
+    </div>
+  )
+}
+
 function Transmettre() {
   const [d, setD] = useState(null)
   useEffect(() => { api.get('/acquereurs/admin/transmettre').then(r => setD(r.data)).catch(err) }, [])

@@ -20,8 +20,6 @@ export default function AcqHub({ onRetour, libelleRetour = 'Mon espace', ongletI
   // Une case du Suivi cliquée : le Listing s'ouvre filtré (comme l'opération).
   const [filtre, setFiltre] = useState('')
   const voir = (f) => { setFiltre(f); setOnglet('listing') }
-  const [acces, setAcces] = useState(null)
-  useEffect(() => { api.get('/acquereurs/mon-acces').then(r => setAcces(r.data)).catch(() => {}) }, [])
 
   const onglets = [
     { id: 'accueil', label: 'Accueil', icon: 'file-text' },
@@ -34,9 +32,15 @@ export default function AcqHub({ onRetour, libelleRetour = 'Mon espace', ongletI
       <header className="bg-quai-navy text-white px-3 py-2 flex items-center gap-2 shrink-0"
         style={{ paddingTop: 'max(0.5rem, env(safe-area-inset-top))' }}>
         <img src="/marque/mission-acquereurs-long-clair.png" alt="Mission Acquéreurs" className="h-8 w-auto shrink-0" />
-        <div className="min-w-0 flex-1">
-          <div className="sr-only">Mission Acquéreurs</div>
-          <div className="text-[11px] text-white/60 truncate">{user?.prenom} {user?.nom}{acces?.contacts != null ? ` · ${acces.contacts} personnes` : ''}</div>
+        <h1 className="sr-only">Mission Acquéreurs</h1>
+        <div className="flex-1" />
+        {/* Qui est connecté, discrètement, à droite — comme dans le menu des
+            autres espaces. Le nombre de personnes est sur l'accueil. */}
+        <div className="hidden sm:flex items-center gap-2 text-xs text-white/70 min-w-0">
+          <span className="w-7 h-7 rounded-full bg-white/10 grid place-items-center text-[10px] font-semibold text-quai-taupe shrink-0">
+            {`${user?.prenom?.[0] || ''}${user?.nom?.[0] || ''}`.toUpperCase()}
+          </span>
+          <span className="truncate">{user?.prenom} {user?.nom}</span>
         </div>
         {onRetour && (
           <button onClick={onRetour} className="text-white/80 hover:text-white text-xs inline-flex items-center gap-1 px-2 py-2">

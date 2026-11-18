@@ -96,7 +96,7 @@ const LIB_STATUT_CONTACT = {
 }
 
 // Vue d'un agent classique : sa file d'appel du moment, ses rappels, son activite du jour.
-function VueAgent({ id }) {
+export function VueAgent({ id }) {
   const [data, setData] = useState(null)
   const [onglet, setOnglet] = useState('file')
 
