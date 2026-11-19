@@ -30,6 +30,18 @@ export default function AdminPage({ onglet = null, partie = null, onVoir = null 
   const [tabLibre, setTab] = useState('users')
   const tab = onglet || tabLibre
   const [users, setUsers] = useState([])
+  // Tri de la liste des comptes : alphabétique par défaut, comme on lit les noms
+  // à l'écran (prénom puis nom). Un clic sur un en-tête trie, un second inverse.
+  const [tri, setTri] = useState({ cle: 'nom', sens: 1 })
+  const trierPar = (cle) => setTri(t => (t.cle === cle ? { cle, sens: -t.sens } : { cle, sens: 1 }))
+  const VALEUR_TRI = {
+    nom: u => `${u.prenom || ''} ${u.nom || ''}`, email: u => u.email || '', role: u => u.role || '',
+    // Jamais connecté : en dernier dans les deux sens de tri n'aurait pas de sens ; on le range comme le plus ancien.
+    connexion: u => u.last_login || '', statut: u => (u.actif ? '0' : '1'),
+  }
+  const usersTries = [...users].sort((a, b) =>
+    tri.sens * VALEUR_TRI[tri.cle](a).localeCompare(VALEUR_TRI[tri.cle](b), 'fr', { sensitivity: 'base' })
+    || `${a.prenom} ${a.nom}`.localeCompare(`${b.prenom} ${b.nom}`, 'fr', { sensitivity: 'base' }))
   const [params, setParams] = useState({})
   const [newUser, setNewUser] = useState({ nom: '', prenom: '', email: '', password: '', role: 'agent' })
   const [showNewUser, setShowNewUser] = useState(false)
@@ -174,17 +186,21 @@ export default function AdminPage({ onglet = null, partie = null, onVoir = null 
               <table className="w-full text-sm">
                 <thead className="bg-quai-light">
                   <tr>
-                    <th className="text-left text-xs font-medium text-quai-muted px-4 py-2.5">Nom</th>
-                    <th className="text-left text-xs font-medium text-quai-muted px-4 py-2.5">Email</th>
-                    <th className="text-left text-xs font-medium text-quai-muted px-4 py-2.5">Rôle</th>
-                    <th className="text-left text-xs font-medium text-quai-muted px-4 py-2.5">Dernière connexion</th>
-                    <th className="text-left text-xs font-medium text-quai-muted px-4 py-2.5">Statut</th>
+                    {[['nom', 'Nom'], ['email', 'Email'], ['role', 'Rôle'], ['connexion', 'Dernière connexion'], ['statut', 'Statut']].map(([cle, libelle]) => (
+                      <th key={cle} className="text-left text-xs font-medium text-quai-muted px-4 py-1" aria-sort={tri.cle === cle ? (tri.sens > 0 ? 'ascending' : 'descending') : 'none'}>
+                        <button onClick={() => trierPar(cle)} title={`Trier par ${libelle.toLowerCase()}`}
+                          className={`inline-flex items-center gap-1 min-h-[2.25rem] hover:text-quai-navy ${tri.cle === cle ? 'text-quai-navy font-semibold' : ''}`}>
+                          {libelle}
+                          <Icon name={tri.cle === cle && tri.sens < 0 ? 'chevron-up' : 'chevron-down'} size="sm" className={tri.cle === cle ? '' : 'opacity-30'} />
+                        </button>
+                      </th>
+                    ))}
                     <th className="text-left text-xs font-medium text-quai-muted px-4 py-2.5">Missions</th>
                     <th className="text-left text-xs font-medium text-quai-muted px-4 py-2.5">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-quai-border">
-                  {users.map(u => (
+                  {usersTries.map(u => (
                     <tr key={u.id}>
                       <td className="px-4 py-2.5 font-medium text-quai-navy">{u.prenom} {u.nom}</td>
                       <td className="px-4 py-2.5 text-quai-muted">{u.email}</td>
