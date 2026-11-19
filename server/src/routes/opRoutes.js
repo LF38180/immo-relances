@@ -738,7 +738,7 @@ router.get('/a-verifier', pilotage, (req, res) => {
   const lignes = db.prepare(`
     SELECT c.id_modelo, c.civilite, c.nom, c.prenom, c.commune, c.conseiller,
            c.partie_au_registre, c.bien_concerne, c.courrier_motif, c.script, c.a_verifier,
-           c.tel_portable, c.tel_fixe, c.verifie, c.verifie_par
+           c.tel_portable, c.tel_fixe, c.verifie, c.verifie_par, c.verifie_motif, c.courrier_etat
     FROM op_contacts c
     WHERE ${where} AND c.a_verifier = 1
     ORDER BY c.verifie IS NOT NULL, c.nom`).all(...params);
@@ -779,6 +779,94 @@ router.post('/contacts/:id/verifier', pilotage, dansPerimetre, (req, res) => {
 
   journaliser(moi, 'VERIFICATION', { id_modelo: c.id_modelo, details: { verdict, registre: c.partie_au_registre } });
   res.json({ ok: true, verdict });
+});
+
+// --- Trancher un lot d'identités d'un coup -------------------------------------
+//
+// Après une vérification faite dans Modelo, le pilote arrive avec une liste de
+// décisions. Deux gestes seulement :
+//   CONFIRMER : c'est bien la personne ; elle entre dans la file. En option, un
+//               autre conseiller, un autre bien à afficher, un point d'attention,
+//               et le passage au script « courrier non envoyé » (1 -> 2, 3 -> 4).
+//   SORTIR    : le rattachement à une vente n'est pas établi. La fiche quitte les
+//               files avec son motif. AUCUNE opposition n'est posée : la personne
+//               n'a rien refusé, elle reste appelable par les autres missions.
+// `simulation` (par défaut) : dit ce qui serait fait, n'écrit rien.
+router.post('/a-verifier/lot', pilotage, (req, res) => {
+  const moi = identite(req);
+  if (!moi) return res.status(401).json({ error: 'Compte introuvable' });
+  const lignes = Array.isArray(req.body?.lignes) ? req.body.lignes.slice(0, 500) : [];
+  if (!lignes.length) return res.status(400).json({ error: 'Aucune ligne' });
+  const simulation = req.body?.simulation !== false;
+  const sansCourrier = req.body?.sans_courrier === true;
+  const motifSortie = String(req.body?.motif || '').trim();
+  const compteActif = db.prepare("SELECT prenom || ' ' || nom AS nom, agence FROM users WHERE LOWER(TRIM(prenom || ' ' || nom)) = LOWER(?) AND actif = 1");
+  const vus = new Set();
+  const resultats = [];
+  const ecritures = [];
+
+  for (const l of lignes) {
+    const id = String(l.id_modelo || '').trim();
+    const decision = String(l.decision || '').trim().toUpperCase();
+    const r = { id_modelo: id, decision, changements: [], erreur: null };
+    resultats.push(r);
+    if (!id) { r.erreur = 'identifiant vide'; continue; }
+    if (vus.has(id)) { r.erreur = 'identifiant en double dans la liste'; continue; }
+    vus.add(id);
+    const c = getContact(id);
+    if (!c) { r.erreur = 'fiche inconnue dans l’opération'; continue; }
+    r.nom = [c.prenom, c.nom].filter(Boolean).join(' ');
+    if (moi.role !== 'admin' && moi.agence && !memeAgence(c.agence, moi.agence)) { r.erreur = 'hors de votre agence'; continue; }
+    if (!c.a_verifier) { r.erreur = 'cette fiche n’était pas « à vérifier »'; continue; }
+    if (!['CONFIRMER', 'SORTIR'].includes(decision)) { r.erreur = 'décision attendue : confirmer ou sortir'; continue; }
+    const champs = {};
+    if (decision === 'SORTIR') {
+      if (!motifSortie) { r.erreur = 'motif de sortie manquant'; continue; }
+      if (c.verifie === 'ECARTE') { r.changements.push('déjà hors des files'); if (!c.verifie_motif) champs.verifie_motif = motifSortie; }
+      else { champs.verifie = 'ECARTE'; champs.verifie_motif = motifSortie; r.changements.push(`sortie de l’opération${c.verifie ? ` (était ${c.verifie.toLowerCase()})` : ''}, sans opposition`); }
+    } else {
+      if (c.verifie !== 'CONFIRME') { champs.verifie = 'CONFIRME'; champs.verifie_motif = null; r.changements.push(c.verifie ? `confirmée (était ${c.verifie.toLowerCase()})` : 'confirmée'); }
+      else r.changements.push('déjà confirmée');
+      const vers = String(l.conseiller || '').trim();
+      if (vers && normNom(vers) !== normNom(c.conseiller)) {
+        const compte = compteActif.get(vers);
+        if (!compte) { r.erreur = `${vers} n’a pas de compte actif`; continue; }
+        champs.conseiller = compte.nom; champs.a_dispatcher = 0;
+        if (compte.agence) champs.agence = compte.agence;
+        r.changements.push(`conseiller : ${c.conseiller || 'personne'} → ${compte.nom}`);
+      }
+      const bien = String(l.bien || '').trim();
+      if (bien && bien !== (c.bien_concerne || '')) { champs.bien_concerne = bien.slice(0, 300); r.changements.push('bien à afficher modifié'); }
+      const attention = String(l.attention || '').trim();
+      if (attention && attention !== (c.point_attention || '')) { champs.point_attention = attention.slice(0, 300); r.changements.push('point d’attention ajouté'); }
+      // Ils n'ont pas reçu le courrier : le script et la ligne de contexte doivent le dire.
+      if (sansCourrier) {
+        const script = { 1: 2, 3: 4 }[c.script];
+        if (script) { champs.script = script; r.changements.push(`script ${c.script} → ${script} (courrier non envoyé)`); }
+        if (c.courrier_etat === 'ENVOYE' || c.courrier_etat === 'A_TRANCHER') { champs.courrier_etat = 'NON_IMPRIME'; r.changements.push('courrier noté « non envoyé »'); }
+      }
+      if (!String(c.tel_portable || '').trim() && !String(c.tel_fixe || '').trim()) r.changements.push('attention : aucun numéro, elle restera hors de la file');
+    }
+    if (Object.keys(champs).length) ecritures.push({ c, champs, r });
+  }
+
+  const erreurs = resultats.filter(r => r.erreur).length;
+  if (!simulation && !erreurs) {
+    db.transaction(() => {
+      for (const { c, champs } of ecritures) {
+        const cles = Object.keys(champs);
+        db.prepare(`UPDATE op_contacts SET ${cles.map(k => `${k} = @${k}`).join(', ')}, verifie_par = @par,
+          updated_at = datetime('now') WHERE id_modelo = @id`).run({ ...champs, par: moi.nom_complet, id: c.id_modelo });
+        if (champs.conseiller !== undefined) journalAttribution(c.id_modelo, c.conseiller, champs.conseiller, moi, 'CORRECTION');
+      }
+    })();
+    for (const { c, champs, r } of ecritures) {
+      journaliser(moi, 'VERIFICATION', { id_modelo: c.id_modelo, details: { verdict: champs.verifie || c.verifie, lot: true, motif: champs.verifie_motif || null, changements: r.changements } });
+    }
+  }
+  res.json({ ok: true, simulation, applique: !simulation && !erreurs, lignes: resultats.length, erreurs,
+    confirmees: resultats.filter(r => !r.erreur && r.decision === 'CONFIRMER').length,
+    sorties: resultats.filter(r => !r.erreur && r.decision === 'SORTIR').length, resultats });
 });
 
 // --- Démonstration -----------------------------------------------------

@@ -402,6 +402,67 @@ const t = (n, fn) => { try { fn(); console.log('  OK  ' + n) } catch (e) { conso
     });
   }
 
+  // --- Trancher un lot d'identités ---------------------------------------
+  {
+    const admin = db.prepare("SELECT id, role, email FROM users WHERE role = 'admin' AND actif = 1 LIMIT 1").get();
+    const tAdmin = tok(admin);
+    // Quatre fiches de test marquées « à vérifier », non tranchées, avec un numéro.
+    const fiches = db.prepare(`SELECT id_modelo, conseiller, script FROM op_contacts
+      WHERE COALESCE(tel_portable, tel_fixe, '') <> '' AND script IN (1, 3) LIMIT 4`).all();
+    const [a, b, c, d] = fiches.map(x => x.id_modelo);
+    db.prepare(`UPDATE op_contacts SET a_verifier = 1, verifie = NULL, courrier_etat = 'ENVOYE' WHERE id_modelo IN (?,?,?,?)`).run(a, b, c, d);
+    const autre = db.prepare(`SELECT prenom || ' ' || nom AS n FROM users WHERE actif = 1 AND role IN ('conseiller','agent','manager')
+      AND LOWER(prenom || ' ' || nom) <> LOWER(?) LIMIT 1`).get(fiches[0].conseiller || '').n;
+    const lot = { motif: 'rattachement non sûr', sans_courrier: true, lignes: [
+      { id_modelo: a, decision: 'confirmer', conseiller: autre, bien: 'Maison 9 rue de l’Essai', attention: 'Un seul appel pour la famille' },
+      { id_modelo: b, decision: 'confirmer' },
+      { id_modelo: c, decision: 'sortir' },
+      { id_modelo: 'inconnu-999', decision: 'confirmer' },
+    ] };
+    const avantOpp = db.prepare('SELECT COUNT(*) n FROM op_journal_opposition').get().n;
+    let r = await call('POST', '/operation/a-verifier/lot', tTara, lot);
+    t('lot : réservé au pilotage', () => assert.strictEqual(r.status, 403));
+    r = await call('POST', '/operation/a-verifier/lot', tAdmin, lot);
+    t('lot : la simulation signale la fiche inconnue et n’écrit rien', () => {
+      assert.strictEqual(r.status, 200); assert.strictEqual(r.body.simulation, true); assert.strictEqual(r.body.erreurs, 1);
+      assert.strictEqual(db.prepare('SELECT verifie FROM op_contacts WHERE id_modelo = ?').get(a).verifie, null);
+    });
+    r = await call('POST', '/operation/a-verifier/lot', tAdmin, { ...lot, simulation: false });
+    t('lot avec une erreur : rien n’est appliqué', () => {
+      assert.strictEqual(r.body.applique, false);
+      assert.strictEqual(db.prepare('SELECT verifie FROM op_contacts WHERE id_modelo = ?').get(a).verifie, null);
+    });
+    lot.lignes.pop();
+    r = await call('POST', '/operation/a-verifier/lot', tAdmin, { ...lot, simulation: false });
+    const lire = (id) => db.prepare('SELECT * FROM op_contacts WHERE id_modelo = ?').get(id);
+    t('lot appliqué : 2 confirmées, 1 sortie', () => { assert.strictEqual(r.body.applique, true); assert.strictEqual(r.body.confirmees, 2); assert.strictEqual(r.body.sorties, 1); });
+    t('confirmée : conseiller, bien, point d’attention, script sans courrier', () => {
+      const x = lire(a);
+      assert.strictEqual(x.verifie, 'CONFIRME'); assert.strictEqual(x.conseiller.toLowerCase(), autre.toLowerCase());
+      assert.strictEqual(x.bien_concerne, 'Maison 9 rue de l’Essai'); assert.strictEqual(x.point_attention, 'Un seul appel pour la famille');
+      assert.strictEqual(x.script, fiches[0].script + 1); assert.strictEqual(x.courrier_etat, 'NON_IMPRIME');
+      assert.ok(db.prepare("SELECT 1 FROM op_attributions WHERE id_modelo = ? AND source = 'CORRECTION'").get(a), 'mouvement journalisé');
+    });
+    t('confirmée sans autre précision : garde son conseiller', () => assert.strictEqual(lire(b).conseiller, fiches[1].conseiller));
+    t('sortie : hors des files, motif gardé, AUCUNE opposition ni stop téléphone', () => {
+      const x = lire(c);
+      assert.strictEqual(x.verifie, 'ECARTE'); assert.strictEqual(x.verifie_motif, 'rattachement non sûr'); assert.strictEqual(x.stop_telephone, 0);
+      assert.strictEqual(db.prepare('SELECT COUNT(*) n FROM op_journal_opposition').get().n, avantOpp);
+    });
+    t('la quatrième, absente du lot, reste à trancher', () => assert.strictEqual(lire(d).verifie, null));
+    const S = require('../src/utils/opScripts');
+    t('contexte d’appel : plus d’avertissement d’identité une fois confirmée', () => {
+      assert.ok(!/Identité non confirmée/.test(S.contexteAppel(lire(a))));
+      assert.ok(/Identité non confirmée/.test(S.contexteAppel(lire(d))));
+      assert.ok(/pas été envoyé/.test(S.contexteAppel(lire(a))));
+    });
+    r = await call('POST', '/operation/a-verifier/lot', tAdmin, { ...lot, simulation: false });
+    t('lot rejoué : rien ne bouge, pas de second mouvement', () => {
+      assert.strictEqual(r.body.applique, true);
+      assert.strictEqual(db.prepare("SELECT COUNT(*) n FROM op_attributions WHERE id_modelo = ? AND source = 'CORRECTION'").get(a).n, 1);
+    });
+  }
+
   db.close();
   srv.kill();
   for (const s of ['', '-wal', '-shm']) fs.rmSync(tmp + s, { force: true });

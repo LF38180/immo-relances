@@ -643,6 +643,9 @@ db.exec(`
   const cols = db.prepare("PRAGMA table_info(op_contacts)").all().map(c => c.name);
   if (!cols.includes('verifie')) db.exec("ALTER TABLE op_contacts ADD COLUMN verifie TEXT");
   if (!cols.includes('verifie_par')) db.exec("ALTER TABLE op_contacts ADD COLUMN verifie_par TEXT");
+  // Pourquoi une fiche a été sortie de l'opération sans que la personne ait rien refusé
+  // (rattachement à une vente non établi) : dans ce cas, aucune opposition n'est posée.
+  if (!cols.includes('verifie_motif')) db.exec("ALTER TABLE op_contacts ADD COLUMN verifie_motif TEXT");
 }
 
 // op_resultats porte une ligne par CONTACT. C'est juste pour l'état courant

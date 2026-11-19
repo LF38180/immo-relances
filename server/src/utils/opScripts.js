@@ -71,7 +71,8 @@ function enTete(contact) {
 // L'identité incertaine reste au-dessus : savoir à qui l'on parle précède tout
 // le reste.
 function contexteAppel(c) {
-  if (c.a_verifier) {
+  // Une fois l'identité tranchée (confirmée ou gardée), l'avertissement n'a plus lieu d'être.
+  if (c.a_verifier && !c.verifie) {
     return "Identité non confirmée : vérifiez que c'est la bonne personne avant de parler du bien.";
   }
   if (c.npai) {

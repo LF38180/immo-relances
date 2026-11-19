@@ -420,7 +420,8 @@ function BarreAttribution({ nb, conseillers, destinataire, setDestinataire, envo
 const VERDICTS = { CONFIRME: 'Confirmée : c\'est bien cette personne', GARDEE: 'Gardée : autre personne, mais un vrai client', ECARTE: 'Écartée : ce n\'est pas elle' }
 function exporterAVerifier(lignes) {
   const cols = [
-    ['Etat', l => (l.verifie ? VERDICTS[l.verifie] || l.verifie : 'À trancher')],
+    ['Etat', l => (l.verifie === 'ECARTE' && l.verifie_motif ? 'Sortie de l\'opération (sans opposition)' : l.verifie ? VERDICTS[l.verifie] || l.verifie : 'À trancher')],
+    ['Motif de sortie', l => l.verifie_motif],
     ['Tranchée par', l => l.verifie_par], ['Civilité', l => l.civilite], ['Nom', l => l.nom], ['Prénom', l => l.prenom],
     ['Commune', l => l.commune], ['Conseiller', l => l.conseiller], ['Nom au registre des ventes', l => l.partie_au_registre || 'aucune correspondance'],
     ['Bien concerné', l => l.bien_concerne], ['Motif', l => l.courrier_motif], ['Script', l => l.script],
@@ -436,15 +437,97 @@ function exporterAVerifier(lignes) {
   URL.revokeObjectURL(url)
 }
 
+// Trancher plusieurs fiches d'un coup, à partir d'une liste d'identifiants Modelo
+// (par exemple après une vérification faite dans Modelo). On colle, on vérifie
+// ce qui serait fait, puis on applique. Rien ne s'écrit tant qu'une ligne est en erreur.
+function DecisionsEnLot({ onFait }) {
+  const [ouvert, setOuvert] = useState(false)
+  const [confirmer, setConfirmer] = useState('')
+  const [sortir, setSortir] = useState('')
+  const [motif, setMotif] = useState('')
+  const [precisions, setPrecisions] = useState('')
+  const [sansCourrier, setSansCourrier] = useState(false)
+  const [bilan, setBilan] = useState(null)
+  const [envoi, setEnvoi] = useState(false)
+  const ids = (t) => [...new Set(String(t).split(/[^0-9A-Za-z_-]+/).filter(x => /\d/.test(x)))]
+  const lignes = () => {
+    // Précisions : une ligne par fiche, « identifiant ; conseiller ; bien ; point d'attention ».
+    const plus = new Map(precisions.split('\n').map(l => l.split(';').map(x => x.trim())).filter(l => l[0])
+      .map(([id, conseiller, bien, attention]) => [id, { conseiller, bien, attention }]))
+    return [
+      ...ids(confirmer).map(id => ({ id_modelo: id, decision: 'CONFIRMER', ...(plus.get(id) || {}) })),
+      ...ids(sortir).map(id => ({ id_modelo: id, decision: 'SORTIR' })),
+    ]
+  }
+  const envoyer = async (simulation) => {
+    const l = lignes()
+    if (!l.length) return toast.error('Collez au moins un identifiant')
+    if (ids(sortir).length && !motif.trim()) return toast.error('Indiquez le motif de sortie')
+    if (!simulation && !window.confirm(`Appliquer ces décisions à ${l.length} fiche${l.length > 1 ? 's' : ''} ?`)) return
+    setEnvoi(true)
+    try {
+      const r = await api.post('/operation/a-verifier/lot', { lignes: l, motif, sans_courrier: sansCourrier, simulation })
+      setBilan(r.data)
+      if (r.data.applique) { toast.success(`${r.data.confirmees} confirmée${r.data.confirmees > 1 ? 's' : ''}, ${r.data.sorties} sortie${r.data.sorties > 1 ? 's' : ''} de l’opération`); onFait?.() }
+      else if (!simulation) toast.error('Rien n’a été appliqué : corrigez les lignes en erreur')
+    } catch (e) { toast.error(e.messageLisible || e.response?.data?.error || 'Échec') }
+    finally { setEnvoi(false) }
+  }
+  const zone = 'input text-xs font-mono min-h-[4.5rem]'
+  return (
+    <div className="p-3 bg-white/70">
+      <button onClick={() => setOuvert(v => !v)} className="text-xs text-quai-navy underline underline-offset-2 min-h-[2.25rem]">
+        {ouvert ? 'Fermer' : 'Trancher plusieurs fiches d’un coup (liste d’identifiants Modelo)'}
+      </button>
+      {ouvert && (
+        <div className="mt-2 space-y-2">
+          <label className="block text-[12px] text-quai-navy font-medium">À confirmer : identifiants Modelo
+            <textarea className={zone} value={confirmer} onChange={e => { setConfirmer(e.target.value); setBilan(null) }} placeholder="159299, 151096, 155515…" />
+          </label>
+          <label className="flex items-start gap-2 text-[12px] text-quai-text">
+            <input type="checkbox" className="mt-0.5" checked={sansCourrier} onChange={e => { setSansCourrier(e.target.checked); setBilan(null) }} />
+            <span>Ils n’ont pas reçu le courrier : passer les confirmées au script « courrier non envoyé » (1 devient 2, 3 devient 4).</span>
+          </label>
+          <label className="block text-[12px] text-quai-navy font-medium">Précisions pour certaines confirmées (facultatif), une ligne par fiche : identifiant ; conseiller ; bien à afficher ; point d’attention
+            <textarea className={zone} value={precisions} onChange={e => { setPrecisions(e.target.value); setBilan(null) }} placeholder="151096 ; Prénom NOM ; ; " />
+          </label>
+          <label className="block text-[12px] text-quai-navy font-medium">À sortir de l’opération, sans opposition : identifiants Modelo
+            <textarea className={zone} value={sortir} onChange={e => { setSortir(e.target.value); setBilan(null) }} placeholder="165316, 84966…" />
+          </label>
+          <input className="input text-xs" value={motif} onChange={e => { setMotif(e.target.value); setBilan(null) }} placeholder="Motif de sortie (obligatoire s’il y a des fiches à sortir)" aria-label="Motif de sortie" />
+          <p className="text-[11px] text-quai-muted leading-snug">« Sortir » retire la fiche des files sans poser d’opposition : la personne n’a rien refusé. Pour quelqu’un qui ne veut plus être appelé, utilisez « écarter » sur sa fiche.</p>
+          <div className="flex flex-wrap gap-2">
+            <button onClick={() => envoyer(true)} disabled={envoi} className="text-xs px-3 py-2 rounded-lg border border-quai-navy text-quai-navy bg-white min-h-[2.75rem]">Vérifier (rien n’est écrit)</button>
+            <button onClick={() => envoyer(false)} disabled={envoi || !bilan || bilan.erreurs > 0} className="text-xs px-3 py-2 rounded-lg bg-quai-navy text-white min-h-[2.75rem] disabled:opacity-40">Appliquer</button>
+          </div>
+          {bilan && (
+            <div className="rounded-lg border border-quai-border bg-white p-2">
+              <div className={`text-[12px] font-semibold ${bilan.erreurs ? 'text-red-700' : 'text-emerald-700'}`}>
+                {bilan.applique ? 'Appliqué' : bilan.simulation ? 'Vérification' : 'Non appliqué'} : {bilan.confirmees} à confirmer, {bilan.sorties} à sortir{bilan.erreurs ? `, ${bilan.erreurs} en erreur` : ', aucune erreur'}
+              </div>
+              <ul className="mt-1 max-h-56 overflow-y-auto text-[11px] space-y-0.5">
+                {bilan.resultats.map(r => (
+                  <li key={r.id_modelo + r.decision} className={r.erreur ? 'text-red-700' : 'text-quai-text'}>
+                    <b>{r.id_modelo}</b>{r.nom ? ` ${r.nom}` : ''} : {r.erreur || r.changements.join(' ; ') || 'rien à changer'}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function AVerifier() {
   const [data, setData] = useState(null)
   const [enCours, setEnCours] = useState(null)
   const [ouvert, setOuvert] = useState(true)
   const [voirTranchees, setVoirTranchees] = useState(false)
 
-  useEffect(() => {
-    api.get('/operation/a-verifier').then(r => setData(r.data)).catch(() => setData({ lignes: [], restantes: 0 }))
-  }, [])
+  const recharger = () => api.get('/operation/a-verifier').then(r => setData(r.data)).catch(() => setData({ lignes: [], restantes: 0 }))
+  useEffect(() => { recharger() }, [])
 
   const trancher = async (l, verdict) => {
     if (verdict === 'ECARTE' && !window.confirm(
@@ -500,6 +583,7 @@ function AVerifier() {
               <Icon name="download" size="sm" /> Télécharger la liste
             </button>
           </div>
+          <DecisionsEnLot onFait={recharger} />
           {aTrancher.map(l => (
             <div key={l.id_modelo} className="p-3 bg-white/70">
               <div className="flex flex-wrap items-baseline gap-x-2">
@@ -541,7 +625,7 @@ function AVerifier() {
                   {tranchees.map(l => (
                     <li key={l.id_modelo}>
                       {l.prenom} {l.nom} — <b className={l.verifie === 'ECARTE' ? 'text-red-700' : 'text-emerald-700'}>
-                        {l.verifie === 'CONFIRME' ? 'confirmée' : l.verifie === 'GARDEE' ? 'gardée (autre personne au registre)' : 'écartée'}</b>{l.verifie_par && ` par ${l.verifie_par}`}
+                        {l.verifie === 'CONFIRME' ? 'confirmée' : l.verifie === 'GARDEE' ? 'gardée (autre personne au registre)' : l.verifie_motif ? 'sortie de l’opération, sans opposition' : 'écartée'}</b>{l.verifie_par && ` par ${l.verifie_par}`}{l.verifie_motif && ` · ${l.verifie_motif}`}
                     </li>
                   ))}
                 </ul>
