@@ -3,6 +3,7 @@ import toast from 'react-hot-toast'
 import api from '../utils/api'
 import { useAuth } from '../hooks/useAuth'
 import Icon from '../components/ui/Icon'
+import ChampMotDePasse from '../components/ui/ChampMotDePasse'
 
 /**
  * Écran bloquant affiché quand user.must_change_password est vrai :
@@ -56,17 +57,17 @@ export default function ChangePasswordGate() {
         <form onSubmit={submit} className="space-y-4">
           <div>
             <label className="block text-xs font-medium text-quai-muted mb-1">Mot de passe actuel</label>
-            <input type="password" className="input" value={ancien} autoFocus autoComplete="current-password"
+            <ChampMotDePasse value={ancien} autoFocus autoComplete="current-password"
               onChange={e => setAncien(e.target.value)} />
           </div>
           <div>
             <label className="block text-xs font-medium text-quai-muted mb-1">Nouveau mot de passe (8 caractères minimum)</label>
-            <input type="password" className="input" value={nouveau} autoComplete="new-password"
+            <ChampMotDePasse value={nouveau} autoComplete="new-password"
               onChange={e => setNouveau(e.target.value)} />
           </div>
           <div>
             <label className="block text-xs font-medium text-quai-muted mb-1">Confirmez le nouveau mot de passe</label>
-            <input type="password" className="input" value={confirmation} autoComplete="new-password"
+            <ChampMotDePasse value={confirmation} autoComplete="new-password"
               onChange={e => setConfirmation(e.target.value)} />
           </div>
           {erreur && (

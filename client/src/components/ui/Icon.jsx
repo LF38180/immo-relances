@@ -2,7 +2,7 @@
 // Si une icône manque, fallback sur Circle (pas de crash).
 import {
   ArrowLeft, ArrowRight, Bell, Calendar, CalendarCheck, CalendarClock, ChevronDown, ChevronLeft,
-  ChevronRight, ChevronUp, Circle, CircleCheckBig, CircleX, Database, Download, Eye, FileCheck, FileDown,
+  ChevronRight, ChevronUp, Circle, CircleCheckBig, CircleX, Database, Download, Eye, EyeOff, FileCheck, FileDown,
   FileText, FileUp, History, LayoutDashboard, LogOut, Mail, MapPin, Pencil, Phone, PhoneCall, PhoneOff,
   Pin, Play, Plus, RefreshCw, Search, Settings, Star, Table, Tag, Trash2, TriangleAlert, Trophy,
   Bold, Italic, Underline, CircleQuestionMark,
@@ -17,7 +17,7 @@ const MAP = {
   'calendar-check': CalendarCheck, 'calendar-clock': CalendarClock, 'chevron-down': ChevronDown,
   'chevron-left': ChevronLeft, 'chevron-right': ChevronRight, 'chevron-up': ChevronUp,
   'circle': Circle, 'aide': CircleQuestionMark, 'check-circle-2': CircleCheckBig, 'x-circle': CircleX, 'database': Database, 'download': Download,
-  'eye': Eye, 'file-check': FileCheck, 'file-down': FileDown, 'file-text': FileText,
+  'eye': Eye, 'eye-off': EyeOff, 'file-check': FileCheck, 'file-down': FileDown, 'file-text': FileText,
   'file-up': FileUp, 'history': History, 'layout-dashboard': LayoutDashboard, 'log-out': LogOut,
   'mail': Mail, 'map-pin': MapPin, 'pencil': Pencil, 'phone': Phone, 'phone-call': PhoneCall, 'phone-off': PhoneOff,
   'pin': Pin, 'play': Play, 'plus': Plus, 'refresh-cw': RefreshCw, 'search': Search, 'settings': Settings,

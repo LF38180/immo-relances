@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useAuth } from '../hooks/useAuth'
 import toast from 'react-hot-toast'
+import ChampMotDePasse from '../components/ui/ChampMotDePasse'
 
 export default function LoginPage() {
   const { login } = useAuth()
@@ -76,9 +77,8 @@ export default function LoginPage() {
               <label className="block text-xs font-semibold text-quai-navy uppercase tracking-wider mb-1.5">
                 Mot de passe
               </label>
-              <input
-                type="password" required
-                className="input"
+              <ChampMotDePasse
+                required autoComplete="current-password"
                 value={form.password}
                 onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
                 placeholder="••••••••"
