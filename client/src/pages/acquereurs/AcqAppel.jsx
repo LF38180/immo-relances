@@ -405,8 +405,13 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, onPasser, 
               Appel interdit (stop, plafond, hors file) : le bouton ne compose pas. */}
           {tels.length === 0 ? <Pastille ton="ambre">Pas de téléphone</Pastille> : (
             <div className="w-full sm:w-auto flex flex-wrap gap-1.5">
+              {/* Téléphone barré = appel interdit pour CETTE personne. En lecture seule
+                  (l'admin regarde l'écran de l'agent), le numéro ne compose pas mais
+                  il n'est pas barré : sinon toutes les fiches semblaient bloquées. */}
               {tels.map((t, i) => bloque || lecture
-                ? <span key={t} className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 rounded-xl bg-quai-light text-quai-muted border border-quai-border px-4 py-2.5"><Icon name="phone-off" size="sm" /> {t}</span>
+                ? <span key={t} title={bloque ? 'Appel interdit pour cette personne' : 'Lecture seule : le numéro ne se compose pas depuis cet écran'}
+                    className={`flex-1 sm:flex-none inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-2.5 ${bloque ? 'bg-quai-light text-quai-muted border-quai-border' : 'bg-white text-quai-navy border-quai-border'}`}>
+                    <Icon name={bloque ? 'phone-off' : 'phone'} size="sm" /> {t}</span>
                 : <a key={t} href={`tel:${t.replace(/\s/g, '')}`} className={`flex-1 sm:flex-none inline-flex items-center justify-center gap-2 rounded-xl font-semibold px-4 py-2.5 transition-colors ${i === 0 ? 'bg-quai-gold text-quai-navy hover:bg-quai-goldlt' : 'bg-white text-quai-navy border border-quai-gold hover:bg-quai-light'}`}>
                     <Icon name="phone" size="sm" /> {t}
                   </a>)}
