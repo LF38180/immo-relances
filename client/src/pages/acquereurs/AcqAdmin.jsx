@@ -123,6 +123,29 @@ function Import({ onFait, users }) {
   )
 }
 
+// Les contacts d'essai (nom commençant par ZZTEST) : les seuls que l'on peut
+// effacer, et seulement depuis l'administration. Le bloc ne s'affiche que s'il y en a.
+function Essais({ cle, onFait }) {
+  const [liste, setListe] = useState([]), [mot, setMot] = useState('')
+  const charger = useCallback(() => api.get('/acquereurs/admin/essais').then(r => setListe(r.data.contacts)).catch(() => setListe([])), [])
+  useEffect(() => { charger() }, [charger, cle])
+  if (!liste.length) return null
+  const retirer = () => api.delete('/acquereurs/admin/essais', { data: { confirmer: mot } })
+    .then(r => { toast.success(`${r.data.retires} contact${r.data.retires > 1 ? 's' : ''} d’essai effacé${r.data.retires > 1 ? 's' : ''}`); setMot(''); charger(); onFait?.() }).catch(err)
+  return (
+    <Bloc titre={`Contacts d’essai (${liste.length})`} icon="file-check" aide="Les contacts dont le nom commence par ZZTEST. Ce sont les seuls que l’appli accepte d’effacer.">
+      <ul className="text-sm divide-y divide-quai-border mb-2">
+        {liste.map(c => <li key={c.id_contact} className="py-1.5">{c.prenom} {c.nom} <span className="text-[11px] text-quai-muted">n° {c.id_contact} · {c.fiches} recherche{c.fiches > 1 ? 's' : ''} · {c.appels} appel{c.appels > 1 ? 's' : ''}</span></li>)}
+      </ul>
+      <p className="text-xs text-quai-muted mb-2">Effacer retire ces contacts de l’appli, avec leurs recherches et leurs appels d’essai. C’est définitif, et cela ne touche pas Modelo : ils y restent tant que vous ne les y supprimez pas.</p>
+      <div className="flex flex-wrap items-center gap-2">
+        <input className="input max-w-[12rem]" value={mot} onChange={e => setMot(e.target.value)} placeholder="Tapez ZZTEST" aria-label="Tapez ZZTEST pour confirmer" autoCapitalize="characters" />
+        <button className="btn-secondary btn-sm text-red-700 border-red-200 disabled:opacity-40" disabled={mot.trim().toUpperCase() !== 'ZZTEST'} onClick={retirer}>Effacer les contacts d’essai</button>
+      </div>
+    </Bloc>
+  )
+}
+
 function Ecartes({ cle }) {
   const [d, setD] = useState(null), [tel, setTel] = useState({})
   const charger = useCallback(() => api.get('/acquereurs/admin/contacts').then(r => setD(r.data)).catch(err), [])
@@ -406,6 +429,7 @@ export default function AcqAdmin({ section = null, onUtilisateurs }) {
       {(!section || section === 'report') && <Report cle={cle} />}
       {(!section || section === 'report') && <Transmettre />}
       {(!section || section === 'import') && <Ecartes cle={cle} />}
+      {(!section || section === 'import') && <Essais cle={cle} onFait={rafraichir} />}
       {(!section || section === 'parametres') && <Scripts />}
     </div>
   )

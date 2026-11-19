@@ -704,6 +704,37 @@ router.post('/admin/oppositions/:id/vue', admin, (req, res) => {
   res.json({ ok: true });
 });
 
+// --- Contacts d'essai -----------------------------------------------------------
+//
+// Pour éprouver le report Modelo sans toucher à un vrai client, on importe des
+// contacts fictifs dont le NOM commence par « ZZTEST ». Ce sont les SEULS que
+// l'application accepte d'effacer, et seule l'administration le peut : toute
+// autre fiche se sort de la file, elle ne se supprime pas.
+const ESSAI = "UPPER(TRIM(nom)) LIKE 'ZZTEST%'";
+const contactsEssai = () => db.prepare(`SELECT c.id_contact, c.nom, c.prenom,
+    (SELECT COUNT(*) FROM acq_fiches f WHERE f.id_contact = c.id_contact) AS fiches,
+    (SELECT COUNT(*) FROM acq_appels a WHERE a.id_contact = c.id_contact) AS appels
+  FROM acq_contacts c WHERE ${ESSAI} ORDER BY c.prenom`).all();
+router.get('/admin/essais', admin, (req, res) => res.json({ contacts: contactsEssai() }));
+router.delete('/admin/essais', admin, (req, res) => {
+  // Un mot à retaper : on n'efface pas d'un clic distrait.
+  if (String(req.body?.confirmer || '').trim().toUpperCase() !== 'ZZTEST') return res.status(400).json({ error: 'Tapez ZZTEST pour confirmer.' });
+  const liste = contactsEssai();
+  if (!liste.length) return res.json({ ok: true, retires: 0 });
+  const ids = liste.map(c => c.id_contact);
+  const ou = ids.map(() => '?').join(',');
+  db.transaction(() => {
+    // Les enfants d'abord (clés étrangères), le contact en dernier.
+    for (const table of ['acq_appels', 'acq_modelo_reports', 'acq_transmissions', 'acq_oppositions_vues', 'acq_fiches']) {
+      db.prepare(`DELETE FROM ${table} WHERE id_contact IN (${ou})`).run(...ids);
+    }
+    // Garde-fou final : la condition sur le nom est répétée dans l'effacement lui-même.
+    db.prepare(`DELETE FROM acq_contacts WHERE id_contact IN (${ou}) AND ${ESSAI}`).run(...ids);
+  })();
+  journaliser({ id: req.moi.id, nom_complet: req.moi.nom_complet }, 'ESSAIS_RETIRES', { details: { module: 'acquereurs', contacts: liste.map(c => `${c.prenom} ${c.nom} (n° ${c.id_contact})`) } });
+  res.json({ ok: true, retires: liste.length });
+});
+
 const PARTIES = ['accueil', '0', '1', '2.1', '2.2', '2.3', '3', 'mandat', '4', 'repondeur', 'sms'];
 router.get('/admin/scripts', admin, (req, res) => {
   const s = Object.fromEntries(db.prepare('SELECT partie, texte FROM acq_scripts').all().map(x => [x.partie, x.texte]));
