@@ -416,6 +416,26 @@ function BarreAttribution({ nb, conseillers, destinataire, setDestinataire, envo
 // et les routes pour le faire existaient sans écran : trente-quatre clients
 // que personne ne pouvait débloquer, invisibles. Le nom tel qu'il figure au
 // registre est ce qui permet de trancher à l'œil, sans appeler.
+// La liste des fiches a l'identite douteuse, en fichier pour tableur.
+const VERDICTS = { CONFIRME: 'Confirmée : c\'est bien cette personne', GARDEE: 'Gardée : autre personne, mais un vrai client', ECARTE: 'Écartée : ce n\'est pas elle' }
+function exporterAVerifier(lignes) {
+  const cols = [
+    ['Etat', l => (l.verifie ? VERDICTS[l.verifie] || l.verifie : 'À trancher')],
+    ['Tranchée par', l => l.verifie_par], ['Civilité', l => l.civilite], ['Nom', l => l.nom], ['Prénom', l => l.prenom],
+    ['Commune', l => l.commune], ['Conseiller', l => l.conseiller], ['Nom au registre des ventes', l => l.partie_au_registre || 'aucune correspondance'],
+    ['Bien concerné', l => l.bien_concerne], ['Motif', l => l.courrier_motif], ['Script', l => l.script],
+    ['Portable', l => l.tel_portable], ['Fixe', l => l.tel_fixe], ['Identifiant Modelo', l => l.id_modelo],
+  ]
+  const ech = (v) => { const x = v == null ? '' : String(v); return /[";\n]/.test(x) ? '"' + x.replace(/"/g, '""') + '"' : x }
+  const csv = [cols.map(c => c[0]).join(';'), ...lignes.map(l => cols.map(c => ech(c[1](l))).join(';'))].join('\n')
+  const url = URL.createObjectURL(new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' }))
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `anciens-clients-identites-a-verifier-${new Date().toLocaleDateString('fr-CA')}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
 function AVerifier() {
   const [data, setData] = useState(null)
   const [enCours, setEnCours] = useState(null)
@@ -469,6 +489,17 @@ function AVerifier() {
 
       {ouvert && (
         <div className="border-t border-amber-200/60 divide-y divide-quai-border/60">
+          {/* La liste complete, a ouvrir dans un tableur : les fiches a trancher
+              et celles deja tranchees, avec le nom du registre et la decision. */}
+          <div className="p-3 bg-white/70 flex flex-wrap items-center gap-2">
+            <span className="text-[12px] text-quai-muted flex-1 min-w-[12rem]">
+              {data.lignes.length} fiche{data.lignes.length > 1 ? 's' : ''} au total : {aTrancher.length} à trancher, {tranchees.length} déjà tranchée{tranchees.length > 1 ? 's' : ''}.
+            </span>
+            <button onClick={() => exporterAVerifier(data.lignes)}
+              className="text-xs px-3 py-2 rounded-lg border border-quai-navy text-quai-navy bg-white min-h-[2.75rem] inline-flex items-center gap-1.5">
+              <Icon name="download" size="sm" /> Télécharger la liste
+            </button>
+          </div>
           {aTrancher.map(l => (
             <div key={l.id_modelo} className="p-3 bg-white/70">
               <div className="flex flex-wrap items-baseline gap-x-2">
