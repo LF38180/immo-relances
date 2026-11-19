@@ -166,7 +166,7 @@ function BandeauMiseAJour() {
   }, [])
   if (!dispo) return null
   return (
-    <div className="bg-quai-gold text-quai-navy text-xs px-3 py-2 flex items-center gap-2 shrink-0">
+    <div data-bandeau-maj className="bg-quai-gold text-quai-navy text-xs px-3 py-2 flex items-center gap-2 shrink-0">
       <Icon name="refresh-cw" size="sm" className="shrink-0" />
       <span className="flex-1 leading-snug">Une nouvelle version est disponible. Rechargez entre deux appels.</span>
       <button onClick={() => window.location.reload()}

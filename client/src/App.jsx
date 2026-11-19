@@ -5,6 +5,7 @@ import { Toaster } from 'react-hot-toast'
 import { AuthProvider, useAuth } from './hooks/useAuth'
 import LoginPage from './pages/LoginPage'
 import Layout from './components/Layout'
+import BandeauMiseAJour from './components/BandeauMiseAJour'
 
 // Pages chargées à la demande (chunks séparés) — allège le bundle initial.
 const DashboardPage = lazy(() => import('./pages/DashboardPage'))
@@ -235,6 +236,7 @@ function RetourOperation({ onRetour }) {
 export default function App() {
   return (
     <AuthProvider>
+      <BandeauMiseAJour />
       <Toaster position="top-right" toastOptions={{
         style: { borderRadius: '12px', background: '#0D0D2B', color: '#fff', fontSize: '14px' },
         success: { iconTheme: { primary: '#C9A96E', secondary: '#0D0D2B' }, style: { background: '#0D0D2B', color: '#fff' } },

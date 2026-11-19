@@ -74,3 +74,7 @@
   .espace-agence .input, .espace-mission .input { font-size: 16px; }
   .espace-agence .btn-sm, .espace-mission .btn-sm { min-height: 44px; }
 }
+
+/* Le bandeau flottant « nouvelle version » s'efface là où l'opération Anciens
+   clients affiche déjà le sien : jamais deux bandeaux à l'écran. */
+body:has([data-bandeau-maj]) .bandeau-maj-flottant { display: none; }
