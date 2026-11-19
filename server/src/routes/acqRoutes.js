@@ -570,7 +570,9 @@ router.get('/admin/report/etat', admin, (req, res) => {
       AND r.importe_le >= COALESCE(c.modelo_reporte_le, '')
       AND NOT EXISTS (SELECT 1 FROM acq_modelo_reports y WHERE y.id_contact = r.id_contact AND y.statut = 'REPORTE' AND y.id > r.id)
     ORDER BY c.nom, c.prenom`).all();
-  res.json({ telechargement: tel, retour, en_attente_de_retour: !!tel && (!retour || retour.le < tel.le), echecs });
+  // Un fichier téléchargé n'attend son retour que s'il reste quelque chose à reporter :
+  // une fois les contacts d'essai effacés, plus rien n'est en attente.
+  res.json({ telechargement: tel, retour, en_attente_de_retour: !!tel && (!retour || retour.le < tel.le) && M.aReporter().length > 0, echecs });
 });
 
 // Le fichier de retour d'Exploration Modelo, comme pour l'opération anciens
@@ -716,7 +718,7 @@ const contactsEssai = () => db.prepare(`SELECT c.id_contact, c.nom, c.prenom,
     (SELECT COUNT(*) FROM acq_appels a WHERE a.id_contact = c.id_contact) AS appels
   FROM acq_contacts c WHERE ${ESSAI} ORDER BY c.prenom`).all();
 router.get('/admin/essais', admin, (req, res) => res.json({ contacts: contactsEssai() }));
-router.delete('/admin/essais', admin, (req, res) => {
+const effacerEssais = (req, res) => {
   // Un mot à retaper : on n'efface pas d'un clic distrait.
   if (String(req.body?.confirmer || '').trim().toUpperCase() !== 'ZZTEST') return res.status(400).json({ error: 'Tapez ZZTEST pour confirmer.' });
   const liste = contactsEssai();
@@ -732,8 +734,12 @@ router.delete('/admin/essais', admin, (req, res) => {
     db.prepare(`DELETE FROM acq_contacts WHERE id_contact IN (${ou}) AND ${ESSAI}`).run(...ids);
   })();
   journaliser({ id: req.moi.id, nom_complet: req.moi.nom_complet }, 'ESSAIS_RETIRES', { details: { module: 'acquereurs', contacts: liste.map(c => `${c.prenom} ${c.nom} (n° ${c.id_contact})`) } });
-  res.json({ ok: true, retires: liste.length });
-});
+  // Leurs appels partis, ils ne sont plus « à reporter » : le fichier de report est vide d'eux.
+  res.json({ ok: true, retires: liste.length, a_reporter: M.aReporter().length });
+};
+router.delete('/admin/essais', admin, effacerEssais);
+// Même geste en POST : certains réseaux retirent le contenu d'une requête DELETE.
+router.post('/admin/essais/effacer', admin, effacerEssais);
 
 const PARTIES = ['accueil', '0', '1', '2.1', '2.2', '2.3', '3', 'mandat', '4', 'repondeur', 'sms'];
 router.get('/admin/scripts', admin, (req, res) => {

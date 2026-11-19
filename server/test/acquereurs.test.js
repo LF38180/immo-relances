@@ -433,12 +433,22 @@ const t = (n, fn) => { try { fn(); console.log('  OK  ' + n) } catch (e) { conso
     t('effacement refusé à Lilas', () => assert.strictEqual(x.status, 403));
     x = await call('DELETE', '/acquereurs/admin/essais', tAdmin, { confirmer: 'oui' });
     t('effacement refusé sans le mot ZZTEST', () => { assert.strictEqual(x.status, 400); assert.strictEqual(db.prepare('SELECT COUNT(*) n FROM acq_contacts').get().n, nbAvantEssais); });
-    x = await call('DELETE', '/acquereurs/admin/essais', tAdmin, { confirmer: 'zztest' });
+    // Un report téléchargé pour eux, jamais revenu : l'effacement doit vider le report.
+    await call('POST', '/acquereurs/contacts/9002/cloture', tLilas, { cle: 'essai-2', statut_final: 'A_RAPPELER', rappel_le: '2031-01-10', fiches: {} });
+    const pret = (await call('GET', '/acquereurs/admin/report', tAdmin)).body;
+    await call('GET', '/acquereurs/admin/report?format=csv', tAdmin);
+    x = await call('POST', '/acquereurs/admin/essais/effacer', tAdmin, { confirmer: 'zztest' });
     t('effacement par l admin : 2 contacts, leurs recherches et leurs appels', () => {
       assert.strictEqual(x.body.retires, 2);
       assert.strictEqual(db.prepare('SELECT COUNT(*) n FROM acq_contacts').get().n, nbAvantEssais - 2);
       assert.strictEqual(db.prepare("SELECT COUNT(*) n FROM acq_fiches WHERE id_contact IN ('9001','9002')").get().n, 0);
       assert.strictEqual(db.prepare("SELECT COUNT(*) n FROM acq_appels WHERE id_contact IN ('9001','9002')").get().n, 0);
+    });
+    const etat = (await call('GET', '/acquereurs/admin/report/etat', tAdmin)).body;
+    const apresReport = (await call('GET', '/acquereurs/admin/report', tAdmin)).body;
+    t('report Modelo : plus aucune ligne des contacts d essai, plus rien en attente de retour', () => {
+      assert.ok(!(apresReport.lignes || apresReport.fiches || []).some(l => ['9001', '9002'].includes(String(l.id_contact))), 'lignes restantes');
+      if (!apresReport.contacts) assert.strictEqual(etat.en_attente_de_retour, false);
     });
     t('aucun vrai contact touché', () => assert.ok(db.prepare("SELECT 1 FROM acq_contacts WHERE id_contact = '11'").get()));
     x = await call('DELETE', '/acquereurs/admin/essais', tAdmin, { confirmer: 'ZZTEST' });
