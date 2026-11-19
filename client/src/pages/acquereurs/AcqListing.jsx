@@ -67,7 +67,10 @@ export default function AcqListing({ filtreInitial = '', onOuvrir = null }) {
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob)
     a.download = `fichier-acquereurs-${(FILTRES[filtre]?.l || 'tous').toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${new Date().toLocaleDateString('fr-CA')}.csv`; a.click()
   }
-  const puce = (k, vide) => `text-xs px-3 py-1.5 min-h-[2.75rem] md:min-h-0 rounded-full border whitespace-nowrap transition-colors ${filtre === k ? 'bg-quai-navy text-white border-quai-navy' : vide ? 'bg-transparent border-dashed border-quai-border text-quai-muted' : 'bg-white border-quai-border text-quai-navy hover:border-quai-gold'}`
+  // Les filtres pèsent moins que le nom de leur famille : fond clair et texte
+  // courant au repos, marine seulement pour celui qui est choisi. Un filtre qui
+  // ne contient personne s'efface (gris, sans fond).
+  const puce = (k, vide) => `text-xs px-2.5 py-1 min-h-[2.75rem] md:min-h-0 rounded-full border whitespace-nowrap transition-colors ${filtre === k ? 'bg-quai-navy text-white border-quai-navy font-medium' : vide ? 'bg-transparent border-transparent text-quai-muted/70' : 'bg-quai-light border-transparent text-quai-text hover:border-quai-gold'}`
   return (
     <div className="p-4 md:p-6 max-w-5xl mx-auto espace-mission">
       <div className="flex flex-wrap gap-2 mb-2">
@@ -77,14 +80,22 @@ export default function AcqListing({ filtreInitial = '', onOuvrir = null }) {
         </div>
         <button onClick={exporter} className="btn-secondary inline-flex items-center gap-1.5"><Icon name="download" size="sm" /> Exporter ({visibles.length})</button>
       </div>
-      {GROUPES.map(([titre, cles]) => (
-        <div key={titre} className="flex items-center gap-1.5 mb-1.5 overflow-x-auto no-scrollbar md:flex-wrap md:overflow-visible">
-          <span className="text-[10px] uppercase tracking-wider text-quai-muted w-16 shrink-0 sticky left-0 bg-quai-light md:static py-1">{titre}</span>
-          {cles.map(k => { const nb = n(k); return (
-            <button key={k} className={puce(k, !nb)} onClick={() => setFiltre(k)}>{FILTRES[k].l} <b className="font-semibold">{nb}</b></button>
-          ) })}
-        </div>
-      ))}
+      {/* Une ligne par famille de filtres, dans un même cadre. Le nom de la
+          famille se lit d'abord (marine, gras), les filtres ensuite. */}
+      <div className="bg-white border border-quai-border rounded-xl divide-y divide-quai-border/70 overflow-hidden">
+        {GROUPES.map(([titre, cles]) => (
+          <div key={titre} className="flex items-center gap-1.5 px-3 py-1.5 overflow-x-auto no-scrollbar md:overflow-visible">
+            <span className="text-[13px] font-semibold text-quai-navy w-[4.5rem] shrink-0 sticky left-0 bg-white md:static py-1 border-r border-quai-border/70 mr-1.5 self-stretch flex items-center">{titre}</span>
+            {/* Dans leur propre bloc : sur ordinateur, une seconde ligne de filtres
+                reste alignée sous la première, pas sous le nom de la famille. */}
+            <div className="flex items-center gap-1.5 md:flex-wrap">
+              {cles.map(k => { const nb = n(k); return (
+                <button key={k} className={puce(k, !nb)} aria-pressed={filtre === k} onClick={() => setFiltre(k)}>{FILTRES[k].l} <b className={filtre === k ? 'font-semibold' : 'font-semibold text-quai-navy'}>{nb}</b></button>
+              ) })}
+            </div>
+          </div>
+        ))}
+      </div>
       <ul className="bg-white border border-quai-border rounded-xl divide-y divide-quai-border mt-2">
         {visibles.slice(0, 300).map(c => (
           <li key={c.id_contact}>
