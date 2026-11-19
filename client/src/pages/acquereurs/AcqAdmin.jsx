@@ -146,6 +146,62 @@ function Essais({ cle, onFait }) {
   )
 }
 
+// Vider toutes les données de la mission, comme pour la Mission Estimés : le mot
+// EFFACER, une sauvegarde écrite avant, et tout part dans une corbeille d'où
+// l'on peut le remettre. Les scripts et les accès ne bougent pas.
+function Vider({ cle, onFait }) {
+  const [d, setD] = useState(null), [mot, setMot] = useState(''), [envoi, setEnvoi] = useState(false)
+  const charger = useCallback(() => api.get('/acquereurs/admin/corbeille').then(r => setD(r.data)).catch(() => setD(null)), [])
+  useEffect(() => { charger() }, [charger, cle])
+  if (!d) return null
+  const jour = (lot) => new Date(lot.replace(' ', 'T') + 'Z').toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+  const vider = async () => {
+    if (mot !== 'EFFACER' || envoi) return
+    setEnvoi(true)
+    try {
+      const r = await api.post('/acquereurs/admin/vider', { confirmation: 'EFFACER' }, { timeout: 120000 })
+      toast.success(`${r.data.contacts} contact${r.data.contacts > 1 ? 's' : ''} envoyé${r.data.contacts > 1 ? 's' : ''} à la corbeille. Sauvegarde ${r.data.sauvegarde} écrite avant.`, { duration: 8000 })
+      setMot(''); charger(); onFait?.()
+    } catch (e) { err(e) } finally { setEnvoi(false) }
+  }
+  const remettre = (lot) => api.post('/acquereurs/admin/corbeille/restaurer', { lot })
+    .then(r => { toast.success(`${r.data.contacts} contact${r.data.contacts > 1 ? 's' : ''} remis en place, avec leurs appels`); charger(); onFait?.() }).catch(err)
+  return (
+    <Bloc titre="Données de la mission" icon="database" aide="Vider la mission avant un ré-import propre. Rien n’est détruit : tout part en corbeille.">
+      {d.lots.length > 0 && (
+        <div className="mb-3">
+          <div className="text-xs font-medium text-quai-muted mb-1">Corbeille</div>
+          <ul className="text-sm divide-y divide-quai-border">
+            {d.lots.map(l => (
+              <li key={l.lot} className="py-1.5 flex flex-wrap items-center gap-2">
+                <span className="flex-1 min-w-[12rem]">Vidé le {jour(l.lot)}{l.par ? ` par ${l.par}` : ''} <span className="text-[11px] text-quai-muted">· {l.contacts} contact{l.contacts > 1 ? 's' : ''}, {l.fiches} recherche{l.fiches > 1 ? 's' : ''}, {l.appels} appel{l.appels > 1 ? 's' : ''}</span></span>
+                <button className="btn-secondary btn-sm disabled:opacity-40" disabled={d.en_base.contacts > 0} title={d.en_base.contacts > 0 ? 'La mission contient des contacts : videz-la d’abord' : ''} onClick={() => remettre(l.lot)}>Remettre en place</button>
+              </li>
+            ))}
+          </ul>
+          {d.en_base.contacts > 0 && <p className="text-[11px] text-quai-muted mt-1">Pour remettre un lot, la mission doit d’abord être vide : on ne mélange pas un ancien fichier avec un nouvel import.</p>}
+        </div>
+      )}
+      <div className="rounded-lg border-2 border-red-200 p-3">
+        <div className="flex items-start gap-2 mb-2">
+          <Icon name="alert-triangle" size="md" className="text-red-600 flex-shrink-0 mt-0.5" />
+          <p className="text-sm text-quai-text">
+            <b className="text-quai-navy">Vider toutes les données de la Mission Acquéreurs</b> : les {d.en_base.contacts} contact{d.en_base.contacts > 1 ? 's' : ''}, leurs recherches, les {d.en_base.appels} appel{d.en_base.appels > 1 ? 's' : ''} et l’historique des reports.
+            Une sauvegarde est écrite juste avant, et tout reste récupérable depuis la corbeille ci-dessus. Les scripts, les accès et les autres missions ne sont <b>pas</b> concernés. Modelo n’est pas touché.
+          </p>
+        </div>
+        <label className="block text-xs font-medium text-quai-muted mb-1">Tapez <span className="font-mono font-bold">EFFACER</span> pour confirmer</label>
+        <div className="flex flex-wrap gap-2">
+          <input className="input w-48" value={mot} onChange={e => setMot(e.target.value)} placeholder="EFFACER" aria-label="Tapez EFFACER pour confirmer" />
+          <button onClick={vider} disabled={mot !== 'EFFACER' || envoi || !d.en_base.contacts} className="btn-danger inline-flex items-center gap-1.5 disabled:opacity-40">
+            <Icon name="trash-2" size="sm" /> {envoi ? 'Vidage…' : 'Vider la mission'}
+          </button>
+        </div>
+      </div>
+    </Bloc>
+  )
+}
+
 function Ecartes({ cle }) {
   const [d, setD] = useState(null), [tel, setTel] = useState({})
   const charger = useCallback(() => api.get('/acquereurs/admin/contacts').then(r => setD(r.data)).catch(err), [])
@@ -431,6 +487,7 @@ export default function AcqAdmin({ section = null, onUtilisateurs }) {
       {(!section || section === 'import') && <Ecartes cle={cle} />}
       {(!section || section === 'import' || section === 'report') && <Essais cle={cle} onFait={rafraichir} />}
       {(!section || section === 'parametres') && <Scripts />}
+      {(!section || section === 'parametres') && <Vider cle={cle} onFait={rafraichir} />}
     </div>
   )
 }

@@ -1034,6 +1034,13 @@ db.exec(`
     le TEXT NOT NULL DEFAULT (datetime('now')), par TEXT
   );
   CREATE INDEX IF NOT EXISTS idx_acq_transmissions ON acq_transmissions(id_contact, type);
+  -- Corbeille de la Mission Acquéreurs : « vider les données » y range chaque
+  -- ligne telle quelle (en JSON), par lot, pour pouvoir tout remettre.
+  CREATE TABLE IF NOT EXISTS acq_corbeille (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    lot TEXT NOT NULL, par TEXT, table_nom TEXT NOT NULL, ligne TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_acq_corbeille_lot ON acq_corbeille(lot);
   CREATE TABLE IF NOT EXISTS acq_oppositions_vues (
     id_contact TEXT PRIMARY KEY, le TEXT NOT NULL DEFAULT (datetime('now')), par TEXT
   );

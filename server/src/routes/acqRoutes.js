@@ -741,6 +741,69 @@ router.delete('/admin/essais', admin, effacerEssais);
 // Même geste en POST : certains réseaux retirent le contenu d'une requête DELETE.
 router.post('/admin/essais/effacer', admin, effacerEssais);
 
+// --- Vider les données de la mission ------------------------------------------
+//
+// Même geste que pour la Mission Estimés : le mot EFFACER, exigé par le serveur,
+// une sauvegarde complète écrite juste avant, et rien de détruit : contacts,
+// recherches, appels et reports partent dans une corbeille, par lot, d'où l'on
+// peut tout remettre. Les scripts et les accès ne sont pas concernés.
+// L'ordre compte : les enfants d'abord à l'aller, les parents d'abord au retour.
+const TABLES_DONNEES = ['acq_appels', 'acq_modelo_reports', 'acq_transmissions', 'acq_oppositions_vues', 'acq_fiches', 'acq_contacts', 'acq_reports', 'acq_telechargements'];
+const lotsCorbeille = () => db.prepare(`SELECT lot, MAX(par) AS par, COUNT(*) AS lignes,
+    SUM(table_nom = 'acq_contacts') AS contacts, SUM(table_nom = 'acq_fiches') AS fiches, SUM(table_nom = 'acq_appels') AS appels
+  FROM acq_corbeille GROUP BY lot ORDER BY lot DESC`).all();
+router.get('/admin/corbeille', admin, (req, res) => res.json({ lots: lotsCorbeille(),
+  en_base: { contacts: db.prepare('SELECT COUNT(*) n FROM acq_contacts').get().n, appels: db.prepare('SELECT COUNT(*) n FROM acq_appels').get().n } }));
+
+router.post('/admin/vider', admin, async (req, res) => {
+  if (req.body?.confirmation !== 'EFFACER') return res.status(400).json({ error: 'Confirmation requise : EFFACER' });
+  let sauvegarde = null;
+  try { sauvegarde = require('path').basename(await require('../sauvegarde').sauvegarder()); }
+  catch (e) { return res.status(500).json({ error: 'Sauvegarde impossible, rien n’a été effacé : ' + e.message }); }
+  const lot = new Date().toISOString().slice(0, 23).replace('T', ' ');
+  const compte = {};
+  try {
+    db.transaction(() => {
+      const ranger = db.prepare('INSERT INTO acq_corbeille (lot, par, table_nom, ligne) VALUES (?, ?, ?, ?)');
+      for (const table of TABLES_DONNEES) {
+        const lignes = db.prepare(`SELECT * FROM ${table}`).all();
+        for (const l of lignes) ranger.run(lot, req.moi.nom_complet, table, JSON.stringify(l));
+        db.prepare(`DELETE FROM ${table}`).run();
+        compte[table] = lignes.length;
+      }
+    })();
+  } catch (e) {
+    console.error('[acquereurs] vidage —', e);
+    return res.status(500).json({ error: 'Vidage impossible. Rien n’a été modifié.' });
+  }
+  journaliser({ id: req.moi.id, nom_complet: req.moi.nom_complet }, 'DONNEES_VIDEES', { details: { module: 'acquereurs', lot, sauvegarde, contacts: compte.acq_contacts, fiches: compte.acq_fiches, appels: compte.acq_appels } });
+  res.json({ ok: true, lot, sauvegarde, contacts: compte.acq_contacts, fiches: compte.acq_fiches, appels: compte.acq_appels });
+});
+
+// Remettre un lot. Refusé s'il reste des contacts en base : on ne mélange pas un
+// ancien fichier avec un nouvel import.
+router.post('/admin/corbeille/restaurer', admin, (req, res) => {
+  const lot = String(req.body?.lot || '');
+  const lignes = db.prepare('SELECT table_nom, ligne FROM acq_corbeille WHERE lot = ? ORDER BY id').all(lot);
+  if (!lignes.length) return res.status(404).json({ error: 'Lot introuvable dans la corbeille' });
+  if (db.prepare('SELECT COUNT(*) n FROM acq_contacts').get().n) return res.status(409).json({ error: 'La mission contient déjà des contacts. Videz-la d’abord, ou gardez ce lot en corbeille.' });
+  const compte = {};
+  db.transaction(() => {
+    for (const table of [...TABLES_DONNEES].reverse().sort((a, b) => (a === 'acq_contacts' ? -1 : b === 'acq_contacts' ? 1 : a === 'acq_fiches' ? -1 : b === 'acq_fiches' ? 1 : 0))) {
+      const connues = new Set(db.prepare(`PRAGMA table_info(${table})`).all().map(c => c.name));
+      for (const l of lignes.filter(x => x.table_nom === table)) {
+        const o = JSON.parse(l.ligne);
+        const cols = Object.keys(o).filter(k => connues.has(k));
+        db.prepare(`INSERT OR IGNORE INTO ${table} (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`).run(...cols.map(k => o[k]));
+        compte[table] = (compte[table] || 0) + 1;
+      }
+    }
+    db.prepare('DELETE FROM acq_corbeille WHERE lot = ?').run(lot);
+  })();
+  journaliser({ id: req.moi.id, nom_complet: req.moi.nom_complet }, 'DONNEES_RESTAUREES', { details: { module: 'acquereurs', lot, contacts: compte.acq_contacts || 0 } });
+  res.json({ ok: true, lot, contacts: compte.acq_contacts || 0, fiches: compte.acq_fiches || 0, appels: compte.acq_appels || 0 });
+});
+
 const PARTIES = ['accueil', '0', '1', '2.1', '2.2', '2.3', '3', 'mandat', '4', 'repondeur', 'sms'];
 router.get('/admin/scripts', admin, (req, res) => {
   const s = Object.fromEntries(db.prepare('SELECT partie, texte FROM acq_scripts').all().map(x => [x.partie, x.texte]));

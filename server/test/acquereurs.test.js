@@ -453,6 +453,35 @@ const t = (n, fn) => { try { fn(); console.log('  OK  ' + n) } catch (e) { conso
     t('aucun vrai contact touché', () => assert.ok(db.prepare("SELECT 1 FROM acq_contacts WHERE id_contact = '11'").get()));
     x = await call('DELETE', '/acquereurs/admin/essais', tAdmin, { confirmer: 'ZZTEST' });
     t('rejoué : plus rien à effacer', () => assert.strictEqual(x.body.retires, 0));
+
+    // Vider les données de la mission : EFFACER, sauvegarde, corbeille, remise.
+    const nb = (t) => db.prepare(`SELECT COUNT(*) n FROM ${t}`).get().n;
+    const avantVidage = { contacts: nb('acq_contacts'), fiches: nb('acq_fiches'), appels: nb('acq_appels'), scripts: nb('acq_scripts') };
+    x = await call('POST', '/acquereurs/admin/vider', tLilas, { confirmation: 'EFFACER' });
+    t('vider : refusé à Lilas', () => assert.strictEqual(x.status, 403));
+    x = await call('POST', '/acquereurs/admin/vider', tAdmin, { confirmation: 'oui' });
+    t('vider : refusé sans le mot EFFACER', () => { assert.strictEqual(x.status, 400); assert.strictEqual(nb('acq_contacts'), avantVidage.contacts); });
+    x = await call('POST', '/acquereurs/admin/vider', tAdmin, { confirmation: 'EFFACER' });
+    t('vider : sauvegarde écrite, tout part en corbeille, la mission est vide', () => {
+      assert.strictEqual(x.status, 200); assert.ok(x.body.sauvegarde, 'sauvegarde'); assert.strictEqual(x.body.contacts, avantVidage.contacts);
+      assert.strictEqual(nb('acq_contacts'), 0); assert.strictEqual(nb('acq_fiches'), 0); assert.strictEqual(nb('acq_appels'), 0);
+    });
+    t('vider : les scripts ne sont pas touchés', () => assert.strictEqual(nb('acq_scripts'), avantVidage.scripts));
+    const lot = x.body.lot;
+    x = await call('GET', '/acquereurs/file', tLilas);
+    t('après vidage : la file de Lilas est vide, sans erreur', () => { assert.strictEqual(x.status, 200); assert.strictEqual((x.body.file || []).length, 0); });
+    x = await call('GET', '/acquereurs/admin/report', tAdmin);
+    t('après vidage : plus rien à reporter', () => assert.strictEqual(x.body.fiches, 0));
+    x = await call('GET', '/acquereurs/admin/corbeille', tAdmin);
+    t('corbeille : le lot y est, avec ses nombres', () => { assert.strictEqual(x.body.lots.length, 1); assert.strictEqual(x.body.lots[0].contacts, avantVidage.contacts); });
+    x = await call('POST', '/acquereurs/admin/corbeille/restaurer', tAdmin, { lot });
+    t('remettre le lot : tout revient à l identique', () => {
+      assert.strictEqual(x.status, 200);
+      assert.strictEqual(nb('acq_contacts'), avantVidage.contacts); assert.strictEqual(nb('acq_fiches'), avantVidage.fiches); assert.strictEqual(nb('acq_appels'), avantVidage.appels);
+      assert.strictEqual(nb('acq_corbeille'), 0);
+    });
+    x = await call('GET', '/acquereurs/contacts/11', tLilas);
+    t('après remise : une fiche se rouvre', () => assert.strictEqual(x.status, 200));
   }
 
   db.close(); srv.kill();
