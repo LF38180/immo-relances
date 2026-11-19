@@ -131,7 +131,7 @@ function AppConnecte({ user, page, setPage }) {
     : immoRelances === 'acquereurs'
       ? { id: 'immo', titre: 'Immo Relances', aide: `Mission Acquéreurs · ${acq.contacts} personne${acq.contacts > 1 ? 's' : ''}`, image: '/marque/mission-acquereurs-carre-bleu.png' }
       : user.role === 'admin'
-        ? { id: 'immo', titre: 'Immo Relances', aide: 'Tableau de bord, contacts, supervision, administration', icon: 'layout-dashboard' }
+        ? { id: 'immo', titre: 'Immo Relances', aide: 'Tableau de bord, contacts, supervision, administration', image: '/marque/immorelances-carre-bleu.png' }
         : user.role === 'manager'
           ? { id: 'immo', titre: 'Immo Relances', aide: 'Tableau de bord et supervision de l’agence', image: '/marque/immorelances-carre-bleu.png' }
           : { id: 'immo', titre: 'Immo Relances', aide: espaceAcq ? 'Vos relances et la Mission Acquéreurs' : 'Vos sessions d’appels habituelles', image: '/marque/immorelances-carre-bleu.png' }
