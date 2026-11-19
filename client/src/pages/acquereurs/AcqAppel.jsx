@@ -685,7 +685,14 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, onPasser, 
                   </div>
                 ))}
               </div>
-              <p className="text-[11px] text-quai-muted mt-1">Indispensable = il refuse de visiter sans (champ de rapprochement Modelo). Le reste part dans les Précisions.</p>
+              <p className="text-[11px] text-quai-muted mt-1">Seul « Indispensable » filtre les biens que Modelo lui proposera (il refuse de visiter sans). « Important », « Optionnel » et « Rédhibitoire » restent écrits dans les Précisions, sans filtrer.</p>
+              {/* Vérifié dans Modelo le 19/11 : un séjour minimum obligatoire écarte aussi
+                  les biens dont la surface du séjour n'a pas été saisie. */}
+              {(p.criteres || []).some(x => x.critere === 'Surface du séjour' && x.niveau === 'INDISPENSABLE') && (
+                <p className="text-[12px] text-amber-900 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5 mt-1.5">
+                  Surface du séjour en « Indispensable » : Modelo écartera aussi les biens dont le séjour n’est pas renseigné. À réserver à une vraie exigence ; sinon mettez « Important ».
+                </p>
+              )}
               <div className="mt-2"><Champ label="Autres critères, avec ses mots (étage, exposition, vue, travaux, stationnement, calme…)">
                 <textarea className="input min-h-[4rem] mt-0.5" maxLength={1000} value={p.criteres_libre || ''} onChange={e => set('criteres_libre', e.target.value)} /></Champ>
                 <p className="text-[11px] text-quai-muted mt-1">Texte libre : il part tel quel dans les Précisions de la recherche, dans Modelo.</p></div>
