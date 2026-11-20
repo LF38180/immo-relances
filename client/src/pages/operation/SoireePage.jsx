@@ -128,6 +128,20 @@ export default function SoireePage() {
     catch (e) { toast.error(e.messageLisible || 'Annulation impossible') }
   }
 
+  // Invitation faite par SMS ou par téléphone, pour qui n'a pas de mail utilisable.
+  const noter = async (l, canal) => {
+    try {
+      await api.post(`/operation/soiree/contacts/${encodeURIComponent(l.id_modelo)}/invitation`, { canal })
+      toast.success(`${l.prenom} ${l.nom} : invitation par ${canal === 'SMS' ? 'SMS' : 'téléphone'} notée`)
+      charger()
+    } catch (e) { toast.error(e.messageLisible || 'Échec') }
+  }
+  const defaire = async (l) => {
+    if (!window.confirm(`Retirer l’invitation notée pour ${l.prenom} ${l.nom} ?\n\nLa fiche reviendra dans la liste à inviter. La ligne reste en base, marquée annulée.`)) return
+    try { await api.post(`/operation/soiree/contacts/${encodeURIComponent(l.id_modelo)}/invitation/annuler`); charger() }
+    catch (e) { toast.error(e.messageLisible || 'Échec') }
+  }
+
   if (erreur) return <div className="p-6 text-sm text-quai-muted">Impossible de charger le suivi de la soirée. <button className="underline" onClick={charger}>Réessayer</button></div>
   if (!data) return <div className="p-6 text-sm text-quai-muted animate-pulse">Chargement…</div>
   const c = data.compteurs
@@ -184,7 +198,7 @@ export default function SoireePage() {
         {/* 3. Où on en est */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
           <Chiffre n={c.invites.total} label="Personnes invitées"
-            sous={`${c.invites.personnalisee} perso. · ${c.invites.generique} génér.${c.invites.meme_adresse ? ` · dont ${c.invites.meme_adresse} par l’adresse d’une autre fiche` : ''}`} />
+            sous={`${c.invites.personnalisee} perso. · ${c.invites.generique} génér.${c.invites.par_sms ? ` · ${c.invites.par_sms} par SMS` : ''}${c.invites.par_telephone ? ` · ${c.invites.par_telephone} par téléphone` : ''}${c.invites.meme_adresse ? ` · dont ${c.invites.meme_adresse} par l’adresse d’une autre fiche` : ''}`} />
           <Chiffre n={c.a_confirmer} label="À confirmer" sous="Générique reçue, puis oui au téléphone" />
           <Chiffre n={c.stop_mail + c.sans_email} label="Par téléphone ou SMS" sous={`${c.sans_email} sans e-mail · ${c.stop_mail} stop mail`} />
           <Chiffre n={c.exclus.total} label="Pas d’invitation"
@@ -241,6 +255,16 @@ export default function SoireePage() {
                 <span className="text-[12px] text-quai-muted basis-full sm:basis-auto sm:ml-auto">
                   {partout && <b className="text-quai-navy font-medium">{(LISTES.find(x => x.f(l)) || {}).label} · </b>}{detail(l, data.motifs)}
                 </span>
+                {(l.statut === 'STOP_MAIL' || l.statut === 'SANS_EMAIL') && (
+                  <span className="basis-full flex flex-wrap items-center gap-2 mt-1" data-noter>
+                    <span className="text-[12px] text-quai-muted">Invitation faite :</span>
+                    <button onClick={() => noter(l, 'SMS')} className="text-xs px-3 py-2 rounded-lg border border-quai-navy text-quai-navy bg-white min-h-[2.5rem]">par SMS</button>
+                    <button onClick={() => noter(l, 'TELEPHONE')} className="text-xs px-3 py-2 rounded-lg border border-quai-navy text-quai-navy bg-white min-h-[2.5rem]">par téléphone</button>
+                  </span>
+                )}
+                {l.statut === 'INVITE' && l.invitation.vague === 0 && !l.invitation.via && (
+                  <button onClick={() => defaire(l)} className="text-[12px] text-red-700 underline">Retirer</button>
+                )}
               </div>
             ))}
             {!visibles.length && <div className="p-4 text-sm text-quai-muted">Personne dans cette liste.</div>}
@@ -257,7 +281,10 @@ export default function SoireePage() {
 function detail(l, motifs) {
   if (l.statut === 'INVITE') {
     const i = l.invitation
-    return `${TYPE[i.type]}, vague ${i.vague} du ${dateFr(i.envoye_le)}${i.via ? ' (même adresse qu’une autre fiche)' : ''}`
+    const quand = i.vague === 0
+      ? `par ${i.canal === 'SMS' ? 'SMS' : 'téléphone'} le ${dateFr(i.envoye_le)}${i.par ? ` (${i.par})` : ''}`
+      : `vague ${i.vague} du ${dateFr(i.envoye_le)}`
+    return `${TYPE[i.type]}, ${quand}${i.via ? ' (même adresse qu’une autre fiche)' : ''}`
       + (l.a_confirmer ? ' · a dit oui depuis' : '') + (l.motif ? ` · depuis : ${motifs[l.motif].toLowerCase()}` : '')
   }
   if (l.statut === 'EXCLU') return motifs[l.motif] + (l.oui ? ' · avait dit oui à la soirée' : '')

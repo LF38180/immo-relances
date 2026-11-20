@@ -1655,6 +1655,23 @@ router.post('/soiree/envoye', accesSoiree, (req, res) => {
   res.json(r);
 });
 
+// Invitation faite par SMS ou par téléphone : notée à la main, fiche par fiche.
+router.post('/soiree/contacts/:id/invitation', accesSoiree, (req, res) => {
+  const moi = identite(req);
+  const r = SO.noterInvitation({ id_modelo: req.params.id, canal: String(req.body?.canal || '').toUpperCase(),
+    envoye_le: req.body?.envoye_le, par: moi?.nom_complet });
+  if (r.erreur) return res.status(r.statut || 400).json({ error: r.erreur });
+  journaliser(moi, 'SOIREE_INVITATION', { id_modelo: req.params.id, details: { canal: r.canal, type: r.type } });
+  res.json(r);
+});
+router.post('/soiree/contacts/:id/invitation/annuler', accesSoiree, (req, res) => {
+  const moi = identite(req);
+  const n = SO.annulerInvitationManuelle({ id_modelo: req.params.id, par: moi?.nom_complet });
+  if (!n) return res.status(404).json({ error: 'Aucune invitation notée à la main sur cette fiche' });
+  journaliser(moi, 'SOIREE_INVITATION_ANNULEE', { id_modelo: req.params.id });
+  res.json({ ok: true });
+});
+
 // Une vague importée par erreur : on l'annule, ses lignes restent en base.
 router.post('/soiree/vagues/:n/annuler', requireRole('admin'), (req, res) => {
   const moi = identite(req);

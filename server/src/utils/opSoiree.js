@@ -17,6 +17,7 @@
 const { db } = require('../database');
 
 const TYPES = ['PERSONNALISEE', 'GENERIQUE'];
+const CANAUX_MAIN = ['SMS', 'TELEPHONE'];
 // Conseillers dont le portefeuille est sorti de la soirée (ils appellent pour
 // les estimations seulement).
 const HORS_SOIREE = ['celine evrard'];
@@ -47,7 +48,7 @@ function lire() {
         ORDER BY a.horodatage DESC, a.id DESC LIMIT 1) AS appele_par
     FROM op_contacts c LEFT JOIN op_resultats r ON r.id_modelo = c.id_modelo
     ORDER BY c.nom, c.prenom, c.id_modelo`).all();
-  const invitations = db.prepare(`SELECT id, id_modelo, type, email, envoye_le, vague
+  const invitations = db.prepare(`SELECT id, id_modelo, type, email, envoye_le, vague, canal, par
     FROM op_invitations WHERE annulee_le IS NULL ORDER BY id`).all();
   return { fiches, invitations };
 }
@@ -95,7 +96,7 @@ function trier() {
     if (inv) {
       // Ce qui est parti est parti : on le dit, même si la fiche est exclue depuis.
       l.statut = 'INVITE';
-      l.invitation = { type: inv.type, vague: inv.vague, envoye_le: inv.envoye_le,
+      l.invitation = { type: inv.type, vague: inv.vague, envoye_le: inv.envoye_le, canal: inv.canal, par: inv.par,
         via: inv.id_modelo === f.id_modelo ? null : inv.id_modelo };
       l.motif = motif;
       // Bascule : générique reçue, puis « oui » au téléphone. Rien de plus à
@@ -132,7 +133,7 @@ function compter(lignes) {
   const vagues = db.prepare(`SELECT vague, MIN(envoye_le) AS envoye_le, COUNT(*) AS n,
       SUM(type = 'PERSONNALISEE') AS personnalisees, SUM(type = 'GENERIQUE') AS generiques,
       MAX(par) AS par, MAX(fichier) AS fichier, MAX(annulee_le) AS annulee_le
-    FROM op_invitations GROUP BY vague ORDER BY vague`).all();
+    FROM op_invitations WHERE vague > 0 GROUP BY vague ORDER BY vague`).all();
   return {
     total: lignes.length,
     a_inviter: {
@@ -145,6 +146,8 @@ function compter(lignes) {
       generique: n(l => l.statut === 'INVITE' && l.invitation.type === 'GENERIQUE'),
       // Fiches couvertes par l'envoi fait à une autre fiche de même adresse.
       meme_adresse: n(l => l.statut === 'INVITE' && l.invitation.via),
+      par_sms: n(l => l.statut === 'INVITE' && l.invitation.canal === 'SMS'),
+      par_telephone: n(l => l.statut === 'INVITE' && l.invitation.canal === 'TELEPHONE'),
     },
     a_confirmer: n(l => l.a_confirmer),
     meme_email: n(l => l.statut === 'MEME_EMAIL'),
@@ -205,4 +208,26 @@ function importerEnvoi({ lignes, envoye_le, fichier, par, simulation }) {
   };
 }
 
-module.exports = { trier, compter, importerEnvoi, MOTIFS, TYPES, plier };
+// Invitation faite autrement que par mail (SMS, téléphone) : notée à la main,
+// une fiche à la fois. Refusée pour une fiche exclue ou déjà invitée.
+function noterInvitation({ id_modelo, canal, envoye_le, par }) {
+  if (!CANAUX_MAIN.includes(canal)) return { erreur: 'Moyen attendu : SMS ou téléphone' };
+  const l = trier().find(x => x.id_modelo === id_modelo);
+  if (!l) return { erreur: 'Fiche introuvable', statut: 404 };
+  if (l.statut === 'INVITE') return { erreur: 'Cette personne est déjà notée comme invitée' };
+  if (l.statut === 'EXCLU') return { erreur: `Pas d’invitation pour cette fiche : ${MOTIFS[l.motif]}` };
+  const jour = /^\d{4}-\d{2}-\d{2}$/.test(String(envoye_le || '')) ? envoye_le : new Date().toLocaleDateString('fr-CA', { timeZone: 'Europe/Paris' });
+  db.prepare(`INSERT INTO op_invitations (id_modelo, type, email, envoye_le, vague, par, canal)
+    VALUES (?, ?, ?, ?, 0, ?, ?)`).run(id_modelo, l.type, l.email || null, jour, par || null, canal);
+  return { ok: true, type: l.type, canal, envoye_le: jour };
+}
+
+// Un clic de trop : on annule, la ligne reste en base. Les envois par mail
+// s'annulent par vague, pas ici.
+function annulerInvitationManuelle({ id_modelo, par }) {
+  const r = db.prepare(`UPDATE op_invitations SET annulee_le = datetime('now'), annulee_par = ?
+    WHERE id_modelo = ? AND vague = 0 AND annulee_le IS NULL`).run(par || null, id_modelo);
+  return r.changes;
+}
+
+module.exports = { trier, compter, importerEnvoi, noterInvitation, annulerInvitationManuelle, MOTIFS, TYPES, plier };

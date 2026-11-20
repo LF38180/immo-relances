@@ -167,6 +167,30 @@ const ligneCsv = (l, extra = {}) => ({ id_modelo: l.id_modelo, civilite: l.civil
   r = await req('adm@t.fr', 'POST', '/operation/soiree/envoye', { lignes: [] });
   t('fichier vide refusé', () => eq(r.statut, 400));
 
+  console.log('\ninvitation par SMS ou téléphone');
+  r = await req('a@t.fr', 'POST', '/operation/soiree/contacts/SANSMAIL/invitation', { canal: 'SMS' });
+  t('un conseiller ne peut pas la noter', () => eq(r.statut, 403));
+  r = await req('t@t.fr', 'POST', '/operation/soiree/contacts/SANSMAIL/invitation', { canal: 'PIGEON' });
+  t('moyen inconnu refusé', () => eq(r.statut, 400));
+  r = await req('t@t.fr', 'POST', '/operation/soiree/contacts/SANSMAIL/invitation', { canal: 'sms' });
+  t('SMS noté', () => { eq(r.statut, 200, JSON.stringify(r.corps)); eq(r.corps.canal, 'SMS'); eq(r.corps.type, 'GENERIQUE'); });
+  r = await req('t@t.fr', 'POST', '/operation/soiree/contacts/STOP/invitation', { canal: 'TELEPHONE', envoye_le: '2026-11-22' });
+  t('téléphone noté, avec sa date', () => eq(r.corps.envoye_le, '2026-11-22'));
+  r = await req('t@t.fr', 'POST', '/operation/soiree/contacts/SANSMAIL/invitation', { canal: 'SMS' });
+  t('pas deux fois', () => eq(r.statut, 400));
+  r = await req('t@t.fr', 'POST', '/operation/soiree/contacts/REFUS/invitation', { canal: 'SMS' });
+  t('fiche exclue : refusé', () => eq(r.statut, 400));
+  r = await req('adm@t.fr', 'GET', '/operation/soiree'); L = par(r.corps); C = r.corps.compteurs;
+  t('elles sortent de la liste téléphone', () => { eq(L.SANSMAIL.statut, 'INVITE'); eq(L.SANSMAIL.invitation.canal, 'SMS'); eq(L.SANSMAIL.invitation.par, 'Tom Suivi'); });
+  t('comptées à part, hors vagues', () => { eq(C.invites.par_sms, 1); eq(C.invites.par_telephone, 1); eq(C.vagues.some(v => v.vague === 0), false); });
+  r = await req('t@t.fr', 'POST', '/operation/soiree/contacts/SANSMAIL/invitation/annuler');
+  t('annulable, sans suppression', () => { eq(r.statut, 200);
+    eq(db.prepare("SELECT COUNT(*) n FROM op_invitations WHERE id_modelo = 'SANSMAIL'").get().n, 1); });
+  r = await req('adm@t.fr', 'GET', '/operation/soiree');
+  t('la fiche revient à inviter par téléphone', () => eq(par(r.corps).SANSMAIL.statut, 'SANS_EMAIL'));
+  r = await req('t@t.fr', 'POST', '/operation/soiree/contacts/OUI/invitation/annuler');
+  t('un envoi par mail ne s’annule pas ici', () => eq(r.statut, 404));
+
   console.log(`\n${ok} OK, ${ko} KO`);
   process.exit(ko ? 1 : 0);
 })();

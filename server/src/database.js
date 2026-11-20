@@ -1068,6 +1068,11 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_op_invitations_fiche ON op_invitations(id_modelo);
   CREATE INDEX IF NOT EXISTS idx_op_invitations_vague ON op_invitations(vague);
 `);
+// Par quel moyen l'invitation est partie. Les envois par mail viennent du
+// réimport d'un fichier (une vague) ; SMS et téléphone sont notés à la main,
+// fiche par fiche, hors vague (vague = 0).
+if (!db.prepare('PRAGMA table_info(op_invitations)').all().some(c => c.name === 'canal'))
+  db.exec("ALTER TABLE op_invitations ADD COLUMN canal TEXT NOT NULL DEFAULT 'MAIL'");
 // Qui voit l'onglet « Soirée » en plus de l'admin : choisi par l'admin.
 if (!db.prepare('PRAGMA table_info(users)').all().some(c => c.name === 'acces_soiree'))
   db.exec('ALTER TABLE users ADD COLUMN acces_soiree INTEGER NOT NULL DEFAULT 0');
