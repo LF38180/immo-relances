@@ -510,6 +510,15 @@ router.post('/admin/contacts/:id/reintegrer', admin, (req, res) => {
   res.json({ ok: true });
 });
 
+// Ce que donnera la localisation d'une recherche dans Modelo : communes par
+// leur nom, ou zones tracées. L'écran d'appel s'en sert pour prévenir l'agent
+// avant d'enregistrer (plus de 3 zones, commune sans contour).
+router.post('/zones/apercu', acces, (req, res) => {
+  const l = require('../utils/acqZones').localisation({ secteurs: req.body?.secteurs, quartiers: req.body?.quartiers });
+  res.json({ mode: l.mode, repli: l.repli, nb_zones: l.mode === 'ZONES' ? l.zones.length : (l.nb_zones || 0),
+    zones: l.zones.map(z => ({ nom: z.nom, points: z.points.length })), inconnues: l.inconnues, englobes: l.englobes, texte: l.texte });
+});
+
 // Sortir des personnes de la mission, à partir d'un fichier (id_contact ; nom ;
 // prenom ; motif). On vérifie d'abord, on enregistre ensuite.
 router.post('/admin/sortir', admin, (req, res) => {

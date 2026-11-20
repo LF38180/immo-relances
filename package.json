@@ -17,6 +17,7 @@
     "express": "^4.18.3",
     "jsonwebtoken": "^9.0.2",
     "multer": "^1.4.5-lts.1",
-    "papaparse": "^5.4.1"
+    "papaparse": "^5.4.1",
+    "polygon-clipping": "^0.15.7"
   }
 }

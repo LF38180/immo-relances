@@ -1,9 +1,14 @@
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef, lazy, Suspense } from 'react'
 import toast from 'react-hot-toast'
 import api from '../../utils/api'
 import Icon from '../../components/ui/Icon'
 import SaisieAdresse from '../../components/SaisieAdresse'
 import { Initiales, Pastille } from './ui'
+
+// La carte des quartiers de Grenoble : chargée seulement quand « Grenoble »
+// figure dans les secteurs d'une recherche.
+const QuartiersGrenoble = lazy(() => import('./QuartiersGrenoble'))
+const avecGrenoble = (s) => String(s || '').split(',').some(x => x.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z]+/g, ' ').trim() === 'grenoble')
 
 // L'écran d'appel du Fichier Acquéreurs (cahier, section 4). Il suit l'appel
 // dans l'ordre : ouverture, coordonnées, projet (par fiche gardée), vendre
@@ -706,6 +711,13 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, onPasser, 
               </div>
               {Number(p.budget_max) > 0 && <p className="text-[11px] text-quai-muted mt-1">Exporté vers Modelo : {euros(Number(p.budget_max) * 1.1)} (budget annoncé + 10 %).</p>}
               <Champ label="Secteurs (séparés par des virgules)"><input className="input mt-0.5" placeholder="Meylan, Corenc" value={p.secteurs || ''} onChange={e => set('secteurs', e.target.value)} /></Champ>
+              {avecGrenoble(p.secteurs) && (
+                <Suspense fallback={<p className="text-sm text-quai-muted animate-pulse mt-2">Chargement…</p>}>
+                  <QuartiersGrenoble key={k} secteurs={p.secteurs} valeur={Array.isArray(p.quartiers_grenoble) ? p.quartiers_grenoble : []}
+                    onChange={v => set('quartiers_grenoble', v)} lecture={lecture}
+                    zoneModelo={(d.fiches || []).find(x => String(x.id_fiche) === String(k))?.localisation_mode === 'zone dessinée sur la carte'} />
+                </Suspense>
+              )}
               <div className="mt-2 divide-y divide-quai-border border border-quai-border rounded-lg">
                 {(p.criteres || []).map((x, i) => (
                   <div key={x.critere} className="flex items-center gap-2 px-2 py-1.5 flex-wrap">

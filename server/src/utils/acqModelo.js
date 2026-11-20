@@ -6,6 +6,7 @@
 // sa première ligne.
 const { db } = require('../database');
 const A = require('./acqRegles');
+const Z = require('./acqZones');
 
 const PREFIXE = '[MADAME FICHIER ACQ 2026]';
 const TYPE_NOTE = 'Appel téléphonique';
@@ -91,7 +92,8 @@ function blocPrecisions(fiche, contact, appel, fusion = null) {
     `RÉDHIBITOIRES : ${crit('REDHIBITOIRE')}`,
     // Ce que l'appelante a noté librement sous la liste des critères.
     `AUTRES CRITÈRES : ${String(p.criteres_libre || '').replace(/\s*\n+\s*/g, ' ; ').trim()}`,
-    `SECTEURS : ${Array.isArray(p.secteurs) ? p.secteurs.join(', ') : (p.secteurs || '')}`,
+    // Les quartiers de Grenoble en clair : c'est ce qu'un humain lira dans la fiche.
+    `SECTEURS : ${Z.localisation({ secteurs: p.secteurs, quartiers: p.quartiers_grenoble }).texte}`,
     `DÉJÀ VU : ${p.deja_vu || ''}`,
     ...(det.mandat ? [`MANDAT DE RECHERCHE : ${texteMandat(det.mandat)}`] : []),
     `MAJ : ${jj(appel?.horodatage)} ${initiales(appel?.madame_fichier)}`]
@@ -149,7 +151,10 @@ const COLONNES = ['id_contact', 'id_fiche', 'nom', 'prenom', 'agent', 'date_note
   'nego_contact_cible', 'nego_fiche_cible', 'alerte_mail', 'archiver_fiche', 'commentaire_fiche', 'fusion_dans',
   'type_contact_ajout', 'a_proposer_a_loick', 'jusqu_a',
   // À remplir par Exploration Modelo, puis réimporter : « reporté » ou « échec ».
-  'statut', 'motif_echec'];
+  'statut', 'motif_echec',
+  // Zones à tracer sur la carte de Modelo (quartiers de Grenoble). Ajoutée le
+  // 20/11/2026 tout à la fin : aucune colonne existante ne change de place.
+  'zones_apres'];
 
 // Les fiches dont l'archivage attend la validation de Loïck ou Thomas.
 function archivagesEnAttente() {
@@ -202,7 +207,12 @@ function lignesReport(jusquA) {
       // ou montant différent de celui de Modelo. Sinon une valeur simplement
       // pré-remplie était gonflée à chaque report.
       const budgetDiscute = garde && p.budget_max && (requal || Number(p.budget_max) !== Number(f.budget_max));
-      const secteurs = Array.isArray(p.secteurs) ? p.secteurs.join(', ') : (p.secteurs || '');
+      // Communes par leur nom, ou zones à tracer dès qu'un quartier de Grenoble
+      // est coché (règles dans acqZones.js). En repli « sans contour », on
+      // n'envoie aucune localisation : Exploration Modelo n'y touche pas.
+      const loc = Z.localisation({ secteurs: p.secteurs, quartiers: p.quartiers_grenoble });
+      const secteurs = loc.repli === 'SANS_CONTOUR' ? '' : loc.mode === 'ZONES' ? loc.texte : loc.communes;
+      const repli = garde ? Z.mentionRepli(loc) : '';
       const motif = f.decision === 'FUSIONNER' ? `doublon de la recherche n° ${f.fusion_dans}, conservée et mise à jour`
         : f.decision === 'ARCHIVER' ? (f.motif_archivage || 'projet ancien')
         : archiveTout ? LIB_STATUT[c.statut] : '';
@@ -235,8 +245,9 @@ function lignesReport(jusquA) {
         commentaire_fiche: archiver ? `${PREFIXE} Fiche archivée le ${jj(f.decision_le || fin?.horodatage)} par ${fin?.madame_fichier || ''} : ${motif}.` : '',
         fusion_dans: archiver && f.decision === 'FUSIONNER' ? (f.fusion_dans || '') : '',
         type_contact_ajout: i === 0 && vendeur ? 'Vendeur' : '',
-        a_proposer_a_loick: i === 0 && vendeur ? 'oui' : '',
+        a_proposer_a_loick: [i === 0 && vendeur ? 'oui' : '', repli].filter(Boolean).join(' ; '),
         jusqu_a: jusquA,
+        zones_apres: garde && loc.mode === 'ZONES' ? JSON.stringify(loc.zones) : '',
       });
     });
   }
