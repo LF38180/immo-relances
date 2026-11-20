@@ -109,6 +109,30 @@ app.get('/api/health', (_, res) => {
         WHERE a_dispatcher = 0 AND NULLIF(TRIM(COALESCE(tel_portable,'')),'') IS NULL
           AND NULLIF(TRIM(COALESCE(tel_fixe,'')),'') IS NULL`).get().n,
       a_repartir: db.prepare('SELECT COUNT(*) n FROM op_contacts WHERE a_dispatcher = 1').get().n,
+      // Soirée du 3 décembre : le champ ne distingue pas « non » de « pas abordé ».
+      // Le journal des saisies permet de retrouver la plupart des « non » : il note
+      // la valeur quand l'agent a cliqué « Non » au premier enregistrement de la fiche.
+      // Reste indécidable une fiche enregistrée plusieurs fois, ou déjà créée par un
+      // courrier revenu (NPAI) avant l'appel. Comptes anonymes, sur les fiches jointes.
+      soiree_tri: (() => {
+        const lignes = db.prepare(`
+          SELECT c.id_modelo, COALESCE(r.soiree, 0) AS soiree, r.id_modelo IS NOT NULL AS a_resultat,
+            COALESCE(r.npai, 0) AS npai,
+            (SELECT COUNT(*) FROM op_appels a WHERE a.id_modelo = c.id_modelo AND a.issue = 'JOINT') AS joints,
+            EXISTS (SELECT 1 FROM op_resultats_journal j WHERE j.id_modelo = c.id_modelo
+              AND json_extract(j.champs, '$.soiree.apres') = 0) AS non_journalise,
+            (SELECT COUNT(*) FROM op_resultats_journal j WHERE j.id_modelo = c.id_modelo) AS saisies
+          FROM op_contacts c LEFT JOIN op_resultats r ON r.id_modelo = c.id_modelo
+          WHERE EXISTS (SELECT 1 FROM op_appels a WHERE a.id_modelo = c.id_modelo AND a.issue = 'JOINT')`).all();
+        const t = { joints: lignes.length, oui: 0, non_certain: 0, pas_aborde: 0, indecidable: 0 };
+        for (const l of lignes) {
+          if (l.soiree === 1) t.oui++;
+          else if (l.non_journalise) t.non_certain++;
+          else if (!l.a_resultat || (l.joints === 1 && l.saisies <= 1 && !l.npai)) t.pas_aborde++;
+          else t.indecidable++;
+        }
+        return t;
+      })(),
       npai: db.prepare('SELECT COUNT(*) n FROM op_contacts WHERE npai = 1').get().n,
       appels_aujourdhui: db.prepare(`SELECT COUNT(*) n FROM op_appels
         WHERE date(horodatage, 'localtime') = date('now', 'localtime')`).get().n,
