@@ -40,7 +40,8 @@ export default function QuartiersGrenoble({ secteurs, valeur = [], onChange, zon
   // La carte, créée une fois les contours arrivés.
   useEffect(() => {
     if (mode !== 'QUARTIERS' || !quartiers || !boite.current || carte.current) return
-    const c = L.map(boite.current, { scrollWheelZoom: false, attributionControl: true })
+    // Zoom par quarts de cran : Grenoble remplit la carte au lieu de flotter au milieu.
+    const c = L.map(boite.current, { scrollWheelZoom: false, attributionControl: true, zoomSnap: 0.25, zoomDelta: 0.5 })
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18, attribution: '© OpenStreetMap' }).addTo(c)
     const groupe = L.featureGroup().addTo(c)
     for (const [code, q] of Object.entries(quartiers)) {
@@ -53,7 +54,7 @@ export default function QuartiersGrenoble({ secteurs, valeur = [], onChange, zon
       })
       couches.current[code] = p
     }
-    c.fitBounds(groupe.getBounds(), { padding: [8, 8] })
+    c.fitBounds(groupe.getBounds(), { padding: [4, 4] })
     carte.current = c
     return () => { c.remove(); carte.current = null; couches.current = {} }
   }, [mode, quartiers])
@@ -98,8 +99,8 @@ export default function QuartiersGrenoble({ secteurs, valeur = [], onChange, zon
           {panne
             ? <p className="text-sm text-red-700">La carte des quartiers ne se charge pas. Rechargez la page, ou choisissez « Tout Grenoble ».</p>
             : <>
-              <p className="text-[12px] text-quai-muted mb-1">Cliquez un quartier pour le choisir, cliquez-le encore pour l’enlever. Son nom s’affiche au survol.</p>
-              <div ref={boite} className="h-72 sm:h-96 rounded-lg border border-quai-border overflow-hidden bg-white relative z-0" />
+              <p className="text-[12px] text-quai-muted mb-1">Cliquez ou touchez un quartier pour le choisir, une seconde fois pour l’enlever. Vos choix s’affichent sous la carte.</p>
+              <div ref={boite} className="h-80 sm:h-[30rem] rounded-lg border border-quai-border overflow-hidden bg-white relative z-0" />
               {!quartiers && <p className="text-sm text-quai-muted animate-pulse mt-1">Chargement de la carte…</p>}
             </>}
 

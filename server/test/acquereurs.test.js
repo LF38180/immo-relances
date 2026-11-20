@@ -153,7 +153,7 @@ const t = (n, fn) => { try { fn(); console.log('  OK  ' + n) } catch (e) { conso
     const l = r.body.lignes.filter(x => x.id_contact === '11');
     assert.strictEqual(l.length, 2);
     const g = l.find(x => x.id_fiche === '101'), f = l.find(x => x.id_fiche === '102');
-    assert.ok(g.commentaire.startsWith('[MADAME FICHIER ACQ 2026]')); assert.strictEqual(f.commentaire, '');
+    assert.ok(g.commentaire.startsWith('[MISSION ACQUÉREURS 2026]')); assert.strictEqual(f.commentaire, '');
     assert.strictEqual(g.budget_max_apres, '352000'); assert.strictEqual(g.priorite_apres, 'Court terme');
     assert.strictEqual(g.nego_contact_cible, 'Lilas FERKOUS'); assert.strictEqual(g.nego_fiche_cible, 'Lilas FERKOUS'); assert.strictEqual(g.alerte_mail, 'oui');
     assert.ok(g.precisions_apres.includes('━━━ LE PROJET ━━━') && g.precisions_apres.includes('T3 lumineux'));

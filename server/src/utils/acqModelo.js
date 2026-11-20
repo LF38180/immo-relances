@@ -8,7 +8,7 @@ const { db } = require('../database');
 const A = require('./acqRegles');
 const Z = require('./acqZones');
 
-const PREFIXE = '[MADAME FICHIER ACQ 2026]';
+const PREFIXE = '[MISSION ACQUÉREURS 2026]';
 const TYPE_NOTE = 'Appel téléphonique';
 const STATUTS_ARCHIVANT = ['ABANDONNE', 'DEJA_ACHETE', 'DECEDE', 'NE_PLUS_CONTACTER'];
 const LIB_STATUT = { REQUALIFIE: 'requalifié', A_RAPPELER: 'à rappeler', EN_PAUSE: 'projet en pause',
