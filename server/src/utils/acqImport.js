@@ -64,6 +64,7 @@ const LIBELLES_EXCLUSION = {
   SUIVI_PAR_AGENT: 'Contact suivi par un agent en poste',
   LOCATION_SEULE: 'Recherche en location uniquement',
   OPPOSITION: 'A demandé à ne plus être contacté',
+  HORS_MISSION: 'Sorti hors mission',
 };
 
 function importer(texte, { doublonsCsv = null, madameFichier, suiveursRepris = ['Loick FERRUCCI'], simulation = true } = {}) {
@@ -173,8 +174,12 @@ function importer(texte, { doublonsCsv = null, madameFichier, suiveursRepris = [
         modifiee_periode = excluded.modifiee_periode, precisions = excluded.precisions,
         observations = excluded.observations, alertes_a_verifier = excluded.alertes_a_verifier,
         criteres_obligatoires = excluded.criteres_obligatoires, donnees = excluded.donnees`);
+    // Sorti de la mission par l'agence : il n'y revient pas, même si sa fiche
+    // réapparaît active. Un motif calculé (stop, décès...) reste prioritaire.
+    const horsMission = db.prepare('SELECT 1 FROM acq_hors_mission WHERE id_contact = ? AND leve_le IS NULL');
     for (const { contact, fiches } of parContact.values()) {
-      const exclu = motifExclusion(contact, fiches, { doublons, suiveursRepris: repris });
+      const exclu = motifExclusion(contact, fiches, { doublons, suiveursRepris: repris })
+        || (horsMission.get(contact.id_contact) ? 'HORS_MISSION' : null);
       bilan.fiches += fiches.length;
       if (exclu) bilan.exclus[exclu] = (bilan.exclus[exclu] || 0) + 1;
       else { bilan.dans_la_file++; bilan.fiches_dans_la_file += fiches.filter(f => sansAccent(f.type_recherche) !== 'location').length; }

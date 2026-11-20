@@ -1048,6 +1048,20 @@ db.exec(`
 if (!db.prepare('PRAGMA table_info(acq_reports)').all().some(c => c.name === 'empreinte'))
   db.exec('ALTER TABLE acq_reports ADD COLUMN empreinte TEXT');
 
+// Mission Acquéreurs : personnes sorties de la mission sur décision de
+// l'agence (rappelées hors mission, reprises par un conseiller...). La liste
+// vit à part des contacts : un prochain import ne les remet pas dans la file,
+// même si le contact n'était pas encore dans l'appli. Rien ne se supprime :
+// une sortie levée garde sa ligne (leve_le).
+db.exec(`
+  CREATE TABLE IF NOT EXISTS acq_hors_mission (
+    id_contact TEXT PRIMARY KEY,
+    nom TEXT, prenom TEXT, motif TEXT, fiches TEXT,
+    le TEXT NOT NULL DEFAULT (datetime('now')), par TEXT, fichier TEXT,
+    leve_le TEXT, leve_par TEXT
+  );
+`);
+
 // Soirée des anciens clients (3 décembre). Les invitations partent hors de
 // l'appli, par vagues : on note ici ce qui a été envoyé, pour que l'export
 // suivant ne reprenne que les nouveaux. Rien ne se supprime : une vague

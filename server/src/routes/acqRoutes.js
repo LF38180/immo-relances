@@ -487,6 +487,7 @@ router.post('/admin/import', admin, (req, res) => {
 router.get('/admin/contacts', admin, (req, res) => {
   const lignes = db.prepare(`SELECT c.id_contact, c.civilite, c.nom, c.prenom, c.tel_portable, c.tel_fixe, c.email, c.commune,
       c.suivi_par, c.madame_fichier, c.exclu, c.statut, c.statut_le, c.stop_tel, c.stop_mail, c.modelo_reporte_le,
+      (SELECT h.motif FROM acq_hors_mission h WHERE h.id_contact = c.id_contact AND h.leve_le IS NULL) AS sorti_motif,
       ${SQL_COMPTEURS} FROM acq_contacts c ORDER BY c.nom, c.prenom`).all(R.moisCourant());
   res.json({ contacts: lignes, libelles: I.LIBELLES_EXCLUSION });
 });
@@ -502,7 +503,22 @@ router.post('/admin/contacts/:id/reintegrer', admin, (req, res) => {
   if (tel) { sets.push('tel_portable = ?'); vals.push(tel); }
   if (c.statut === 'FAUX_NUMERO' && tel) sets.push('statut = NULL');
   db.prepare(`UPDATE acq_contacts SET ${sets.join(', ')} WHERE id_contact = ?`).run(...vals, c.id_contact);
+  // Une sortie hors mission est levée, pas effacée : sinon le prochain import la reposerait.
+  const leve = db.prepare(`UPDATE acq_hors_mission SET leve_le = datetime('now'), leve_par = ?
+    WHERE id_contact = ? AND leve_le IS NULL`).run(req.moi.nom_complet, c.id_contact);
+  if (leve.changes) journaliser({ id: req.moi.id, nom_complet: req.moi.nom_complet }, 'ACQ_SORTIE_LEVEE', { details: { id_contact: c.id_contact } });
   res.json({ ok: true });
+});
+
+// Sortir des personnes de la mission, à partir d'un fichier (id_contact ; nom ;
+// prenom ; motif). On vérifie d'abord, on enregistre ensuite.
+router.post('/admin/sortir', admin, (req, res) => {
+  const b = req.body || {};
+  if (typeof b.csv !== 'string' || !b.csv.trim()) return res.status(400).json({ error: 'Aucun contenu à lire' });
+  const r = require('../utils/acqSortie').sortir(b.csv, { simulation: b.ecrire !== true, par: req.moi.nom_complet, fichier: String(b.fichier || '').slice(0, 200) });
+  if (!r.ok) return res.status(400).json(r);
+  if (!r.simulation) journaliser({ id: req.moi.id, nom_complet: req.moi.nom_complet }, 'ACQ_SORTIE_HORS_MISSION', { details: { contacts: r.sortis.length, inconnus: r.inconnus.length } });
+  res.json(r);
 });
 
 // Le Listing : chaque contact avec ce qu'on en sait, pour filtrer et exporter

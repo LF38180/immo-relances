@@ -123,6 +123,51 @@ function Import({ onFait, users }) {
   )
 }
 
+// Sortir des personnes de la mission à partir d'un fichier (rappelées hors
+// mission, reprises par un conseiller...). On vérifie, puis on enregistre.
+// Rien n'est effacé ; « Remettre dans la file » lève la sortie.
+function Sortir({ onFait }) {
+  const [csv, setCsv] = useState(null), [b, setB] = useState(null), [envoi, setEnvoi] = useState(false), [refus, setRefus] = useState(null)
+  const lancer = async (ecrire) => {
+    if (!csv) return toast.error('Choisissez le fichier.')
+    setEnvoi(true); setRefus(null)
+    try {
+      const r = await api.post('/acquereurs/admin/sortir', { csv: csv.texte, fichier: csv.nom, ecrire })
+      setB(r.data); if (ecrire) { toast.success('Sortie enregistrée'); onFait?.() }
+    } catch (e) { setB(null); setRefus(e.response?.data?.error || e.messageLisible || e.message) } finally { setEnvoi(false) }
+  }
+  const s = (n) => n > 1 ? 's' : ''
+  const noms = (l) => l.map(c => `${c.prenom || ''} ${c.nom || ''} (n° ${c.id_contact})`.trim()).join(' ; ')
+  const aReporter = b ? b.sortis.filter(c => c.a_reporter > 0) : []
+  return (
+    <Bloc titre="Sortir des personnes de la mission" icon="phone-off" aide="Un fichier avec les colonnes id_contact, nom, prenom et motif. Ces personnes quittent la file, n’y reviennent pas au prochain import et ne produisent plus de ligne de report. Leurs fiches et leurs appels restent.">
+      <div className="grid sm:grid-cols-3 gap-3 text-sm" data-sortir>
+        <Fichier label="Fichier des sorties (CSV « ; »)" fichier={csv} onChoisir={(f) => { setCsv(f); setB(null); setRefus(null) }} />
+      </div>
+      <div className="flex flex-wrap gap-2 mt-3">
+        <button className="btn-secondary" disabled={envoi} onClick={() => lancer(false)}>{envoi ? 'Lecture du fichier…' : 'Vérifier sans enregistrer'}</button>
+        <button className="btn-primary" disabled={envoi || !b || !b.simulation || !(b.sortis.length + b.inconnus.length)} onClick={() => lancer(true)}>Enregistrer la sortie</button>
+      </div>
+      {refus && <div className="mt-3 text-sm rounded-xl border px-3 py-2.5 bg-red-50 border-red-200 text-red-800"><p className="font-medium">Fichier refusé, rien n’a été enregistré.</p><p className="mt-0.5">{refus}</p></div>}
+      {b && (
+        <div className={`mt-3 text-sm rounded-xl border px-3 py-2.5 ${b.simulation ? 'bg-amber-50 border-amber-200' : 'bg-emerald-50 border-emerald-200'}`} data-bilan-sortie>
+          <p className={`font-medium ${b.simulation ? 'text-amber-900' : 'text-emerald-900'}`}>{b.simulation ? 'Vérification : rien n’est encore enregistré.' : 'Sortie enregistrée.'}</p>
+          <ul className="mt-1 space-y-0.5">
+            <li>{b.lignes} ligne{s(b.lignes)} lue{s(b.lignes)}, {b.contacts} personne{s(b.contacts)}.</li>
+            <li className="font-semibold">{b.sortis.length} personne{s(b.sortis.length)} {b.simulation ? 'à sortir' : `sortie${s(b.sortis.length)}`} de la mission. Dans la file : {b.avant.dans_la_file} → {b.apres.dans_la_file}.</li>
+            {b.sortis.some(c => !c.etait_dans_la_file) && <li className="text-quai-muted">{b.sortis.filter(c => !c.etait_dans_la_file).length} étai{b.sortis.filter(c => !c.etait_dans_la_file).length > 1 ? 'ent' : 't'} déjà hors de la file pour une autre raison, qui reste affichée : {noms(b.sortis.filter(c => !c.etait_dans_la_file))}</li>}
+            {aReporter.length > 0 && <li className="text-amber-900 font-medium">{aReporter.length} avai{aReporter.length > 1 ? 'ent' : 't'} des appels pas encore reportés dans Modelo. Ils ne seront plus proposés au report : {noms(aReporter)}</li>}
+            {b.sortis.some(c => c.rappel_prevu) && <li className="text-amber-900">Rappel prévu pour : {noms(b.sortis.filter(c => c.rappel_prevu))}</li>}
+            {b.inconnus.length > 0 && <li className="text-quai-muted">{b.inconnus.length} absente{s(b.inconnus.length)} de l’appli : notée{s(b.inconnus.length)} pour ne pas entrer dans la file à un prochain import. {noms(b.inconnus)}</li>}
+            {b.deja.length > 0 && <li className="text-quai-muted">{b.deja.length} déjà sortie{s(b.deja.length)} : rien à faire.</li>}
+            {b.rejetes.length > 0 && <li className="text-red-700 font-medium">{b.rejetes.length} refusée{s(b.rejetes.length)} : {b.rejetes.map(c => `n° ${c.id_contact} ${c.nom || ''}, ${c.motif_rejet}`).join(' ; ')}</li>}
+          </ul>
+        </div>
+      )}
+    </Bloc>
+  )
+}
+
 // Les contacts d'essai (nom commençant par ZZTEST) : les seuls que l'on peut
 // effacer, et seulement depuis l'administration. Le bloc ne s'affiche que s'il y en a.
 function Essais({ cle, onFait }) {
@@ -218,7 +263,7 @@ function Ecartes({ cle }) {
           <ul className="mt-1 divide-y divide-quai-border text-sm">
             {liste.map(c => (
               <li key={c.id_contact} className="py-1.5 flex flex-wrap items-center gap-2">
-                <span className="flex-1 min-w-[10rem]">{c.prenom} {c.nom} <span className="text-[11px] text-quai-muted">n° {c.id_contact}{c.suivi_par ? ` · suivi par ${c.suivi_par}` : ''}{c.tel_portable ? ` · ${c.tel_portable}` : ''}</span></span>
+                <span className="flex-1 min-w-[10rem]">{c.prenom} {c.nom} <span className="text-[11px] text-quai-muted">n° {c.id_contact}{c.suivi_par ? ` · suivi par ${c.suivi_par}` : ''}{c.tel_portable ? ` · ${c.tel_portable}` : ''}{c.sorti_motif ? ` · ${c.sorti_motif}` : ''}</span></span>
                 {['SANS_TELEPHONE', null].includes(c.exclu) && <input className="input max-w-[10rem]" placeholder="Nouveau portable" aria-label="Nouveau portable" type="tel" inputMode="tel" value={tel[c.id_contact] || ''} onChange={e => setTel(t => ({ ...t, [c.id_contact]: e.target.value }))} />}
                 {!['STOP_TEL', 'OPPOSITION'].includes(c.exclu) && <button className="btn-secondary btn-sm" onClick={() => reintegrer(c)}>Remettre dans la file</button>}
               </li>
@@ -484,6 +529,7 @@ export default function AcqAdmin({ section = null, onUtilisateurs }) {
       {(!section || section === 'report') && <Valider cle={cle} onFait={rafraichir} />}
       {(!section || section === 'report') && <Report cle={cle} />}
       {(!section || section === 'report') && <Transmettre />}
+      {(!section || section === 'import') && <Sortir onFait={rafraichir} />}
       {(!section || section === 'import') && <Ecartes cle={cle} />}
       {(!section || section === 'import' || section === 'report') && <Essais cle={cle} onFait={rafraichir} />}
       {(!section || section === 'parametres') && <Scripts />}

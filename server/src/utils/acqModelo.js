@@ -156,6 +156,7 @@ function archivagesEnAttente() {
   return db.prepare(`SELECT f.*, c.nom, c.prenom, c.statut AS statut_contact FROM acq_fiches f
     JOIN acq_contacts c ON c.id_contact = f.id_contact
     WHERE f.archivage_valide IS NULL
+      AND NOT EXISTS (SELECT 1 FROM acq_hors_mission h WHERE h.id_contact = c.id_contact AND h.leve_le IS NULL)
       AND (f.decision IN ('ARCHIVER','FUSIONNER') OR c.statut IN (${STATUTS_ARCHIVANT.map(() => '?').join(',')}))
     ORDER BY c.nom, c.prenom`).all(...STATUTS_ARCHIVANT);
 }
@@ -164,6 +165,8 @@ function aReporter() {
   return db.prepare(`SELECT c.* FROM acq_contacts c
     WHERE EXISTS (SELECT 1 FROM acq_appels a WHERE a.id_contact = c.id_contact
       AND a.horodatage > COALESCE(c.modelo_reporte_le, ''))
+      -- Sorti hors mission : Modelo est déjà à jour, plus aucune ligne de report.
+      AND NOT EXISTS (SELECT 1 FROM acq_hors_mission h WHERE h.id_contact = c.id_contact AND h.leve_le IS NULL)
     ORDER BY c.nom, c.prenom`).all();
 }
 
