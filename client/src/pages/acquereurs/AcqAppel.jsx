@@ -32,6 +32,25 @@ const aujourdhui = () => new Date().toLocaleDateString('fr-CA')
 const jj = (s) => s ? new Date(String(s).includes('T') || String(s).length <= 10 ? s : String(s).replace(' ', 'T') + 'Z').toLocaleDateString('fr-FR') : ''
 const euros = (n) => Number(n) > 0 ? Math.round(Number(n)).toLocaleString('fr-FR') + ' €' : ''
 
+// La suite donnée déduite de l'état du projet (partie 2), sur les recherches gardées :
+// un projet actif = requalifié ; sinon en pause, déjà acheté ou abandonné.
+// « À rappeler » ne se déduit pas : c'est l'agent qui le choisit.
+function statutDepuisProjets(n) {
+  const etats = Object.values(n.fiches || {}).filter(f => f.decision === 'GARDER').map(f => f.projet?.etat_projet).filter(Boolean)
+  if (etats.includes('ACTIF')) return 'REQUALIFIE'
+  if (etats.includes('EN_PAUSE')) return 'EN_PAUSE'
+  if (etats.includes('DEJA_ACHETE')) return 'DEJA_ACHETE'
+  if (etats.includes('ABANDONNE')) return 'ABANDONNE'
+  return null
+}
+// Déjà acheté, abandonné : les recherches sans décision partent à l'archivage,
+// motif déjà écrit. Plus besoin de le retaper sur chacune.
+function appliquerStatut(n, v) {
+  n.statut_final = v
+  const motif = v === 'DEJA_ACHETE' ? 'a déjà acheté' : v === 'ABANDONNE' ? 'projet abandonné' : null
+  if (motif) for (const f of Object.values(n.fiches)) if (!f.decision) { f.decision = 'ARCHIVER'; f.motif = motif }
+}
+
 function manques(p = {}) {
   const m = []
   if (p.etat_projet !== 'ACTIF') m.push('projet actif')
@@ -237,6 +256,13 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, onPasser, 
     const n = structuredClone(prev); let o = n
     for (const k of chemin.slice(0, -1)) o = o[k]
     o[chemin[chemin.length - 1]] = valeur
+    // La « suite donnée » redit l'état du projet saisi plus haut : elle se remplit
+    // toute seule, tant que l'agent ne l'a pas choisie lui-même.
+    const dernier = chemin[chemin.length - 1]
+    if ((dernier === 'etat_projet' || dernier === 'decision') && !n._statut_manuel) {
+      const auto = statutDepuisProjets(n)
+      if (auto) appliquerStatut(n, auto)
+    }
     return n
   })
   const bloque = !entrant && d.blocages.length > 0
@@ -360,6 +386,10 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, onPasser, 
     ...(mandatVisible ? [{ k: 'pm', ancre: 'acq-pm', l: 'Mandat', fait: !!mandat.etat }] : []),
     { k: 'p4', ancre: 'acq-p4', l: 'Suite', fait: !!s.statut_final },
   ]
+  // Requalifié = le projet est toujours d'actualité (décision du 20/11). Ce qui manque
+  // à la fiche n'empêche plus d'enregistrer : c'est un simple rappel.
+  const projetActif = gardees.some(k => s.fiches[k].projet?.etat_projet === 'ACTIF')
+  const statutAuto = statutDepuisProjets(s)
   const manquesReq = gardees.length ? gardees.flatMap(k => manques(s.fiches[k].projet).map(m => gardees.length > 1 ? `${m} (recherche ${k})` : m)) : ['au moins une recherche gardée']
   const tels = [...new Set([c.tel_portable, c.tel_fixe].filter(Boolean))]
   // Pourquoi le bouton du bas est grisé : dit en clair, juste au-dessus.
@@ -367,7 +397,7 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, onPasser, 
     : !s.issue ? 'Choisissez l’issue de l’appel.'
     : bloque && s.issue !== 'MAIL' ? d.blocages[0]
     : joint && !statutChoisi ? 'Il manque : la suite donnée.'
-    : joint && statutChoisi === 'REQUALIFIE' && manquesReq.length ? `Requalifié impossible, il manque : ${manquesReq.join(', ')}.`
+    : joint && statutChoisi === 'REQUALIFIE' && !projetActif ? 'Requalifié : le projet doit être « Actif » sur au moins une recherche gardée.'
     : null
   const versSuite = () => { setOuv(o => ({ ...o, p4: true })); setTimeout(() => document.getElementById('acq-p4')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50) }
   // Au rappel : ce qui avait été convenu, et la dernière note, sous les yeux.
@@ -377,10 +407,12 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, onPasser, 
   const horodate = (v) => new Date(String(v).replace(' ', 'T') + 'Z').toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
   // Déjà acheté, abandonné : toutes les recherches sans décision partent à
   // l'archivage, motif déjà écrit. Plus besoin de le retaper sur chacune.
+  // Choix fait à la main : il prime ensuite sur le remplissage automatique, sauf si
+  // l'agent recoche exactement ce que l'état du projet donnait.
   const choisirStatut = (v) => setS(prev => {
-    const n = structuredClone(prev); n.statut_final = v
-    const motif = v === 'DEJA_ACHETE' ? 'a déjà acheté' : v === 'ABANDONNE' ? 'projet abandonné' : null
-    if (motif) for (const f of Object.values(n.fiches)) if (!f.decision) { f.decision = 'ARCHIVER'; f.motif = motif }
+    const n = structuredClone(prev)
+    appliquerStatut(n, v)
+    n._statut_manuel = !!v && v !== statutDepuisProjets(n)
     return n
   })
 
@@ -717,13 +749,26 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, onPasser, 
                   </div>
                 )}
                 {p.financement_valide === 'COMPTANT' && <Champ label="Origine des fonds (facultatif)"><input className="input" value={p.origine_fonds || ''} onChange={e => set('origine_fonds', e.target.value)} /></Champ>}
-                {['EN_COURS', 'NON'].includes(p.financement_valide) && (
-                  <div className="rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-sm p-2.5 flex flex-wrap items-center gap-2">
-                    <span className="flex-1">Financement pas validé : proposer un rendez-vous avec Marine.</span>
-                    <button className={s.marine.proposee ? 'btn-primary btn-sm' : 'btn-secondary btn-sm'} onClick={() => maj(['marine'], { ...s.marine, proposee: !s.marine.proposee })}>{s.marine.proposee ? 'Marine proposée' : 'Proposer Marine'}</button>
-                    {s.marine.proposee && <label className="text-xs inline-flex items-center gap-1.5 py-1.5 cursor-pointer"><input type="checkbox" className="w-5 h-5" checked={!!s.marine.accord} onChange={e => maj(['marine'], { ...s.marine, accord: e.target.checked })} /> le client est d’accord</label>}
-                  </div>
-                )}
+                {/* Marine est proposée à CHAQUE acquéreur, qu'il ait déjà vu une banque ou
+                    un courtier ou non (demande de Lilas, 20/11). Deux exceptions : il paie
+                    comptant, ou c'est déjà Marine qui a validé son financement. */}
+                {(() => {
+                  const comptant = p.mode_financement === 'Comptant' || p.financement_valide === 'COMPTANT'
+                  const dejaMarine = p.financement_par === 'Marine (Le Quai)'
+                  if (comptant || dejaMarine) return null
+                  const pasValide = ['EN_COURS', 'NON'].includes(p.financement_valide)
+                  return (
+                    <div className={`rounded-lg border text-sm p-2.5 flex flex-wrap items-center gap-2 ${pasValide ? 'bg-amber-50 border-amber-200 text-amber-900' : 'bg-quai-light border-quai-border text-quai-text'}`}>
+                      <span className="flex-1 min-w-[12rem]">
+                        {pasValide ? 'Financement pas validé : proposer un rendez-vous avec Marine.'
+                          : ['ACCORD', 'SIMULATION'].includes(p.financement_valide) ? 'Même s’il a déjà vu une banque ou un courtier : proposer un rendez-vous avec Marine, pour comparer.'
+                          : 'À proposer à chaque fois : un rendez-vous avec Marine, notre courtière.'}
+                      </span>
+                      <button className={s.marine.proposee ? 'btn-primary btn-sm' : 'btn-secondary btn-sm'} onClick={() => maj(['marine'], { ...s.marine, proposee: !s.marine.proposee })}>{s.marine.proposee ? 'Marine proposée' : 'Proposer Marine'}</button>
+                      {s.marine.proposee && <label className="text-xs inline-flex items-center gap-1.5 py-1.5 cursor-pointer"><input type="checkbox" className="w-5 h-5" checked={!!s.marine.accord} onChange={e => maj(['marine'], { ...s.marine, accord: e.target.checked })} /> le client est d’accord</label>}
+                    </div>
+                  )
+                })()}
               </div>
             </>}
           </Partie>
@@ -799,7 +844,10 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, onPasser, 
       <Partie num={mandatVisible ? '5' : '4'} ancre="acq-p4" titre="Suite donnée" script={script('4')} ouverte={ouv.p4 ?? true} onBasculer={() => basculer('p4')} faite={!!statutChoisi}>
         <div className="space-y-2.5">
           <Choix valeur={statutChoisi} onChange={choisirStatut} options={STATUTS} />
-          {statutChoisi === 'REQUALIFIE' && manquesReq.length > 0 && <p className="text-sm text-red-700">Requalifié impossible, il manque : {manquesReq.join(', ')}.</p>}
+          {statutAuto && statutChoisi === statutAuto && <p className="text-[11px] text-quai-muted">Rempli d’après l’état du projet saisi plus haut. À changer seulement si la conversation est à reprendre (« À rappeler »).</p>}
+          {statutAuto && statutChoisi && statutChoisi !== statutAuto && statutChoisi !== 'A_RAPPELER' && <p className="text-sm text-amber-800">Attention : l’état du projet saisi plus haut donnerait « {STATUTS.find(x => x[0] === statutAuto)?.[1]} ».</p>}
+          {statutChoisi === 'REQUALIFIE' && !projetActif && <p className="text-sm text-red-700">Requalifié : le projet doit être « Actif » sur au moins une recherche gardée.</p>}
+          {statutChoisi === 'REQUALIFIE' && projetActif && manquesReq.filter(m => !m.startsWith('projet actif')).length > 0 && <p className="text-[12px] text-amber-900 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">Requalifié. Pour une fiche complète, il resterait à préciser : {manquesReq.filter(m => !m.startsWith('projet actif')).join(', ')}. Ce n’est pas obligatoire.</p>}
           {statutChoisi === 'DEJA_ACHETE' && <Champ label="Acheté où, chez qui ? (part dans la note Modelo)"><input className="input" value={s.achat || ''} onChange={e => maj(['achat'], e.target.value)} /></Champ>}
           {['DEJA_ACHETE', 'ABANDONNE'].includes(statutChoisi) && <p className="text-[11px] text-quai-muted">Les recherches sans décision sont passées en « Archiver ». L’archivage sera validé par l’administration avant de partir dans Modelo.</p>}
           <Champ label="Prochaine action"><Choix petit valeur={s.prochaine_action} onChange={v => maj(['prochaine_action'], v)} options={ACTIONS.map(a => [a, a])} /></Champ>

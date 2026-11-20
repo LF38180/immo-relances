@@ -294,10 +294,12 @@ router.post('/contacts/:id/cloture', acces, (req, res) => {
   if (statut === 'REQUALIFIE') {
     const gardees = fiches.filter(id => dec[id]?.decision === 'GARDER');
     if (!gardees.length) return res.status(400).json({ error: 'Requalifié : gardez au moins une recherche.' });
-    for (const id of gardees) {
-      const m = A.manquesRequalif(dec[id].projet);
-      if (m.length) return res.status(400).json({ error: `Requalifié impossible, il manque : ${m.join(', ')}.`, manques: m });
-    }
+    // Décision de Loïck du 20/11 : « requalifié » = le projet est toujours d'actualité
+    // et la fiche a été revue, qu'elle ait été modifiée, complétée ou simplement
+    // confirmée telle quelle. Il n'est plus exigé que tout soit renseigné : ce qui
+    // manque (budget, secteur, délai, financement) reste un rappel à l'écran.
+    if (!gardees.some(id => dec[id].projet?.etat_projet === 'ACTIF'))
+      return res.status(400).json({ error: 'Requalifié : le projet doit être « Actif » sur au moins une recherche gardée.' });
   }
 
   // Le mandat de recherche (complément au cahier, 18/11) : proposé pendant

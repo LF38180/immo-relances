@@ -124,8 +124,8 @@ const t = (n, fn) => { try { fn(); console.log('  OK  ' + n) } catch (e) { conso
   r = await call('POST', '/acquereurs/contacts/11/cloture', tLilas, { statut_final: 'REQUALIFIE', fiches: { '101': { decision: 'GARDER', projet } } });
   t('clôture refusée si une fiche n a pas de décision', () => { assert.strictEqual(r.status, 400); assert.ok(/Décision manquante/.test(r.body.error)); });
   r = await call('POST', '/acquereurs/contacts/11/cloture', tLilas, { statut_final: 'REQUALIFIE',
-    fiches: { '101': { decision: 'GARDER', projet: { ...projet, secteurs: [] } }, '102': { decision: 'FUSIONNER', fusion_dans: '101' } } });
-  t('requalifié refusé, dit ce qui manque', () => { assert.strictEqual(r.status, 400); assert.deepStrictEqual(r.body.manques, ['secteur']); });
+    fiches: { '101': { decision: 'GARDER', projet: { ...projet, etat_projet: 'EN_PAUSE' } }, '102': { decision: 'FUSIONNER', fusion_dans: '101' } } });
+  t('requalifié refusé si le projet n est pas actif', () => { assert.strictEqual(r.status, 400); assert.ok(/Actif/.test(r.body.error)); });
   r = await call('POST', '/acquereurs/contacts/11/cloture', tLilas, { statut_final: 'REQUALIFIE', cle: 'c1',
     coordonnees: { tel_portable: { etat: 'MODIFIE', avant: '0600000011', apres: '0611111111' }, adresse: { etat: 'AJOUTE', apres: { adresse: '1 rue Test', code_postal: '38240', commune: 'Meylan' } } },
     vendre: { statut_logement: 'PROPRIETAIRE', doit_vendre: 'OUI', estimation_proposee: true, estimation_acceptee: true },
@@ -482,6 +482,12 @@ const t = (n, fn) => { try { fn(); console.log('  OK  ' + n) } catch (e) { conso
     });
     x = await call('GET', '/acquereurs/contacts/11', tLilas);
     t('après remise : une fiche se rouvre', () => assert.strictEqual(x.status, 200));
+
+    // Requalifié = projet toujours d'actualité, même si la fiche n'est pas complète.
+    x = await call('POST', '/acquereurs/admin/import', tAdmin, { ecrire: true, madame_fichier: 'Lilas FERKOUS', csv: [ENTETE, ligne(C('41', { id_fiche: '401' }))].join('\n') });
+    x = await call('POST', '/acquereurs/contacts/41/cloture', tLilas, { cle: 'rq-1', statut_final: 'REQUALIFIE', joint: true,
+      fiches: { '401': { decision: 'GARDER', projet: { etat_projet: 'ACTIF' } } } });
+    t('requalifié accepté sur un projet actif simplement confirmé (ni budget ni secteur)', () => { assert.strictEqual(x.status, 201); assert.strictEqual(db.prepare("SELECT statut FROM acq_contacts WHERE id_contact = '41'").get().statut, 'REQUALIFIE'); });
   }
 
   db.close(); srv.kill();

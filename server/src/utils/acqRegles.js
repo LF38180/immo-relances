@@ -109,7 +109,8 @@ function debutAppel(valeur, maintenant = new Date()) {
   return age >= 0 && age <= 4 * 3600 * 1000 ? d : maintenant;
 }
 
-// La requalification n'est possible que si tout est là. Renvoie ce qui manque.
+// Ce qui manque pour une fiche complète. Depuis le 20/11 ce n'est plus bloquant :
+// la requalification demande seulement un projet actif (voir la clôture).
 function manquesRequalif(projet = {}) {
   const m = [];
   if (projet.etat_projet !== 'ACTIF') m.push('projet actif');
