@@ -133,6 +133,12 @@ app.get('/api/health', (_, res) => {
         }
         return t;
       })(),
+      // Invitations à la soirée : comptes anonymes, pour vérifier la prod sans compte.
+      soiree_invitations: (() => {
+        const SO = require('./utils/opSoiree');
+        const c = SO.compter(SO.trier());
+        return { ...c, vagues: c.vagues.map(v => ({ vague: v.vague, n: v.n, annulee: !!v.annulee_le })) };
+      })(),
       npai: db.prepare('SELECT COUNT(*) n FROM op_contacts WHERE npai = 1').get().n,
       appels_aujourdhui: db.prepare(`SELECT COUNT(*) n FROM op_appels
         WHERE date(horodatage, 'localtime') = date('now', 'localtime')`).get().n,

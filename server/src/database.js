@@ -1048,4 +1048,28 @@ db.exec(`
 if (!db.prepare('PRAGMA table_info(acq_reports)').all().some(c => c.name === 'empreinte'))
   db.exec('ALTER TABLE acq_reports ADD COLUMN empreinte TEXT');
 
+// Soirée des anciens clients (3 décembre). Les invitations partent hors de
+// l'appli, par vagues : on note ici ce qui a été envoyé, pour que l'export
+// suivant ne reprenne que les nouveaux. Rien ne se supprime : une vague
+// importée par erreur est annulée (annulee_le), ses lignes restent.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS op_invitations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id_modelo TEXT NOT NULL REFERENCES op_contacts(id_modelo) ON DELETE CASCADE,
+    type TEXT NOT NULL CHECK(type IN ('PERSONNALISEE','GENERIQUE')),
+    email TEXT,
+    envoye_le TEXT NOT NULL,
+    vague INTEGER NOT NULL,
+    par TEXT,
+    fichier TEXT,
+    annulee_le TEXT, annulee_par TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_op_invitations_fiche ON op_invitations(id_modelo);
+  CREATE INDEX IF NOT EXISTS idx_op_invitations_vague ON op_invitations(vague);
+`);
+// Qui voit l'onglet « Soirée » en plus de l'admin : choisi par l'admin.
+if (!db.prepare('PRAGMA table_info(users)').all().some(c => c.name === 'acces_soiree'))
+  db.exec('ALTER TABLE users ADD COLUMN acces_soiree INTEGER NOT NULL DEFAULT 0');
+
 module.exports = { db, recalculerScore, DB_PATH };

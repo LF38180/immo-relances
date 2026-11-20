@@ -1623,4 +1623,61 @@ router.get('/pilotage', pilotage, (req, res) => {
   });
 });
 
+// --- Soirée du 3 décembre : invitations ------------------------------------
+//
+// Réservé à l'admin et aux comptes qu'il désigne (users.acces_soiree). Le tri
+// et les règles sont dans utils/opSoiree.js. Aucune de ces routes ne touche
+// aux fiches ni aux appels : elles lisent, et notent ce qui a été envoyé.
+const SO = require('../utils/opSoiree');
+const aAccesSoiree = (req) => {
+  const u = db.prepare('SELECT role, acces_soiree, actif FROM users WHERE id = ?').get(req.user.id);
+  return !!u && u.actif !== 0 && (u.role === 'admin' || u.acces_soiree === 1);
+};
+const accesSoiree = (req, res, next) =>
+  aAccesSoiree(req) ? next() : res.status(403).json({ error: 'Accès réservé au suivi de la soirée' });
+
+router.get('/soiree/mon-acces', (req, res) => res.json({ acces: aAccesSoiree(req) }));
+
+router.get('/soiree', accesSoiree, (req, res) => {
+  const lignes = SO.trier();
+  res.json({ compteurs: SO.compter(lignes), motifs: SO.MOTIFS, lignes });
+});
+
+router.post('/soiree/envoye', accesSoiree, (req, res) => {
+  const moi = identite(req);
+  const lignes = Array.isArray(req.body?.lignes) ? req.body.lignes : null;
+  if (!lignes || !lignes.length) return res.status(400).json({ error: 'Le fichier est vide' });
+  if (!('id_modelo' in lignes[0])) return res.status(400).json({ error: 'Colonne id_modelo introuvable : réimportez le fichier exporté par l’appli' });
+  const r = SO.importerEnvoi({ lignes, envoye_le: req.body.envoye_le, fichier: String(req.body.fichier || '').slice(0, 200),
+    par: moi?.nom_complet, simulation: !!req.body.simulation });
+  if (!r.simulation && r.acceptees)
+    journaliser(moi, 'SOIREE_ENVOI', { details: { vague: r.vague, envoyees: r.acceptees, rejetees: r.rejetees.length } });
+  res.json(r);
+});
+
+// Une vague importée par erreur : on l'annule, ses lignes restent en base.
+router.post('/soiree/vagues/:n/annuler', requireRole('admin'), (req, res) => {
+  const moi = identite(req);
+  const n = Number(req.params.n);
+  const r = db.prepare(`UPDATE op_invitations SET annulee_le = datetime('now'), annulee_par = ?
+    WHERE vague = ? AND annulee_le IS NULL`).run(moi?.nom_complet || null, n);
+  if (!r.changes) return res.status(404).json({ error: 'Vague introuvable ou déjà annulée' });
+  journaliser(moi, 'SOIREE_VAGUE_ANNULEE', { details: { vague: n, lignes: r.changes } });
+  res.json({ ok: true, lignes: r.changes });
+});
+
+// Qui voit l'onglet, en plus des admins.
+router.get('/soiree/acces', requireRole('admin'), (req, res) => {
+  res.json({ comptes: db.prepare(`SELECT id, prenom, nom, role, acces_soiree FROM users
+    WHERE actif = 1 AND role <> 'admin' ORDER BY nom, prenom`).all() });
+});
+router.put('/soiree/acces/:id', requireRole('admin'), (req, res) => {
+  const moi = identite(req);
+  const v = req.body?.acces ? 1 : 0;
+  const r = db.prepare('UPDATE users SET acces_soiree = ? WHERE id = ?').run(v, Number(req.params.id));
+  if (!r.changes) return res.status(404).json({ error: 'Compte introuvable' });
+  journaliser(moi, 'SOIREE_ACCES', { details: { user_id: Number(req.params.id), acces: v } });
+  res.json({ ok: true });
+});
+
 module.exports = router;

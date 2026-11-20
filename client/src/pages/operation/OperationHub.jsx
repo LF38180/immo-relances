@@ -11,6 +11,7 @@ const ListingPage = lazy(() => import('./ListingPage'))
 const DispatchPage = lazy(() => import('./DispatchPage'))
 const PilotagePage = lazy(() => import('./PilotagePage'))
 const DemoPage = lazy(() => import('./DemoPage'))
+const SoireePage = lazy(() => import('./SoireePage'))
 
 // L'espace de l'opération anciens clients. Cloisonné : il ne donne accès à
 // rien d'autre, et rien d'autre n'y accède.
@@ -41,6 +42,11 @@ export default function OperationHub({ onRetour }) {
   useEffect(() => {
     api.get('/operation/mon-acces').then(r => setAcces(r.data)).catch(() => {})
   }, [onglet === 'accueil'])
+  // Le suivi des invitations à la soirée : l'admin et les comptes qu'il désigne.
+  const [soiree, setSoiree] = useState(false)
+  useEffect(() => {
+    api.get('/operation/soiree/mon-acces').then(r => setSoiree(!!r.data.acces)).catch(() => {})
+  }, [])
 
   // Ouvrir une fiche en appel depuis un écran de pilotage : la fiche est mise
   // de côté, puis l'onglet bascule. L'agent arrive directement sur l'appel.
@@ -71,6 +77,7 @@ export default function OperationHub({ onRetour }) {
       { id: 'dispatch', label: 'Répartir', icon: 'users' },
       { id: 'listing', label: 'Listing', icon: 'table' },
     ] : []),
+    ...(soiree ? [{ id: 'soiree', label: 'Soirée', icon: 'calendar-check' }] : []),
     ...(estAnimateur ? [
       { id: 'demo', label: 'Démonstration', icon: 'play' },
     ] : []),
@@ -138,6 +145,7 @@ export default function OperationHub({ onRetour }) {
         {onglet === 'pilotage' && <PilotagePage onAppeler={ouvrirAppel} onVoir={voirDansListing} />}
         {onglet === 'dispatch' && <DispatchPage />}
         {onglet === 'listing' && <ListingPage key={filtreListing} onAppeler={ouvrirAppel} filtreInitial={filtreListing} />}
+        {onglet === 'soiree' && <SoireePage />}
         {onglet === 'demo' && <DemoPage />}
       </Suspense>
       </ErrorBoundary>
