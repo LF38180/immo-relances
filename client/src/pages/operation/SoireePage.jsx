@@ -74,8 +74,9 @@ export default function SoireePage() {
     [...new Set((data?.lignes || []).map(l => l.conseiller).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'fr')), [data])
   const visibles = useMemo(() => {
     if (!data) return []
-    const f = LISTES.find(x => x.id === liste).f
     const q = recherche.trim().toLowerCase()
+    // Une recherche porte sur toutes les listes : on cherche une personne, pas une case.
+    const f = q ? () => true : LISTES.find(x => x.id === liste).f
     return data.lignes.filter(l => f(l)
       && (!conseiller || l.conseiller === conseiller)
       && (!q || `${l.nom} ${l.prenom} ${l.email} ${l.id_modelo}`.toLowerCase().includes(q)))
@@ -131,6 +132,16 @@ export default function SoireePage() {
   if (!data) return <div className="p-6 text-sm text-quai-muted animate-pulse">Chargement…</div>
   const c = data.compteurs
   const nbListe = (id) => data.lignes.filter(LISTES.find(x => x.id === id).f).length
+  const partout = !!recherche.trim()
+  // Où sont passés les « oui » : le bilan en compte plus que l'export, on dit pourquoi.
+  const oui = data.lignes.filter(l => l.oui)
+  const ouiOu = [
+    [oui.filter(l => l.statut === 'A_INVITER').length, 'à inviter par mail'],
+    [oui.filter(l => l.statut === 'INVITE').length, oui.filter(l => l.statut === 'INVITE').length > 1 ? 'déjà invités' : 'déjà invité'],
+    [oui.filter(l => l.statut === 'STOP_MAIL' || l.statut === 'SANS_EMAIL').length, 'à inviter par téléphone ou SMS'],
+    [oui.filter(l => l.statut === 'MEME_EMAIL').length, 'avec l’adresse d’une autre fiche'],
+    [oui.filter(l => l.statut === 'EXCLU').length, 'sans invitation'],
+  ].filter(([n]) => n)
 
   return (
     <div className="flex-1 overflow-y-auto bg-quai-light" data-soiree>
@@ -149,6 +160,9 @@ export default function SoireePage() {
           <BlocExport titre="Invitations génériques" aide="Jamais joints, ou pas encore appelés."
             n={c.a_inviter.generique} onExporter={() => exporter('GENERIQUE')} />
         </div>
+        <p className="text-[13px] text-quai-text leading-snug -mt-1" data-oui>
+          <b>{oui.length} « oui » au téléphone</b>{ouiOu.length > 0 && <> : {ouiOu.map(([n, t]) => `${n} ${t}`).join(', ')}</>}.
+        </p>
 
         {/* 2. Réimporter */}
         <div className="bg-white border border-quai-border rounded-xl p-3">
@@ -199,8 +213,8 @@ export default function SoireePage() {
         {/* 4. Les listes */}
         <div className="bg-white border border-quai-border rounded-xl">
           <div className="p-3 flex flex-wrap items-center gap-2 border-b border-quai-border">
-            <select value={liste} onChange={e => setListe(e.target.value)}
-              className="text-sm border border-quai-border rounded-lg px-2 py-2 bg-white text-quai-navy font-medium min-h-[2.75rem]" aria-label="Liste affichée">
+            <select value={liste} onChange={e => setListe(e.target.value)} disabled={partout}
+              className="disabled:opacity-40 text-sm border border-quai-border rounded-lg px-2 py-2 bg-white text-quai-navy font-medium min-h-[2.75rem]" aria-label="Liste affichée">
               {LISTES.map(x => <option key={x.id} value={x.id}>{x.label} ({nbListe(x.id)})</option>)}
             </select>
             <select value={conseiller} onChange={e => setConseiller(e.target.value)}
@@ -215,14 +229,18 @@ export default function SoireePage() {
               <Icon name="download" size="sm" /> Télécharger cette liste
             </button>
           </div>
-          <div className="px-3 py-1.5 text-[12px] text-quai-muted">{visibles.length} personne{s(visibles.length)}</div>
+          <div className="px-3 py-1.5 text-[12px] text-quai-muted">
+            {visibles.length} personne{s(visibles.length)}{partout && ' · recherche dans toutes les listes'}
+          </div>
           <div className="divide-y divide-quai-border/60">
             {visibles.slice(0, 300).map(l => (
               <div key={l.id_modelo} className="px-3 py-2 flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
                 <span className="text-sm font-medium text-quai-navy">{l.civilite} {l.prenom} {l.nom}</span>
                 <span className="text-[12px] text-quai-text break-all">{l.email || 'pas d’e-mail utilisable'}</span>
                 <span className="text-[12px] text-quai-muted">{l.conseiller || 'non attribuée'}</span>
-                <span className="text-[12px] text-quai-muted basis-full sm:basis-auto sm:ml-auto">{detail(l, data.motifs)}</span>
+                <span className="text-[12px] text-quai-muted basis-full sm:basis-auto sm:ml-auto">
+                  {partout && <b className="text-quai-navy font-medium">{(LISTES.find(x => x.f(l)) || {}).label} · </b>}{detail(l, data.motifs)}
+                </span>
               </div>
             ))}
             {!visibles.length && <div className="p-4 text-sm text-quai-muted">Personne dans cette liste.</div>}
