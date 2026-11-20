@@ -106,5 +106,55 @@ t('le CSV se relit : le JSON des zones survit aux guillemets', () => {
   const Papa = require('papaparse'); const r = Papa.parse(M.enCsv(Object.values(L)).replace(/^﻿/, ''), { header: true, delimiter: ';' });
   eq(JSON.parse(r.data.find(x => x.id_fiche === '21').zones_apres).length, 2); });
 
-console.log(`\n${ok} OK, ${ko} KO`);
-process.exit(ko ? 1 : 0);
+// De l'écran d'appel au fichier de retour, par les routes.
+(async () => {
+  console.log('\nde bout en bout : appel, report, retour');
+  db.prepare(`INSERT INTO users (email, password, prenom, nom, role, actif, acces_acquereurs) VALUES
+    ('adm@t.fr','x','Ada','Admin','admin',1,0), ('l@t.fr','x','Lila','Essai','conseiller',1,1)`).run();
+  const express = require('express'), jwt = require('jsonwebtoken');
+  const app = express(); app.use(express.json({ limit: '5mb' }));
+  app.use('/acquereurs', require('../src/routes/acqRoutes.js'));
+  const req = async (email, methode, url, corps) => {
+    const u = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+    const jeton = jwt.sign({ id: u.id, email: u.email, role: u.role }, process.env.JWT_SECRET);
+    const srv = app.listen(0);
+    const r = await fetch(`http://127.0.0.1:${srv.address().port}${url}`, {
+      method: methode, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jeton}` },
+      body: corps ? JSON.stringify(corps) : undefined });
+    const j = await r.json().catch(() => null); srv.close();
+    return { statut: r.status, corps: j };
+  };
+  db.prepare(`INSERT INTO acq_contacts (id_contact, nom, prenom, tel_portable, madame_fichier) VALUES ('7', 'BOUT', 'Zoé', '0600000007', 'Lila Essai')`).run();
+  db.prepare(`INSERT INTO acq_fiches (id_fiche, id_contact, type_recherche, communes) VALUES ('71', '7', 'Achat', 'Grenoble')`).run();
+
+  let r = await req('l@t.fr', 'POST', '/acquereurs/zones/apercu', { secteurs: 'Grenoble, Meylan', quartiers: [VALLIER, BRUNO] });
+  t('aperçu à l’écran : 3 zones', () => { eq(r.statut, 200); eq(r.corps.mode, 'ZONES'); eq(r.corps.nb_zones, 3); });
+  r = await req('l@t.fr', 'POST', '/acquereurs/zones/apercu', { secteurs: 'Grenoble, Voiron, Vif', quartiers: [VALLIER, BRUNO] });
+  t('aperçu à l’écran : trop de zones, annoncé avant d’enregistrer', () => { eq(r.corps.repli, 'TROP_DE_ZONES'); eq(r.corps.nb_zones, 4); });
+
+  r = await req('l@t.fr', 'POST', '/acquereurs/contacts/7/cloture', { cle: 'bout-1', statut_final: 'REQUALIFIE', joint: true, notes: 'Requalifiée.',
+    coordonnees: { tel_portable: { etat: 'CONFIRME', avant: '0600000007' } }, vendre: { statut_logement: 'LOCATAIRE', doit_vendre: 'NON' },
+    fiches: { 71: { decision: 'GARDER', projet: { etat_projet: 'ACTIF', budget_max: '300000', secteurs: ['Grenoble', 'Meylan'],
+      quartiers_grenoble: [Q(VALLIER), Q(BRUNO)], urgence: 8, mode_financement: 'Comptant', financement_valide: 'COMPTANT' } } } });
+  t('l’appel s’enregistre avec ses quartiers', () => eq(r.statut, 201, JSON.stringify(r.corps)));
+  r = await req('l@t.fr', 'GET', '/acquereurs/contacts/7');
+  t('à la réouverture, les quartiers sont toujours là', () => eq(r.corps.fiches[0].requalif.quartiers_grenoble.length, 2));
+
+  r = await req('adm@t.fr', 'GET', '/acquereurs/admin/report');
+  const ligne = r.corps.lignes.find(x => x.id_fiche === '71');
+  t('le report porte 3 zones', () => { eq(JSON.parse(ligne.zones_apres).length, 3); eq(ligne.secteurs_apres, 'Grenoble (quartiers : Saint-Bruno, Vallier), Meylan'); });
+  const pts = JSON.parse(ligne.zones_apres).map(z => z.points.length);
+  const retour = (enreg, cle) => { const o = { ...ligne, statut: 'reporté', zones_enregistrees: enreg, jusqu_a: '2020-01-01 00:00:00', cle };
+    const cols = [...M.COLONNES, 'zones_enregistrees', 'cle'];
+    const c = (v) => { const x = String(v ?? ''); return /[;"\n\r]/.test(x) ? `"${x.replace(/"/g, '""')}"` : x; };
+    return [cols.join(';'), cols.map(k => c(o[k])).join(';')].join('\r\n'); };
+  r = await req('adm@t.fr', 'POST', '/acquereurs/admin/report/retour', { csv: retour(`3 (${pts.slice(0, 2).join(' / ')} / 5)`, 'a') });
+  t('retour avec des zones incomplètes : la ligne reste à reporter', () => { eq(r.corps.reportes, 0); eq(r.corps.echecs, 1); vrai(/zones : 3 \(/.test(r.corps.motifs[0].motif), r.corps.motifs[0].motif); });
+  r = await req('adm@t.fr', 'POST', '/acquereurs/admin/report/retour', { csv: retour('', 'b') });
+  t('retour sans contrôle des zones : refusé aussi', () => eq(r.corps.echecs, 1));
+  r = await req('adm@t.fr', 'POST', '/acquereurs/admin/report/retour', { csv: retour(`3 (${pts.join(' / ')})`, 'c') });
+  t('retour conforme : accepté', () => { eq(r.corps.echecs, 0); eq(r.corps.sans_date.length + r.corps.date_future.length + r.corps.reportes, 1); });
+
+  console.log(`\n${ok} OK, ${ko} KO`);
+  process.exit(ko ? 1 : 0);
+})();

@@ -607,6 +607,13 @@ router.get('/admin/report/etat', admin, (req, res) => {
 // « statut » (reporté ou échec) et, si échec, « motif_echec ». Un contact est
 // marqué reporté quand toutes ses lignes le sont ; une seule ligne en échec et
 // il reste « à reporter », avec son motif.
+// Ce que zones_enregistrees doit valoir pour une cellule zones_apres donnée.
+function controleZones(cellule) {
+  const z = json(String(cellule || '').trim());
+  if (!Array.isArray(z) || !z.length) return null;
+  const n = z.map(x => (x.points || []).length);
+  return { cle: [z.length, ...n].join(' '), texte: `${z.length} (${n.join(' / ')})` };
+}
 router.post('/admin/report/retour', admin, (req, res) => {
   const csv = req.body?.csv;
   if (typeof csv !== 'string' || !csv.trim()) return res.status(400).json({ error: 'Aucun fichier de retour' });
@@ -626,9 +633,18 @@ router.post('/admin/report/retour', admin, (req, res) => {
     const id = String(l.id_contact || '').trim();
     if (!id) continue;
     if (!existe.get(id)) { inconnus.add(id); continue; }
-    const statut = /^report/i.test(String(l.statut || '').trim()) ? 'REPORTE' : 'ECHEC';
+    let statut = /^report/i.test(String(l.statut || '').trim()) ? 'REPORTE' : 'ECHEC';
+    let motif_echec = l.motif_echec;
+    // Contrôle des zones tracées : Exploration Modelo relit la fiche et écrit
+    // « 2 (19 / 20) » dans zones_enregistrees (zones, puis points par zone).
+    // Un écart avec ce que la ligne demandait, et la ligne reste à reporter.
+    const attendu = controleZones(l.zones_apres);
+    if (statut === 'REPORTE' && attendu) {
+      const recu = (String(l.zones_enregistrees || '').match(/\d+/g) || []).join(' ');
+      if (recu !== attendu.cle) { statut = 'ECHEC'; motif_echec = `zones : ${attendu.texte} attendu, ${String(l.zones_enregistrees || '').trim() || 'rien'} reçu`; }
+    }
     if (!parContact.has(id)) parContact.set(id, []);
-    parContact.get(id).push({ ...l, statut });
+    parContact.get(id).push({ ...l, statut, motif_echec });
   }
   const maintenant = db.prepare("SELECT datetime('now') d").get().d;
   let reportes = 0, echecs = 0; const motifs = [], sansDate = [], dateFuture = [];
