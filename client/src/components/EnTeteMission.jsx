@@ -20,7 +20,7 @@ export function Personne({ user, sombre = false, className = '' }) {
 // les missions, et pour chaque personne qui en recevra une.
 // `children` et `actions` sont facultatifs : sans eux, l'en-tête est inchangé.
 const NOMS = { estimes: 'Mission Estimés', acquereurs: 'Mission Acquéreurs', courtage: 'Mission Courtage' }
-export default function EnTeteMission({ mission, user, onRetour, libelleRetour = 'Mon espace', logout, collant = false, largeur = '', children = null, actions = null }) {
+export default function EnTeteMission({ mission, user, onRetour, libelleRetour = 'Mon espace', logout, collant = false, largeur = '', children = null, actions = null, aide = null }) {
   return (
     <header className={`bg-quai-navy text-white shrink-0 ${collant ? 'sticky top-0 z-30' : ''}`} style={{ paddingTop: 'max(0.5rem, env(safe-area-inset-top))' }}>
       <div className={`px-3 pb-2 flex items-center gap-2 ${largeur}`}>
@@ -30,6 +30,14 @@ export default function EnTeteMission({ mission, user, onRetour, libelleRetour =
         {children}
         <div className="flex-1" />
         <Personne user={user} className="hidden sm:inline-flex" />
+        {/* `aide` : l'adresse du mode d'emploi de la mission. Il s'ouvre à côté,
+            pour ne pas faire perdre l'écran en cours. Facultatif. */}
+        {aide && (
+          <a href={aide} target="_blank" rel="noopener" aria-label="Mode d’emploi" title="Mode d’emploi"
+            className="text-white/80 hover:text-white p-2 min-w-[2.75rem] min-h-[2.75rem] inline-flex items-center justify-center">
+            <Icon name="aide" size="sm" />
+          </a>
+        )}
         {onRetour && (
           <button onClick={onRetour} className="text-white/80 hover:text-white text-xs inline-flex items-center gap-1 px-2 py-2">
             <Icon name="arrow-left" size="sm" /> {libelleRetour}

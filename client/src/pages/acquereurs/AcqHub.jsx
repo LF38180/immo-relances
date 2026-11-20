@@ -37,7 +37,8 @@ export default function AcqHub({ onRetour, libelleRetour = 'Mon espace', ongletI
   ]
   return (
     <div className="h-ecran flex flex-col bg-quai-light espace-mission">
-      <EnTeteMission mission="acquereurs" user={user} onRetour={onRetour} libelleRetour={libelleRetour} logout={logout}>
+      <EnTeteMission mission="acquereurs" user={user} onRetour={onRetour} libelleRetour={libelleRetour} logout={logout}
+        aide="/acquereurs/mode-emploi.html">
         {apercu && <Pastille ton="clair">{apercu === 'demo' ? 'Démonstration' : 'Lecture seule'}</Pastille>}
       </EnTeteMission>
       {apercu !== 'demo' && <nav className={`bg-white border-b border-quai-border gap-0.5 px-2 shrink-0 overflow-x-auto no-scrollbar ${enAppel ? 'hidden md:flex' : 'flex'}`}>
