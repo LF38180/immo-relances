@@ -1065,6 +1065,9 @@ db.exec(`
     bien_archive INTEGER, conseiller_bien TEXT, agence_bien TEXT, prix_estime REAL,
     suivi_par_contact TEXT, contact_archive INTEGER, stop_tel TEXT, stop_mail TEXT,
     methode TEXT, remarque TEXT,
+    -- Croisement avec l'opération anciens clients : d'où vient le « Suivi par »
+    -- du contact, et la date de sa dernière note de l'opération.
+    origine_suivi TEXT, date_reattribution_ac TEXT, derniere_note_ac TEXT,
     importe_le TEXT NOT NULL DEFAULT (datetime('now')), importe_par TEXT, fichier TEXT,
     retire_le TEXT
   );

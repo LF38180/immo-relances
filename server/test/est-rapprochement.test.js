@@ -36,7 +36,7 @@ const req = async (email, methode, url, corps) => {
 
 const COLS = ['id', 'nom', 'prenom', 'telephone', 'notes', 'id_contact', 'id_bien', 'adresse_bien', 'date_estimation', 'statut_bien', 'bien_archive',
   'conseiller_bien', 'suivi_par_contact', 'contact_archive', 'stop_tel', 'stop_mail', 'rapprochement', 'methode', 'remarque', 'ref_ancienne',
-  'proprietaire', 'agence_bien', 'prix_estime', 'id_bien_interne'];
+  'proprietaire', 'agence_bien', 'prix_estime', 'id_bien_interne', 'origine_suivi', 'date_reattribution_ac', 'derniere_note_ac'];
 const cel = (v) => { const x = String(v ?? ''); return /[,"\n]/.test(x) ? `"${x.replace(/"/g, '""')}"` : x; };
 const L = (o) => COLS.map(k => cel({ prenom: 'Zoé', bien_archive: 'Non', contact_archive: 'Non', stop_tel: 'Non', stop_mail: 'Non',
   conseiller_bien: 'Loick FERRUCCI', suivi_par_contact: '(aucun) - ancien : X', statut_bien: 'Estimation · actif', rapprochement: 'sûr',
@@ -44,7 +44,8 @@ const L = (o) => COLS.map(k => cel({ prenom: 'Zoé', bien_archive: 'Non', contac
 const csv = (...l) => '﻿' + [COLS.join(','), ...l].join('\n');
 const FICHIER = csv(
   L({ id: A, nom: 'ALPHA', id_contact: '9001', id_bien: 'EA100', ref_ancienne: '2589- LOT 1', prix_estime: '250000', date_estimation: '2021-03-04', notes: 'Réf 2589, "lot" 1\nsuite' }),
-  L({ id: B, nom: 'beta & cie', id_contact: '9002', id_bien: 'EM200', prix_estime: '99999999.99', remarque: 'doublon contact : autre contact n° 9003' }),
+  L({ id: B, nom: 'beta & cie', id_contact: '9002', id_bien: 'EM200', prix_estime: '99999999.99', remarque: 'doublon contact : autre contact n° 9003',
+    suivi_par_contact: 'Nathalie ALBIN', origine_suivi: 'opération anciens clients', date_reattribution_ac: '12/11', derniere_note_ac: '2026-11-10' }),
   L({ id: B, nom: 'BÊTA & Cie', id_contact: '9003', id_bien: 'EA201', rapprochement: 'probable', statut_bien: 'Prospection · actif', remarque: 'doublon contact : autre contact n° 9002' }),
   L({ id: C, nom: 'GAMMA', id_contact: '', id_bien: '', rapprochement: 'introuvable', statut_bien: '', bien_archive: '', contact_archive: '' }),
   L({ id: D, nom: 'UN AUTRE NOM', id_contact: '9004', id_bien: 'EA300' }),
@@ -76,13 +77,14 @@ const FICHIER = csv(
   const l = (id, bien) => db.prepare("SELECT * FROM est_modelo_liens WHERE contact_id = ? AND COALESCE(id_bien,'') = ?").get(id, bien || '');
   t('le bien, son contact et ses champs sont gardés', () => { const x = l(A, 'EA100'); eq(x.id_contact, '9001'); eq(x.rapprochement, 'SUR');
     eq(x.ref_ancienne, '2589- LOT 1'); eq(x.prix_estime, 250000); eq(x.date_estimation, '2021-03-04'); eq(x.bien_archive, 0); eq(x.importe_par, 'Ada Admin'); });
+  t('le croisement avec l’opération anciens clients est gardé', () => { const x = l(B, 'EM200'); eq(x.origine_suivi, 'opération anciens clients'); eq(x.derniere_note_ac, '2026-11-10'); });
   t('l’introuvable garde une ligne sans bien', () => { const x = l(C); eq(x.rapprochement, 'INTROUVABLE'); eq(x.id_bien, null); });
   t('la table des contacts n’a pas bougé', () => eq(db.prepare('SELECT COUNT(*) n FROM contacts').get().n, avant));
   t('la fiche au nom différent n’a aucun lien', () => eq(db.prepare('SELECT COUNT(*) n FROM est_modelo_liens WHERE contact_id = ?').get(D).n, 0));
 
   r = await req('adm@t.fr', 'GET', '/admin/estimes/rapprochement');
   t('état : 5 fiches dans la mission, 3 liées, 2 sans lien', () => { eq(r.corps.fiches_mission, 5); eq(r.corps.fiches_liees, 3); eq(r.corps.fiches_sans_lien, 2);
-    eq(r.corps.biens, 3); eq(r.corps.probables, 1); eq(r.corps.introuvables, 1); eq(r.corps.fiches_plusieurs_biens, 1); eq(r.corps.fiches_deux_contacts, 1); });
+    eq(r.corps.biens, 3); eq(r.corps.probables, 1); eq(r.corps.introuvables, 1); eq(r.corps.fiches_plusieurs_biens, 1); eq(r.corps.fiches_deux_contacts, 1); eq(r.corps.contacts_reattribues_par_operation, 1); });
 
   // Second fichier : un bien confirmé, un bien retiré, un nouveau.
   const V2 = csv(
