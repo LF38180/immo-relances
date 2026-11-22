@@ -133,6 +133,8 @@ app.get('/api/health', (_, res) => {
         }
         return t;
       })(),
+      // Mission Estimés : où en est le rapprochement avec Modelo.
+      estimes_modelo: require('./utils/estRapprochement').etat(),
       // Mission Acquéreurs : le périmètre, pour vérifier une sortie de contacts.
       acquereurs: (() => {
         const p = require('./utils/acqSortie').perimetre();

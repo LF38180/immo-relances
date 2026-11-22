@@ -1048,6 +1048,30 @@ db.exec(`
 if (!db.prepare('PRAGMA table_info(acq_reports)').all().some(c => c.name === 'empreinte'))
   db.exec('ALTER TABLE acq_reports ADD COLUMN empreinte TEXT');
 
+// Mission Estimés : le lien entre une fiche de l'appli (une personne) et
+// Modelo (son contact, et un ou plusieurs biens estimés). Les fiches
+// historiques n'ont jamais eu d'identifiant Modelo : Exploration Modelo les a
+// rapprochées une à une (22/11/2026), et son fichier est importé ici.
+// Table à part : la table `contacts` n'est pas touchée. Une ligne par bien ;
+// une fiche introuvable garde une ligne sans bien. Rien ne se supprime : un
+// bien absent d'un nouvel import est marqué retiré (retire_le).
+db.exec(`
+  CREATE TABLE IF NOT EXISTS est_modelo_liens (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    contact_id INTEGER NOT NULL REFERENCES contacts(id),
+    id_contact TEXT, id_bien TEXT,
+    rapprochement TEXT NOT NULL CHECK(rapprochement IN ('SUR','PROBABLE','INTROUVABLE')),
+    ref_ancienne TEXT, adresse_bien TEXT, date_estimation TEXT, statut_bien TEXT,
+    bien_archive INTEGER, conseiller_bien TEXT, agence_bien TEXT, prix_estime REAL,
+    suivi_par_contact TEXT, contact_archive INTEGER, stop_tel TEXT, stop_mail TEXT,
+    methode TEXT, remarque TEXT,
+    importe_le TEXT NOT NULL DEFAULT (datetime('now')), importe_par TEXT, fichier TEXT,
+    retire_le TEXT
+  );
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_est_liens_fiche_bien ON est_modelo_liens(contact_id, COALESCE(id_bien, ''));
+  CREATE INDEX IF NOT EXISTS idx_est_liens_contact ON est_modelo_liens(contact_id);
+`);
+
 // Mission Acquéreurs : personnes sorties de la mission sur décision de
 // l'agence (rappelées hors mission, reprises par un conseiller...). La liste
 // vit à part des contacts : un prochain import ne les remet pas dans la file,

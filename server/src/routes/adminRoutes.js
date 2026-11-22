@@ -474,4 +474,20 @@ router.get('/vue-agent/:id', (req, res) => {
   res.json({ agent, date: today, file, rappels, dujour });
 });
 
+// Mission Estimés : le rapprochement des fiches avec Modelo (contact et biens),
+// fait par Exploration Modelo. On vérifie d'abord, on enregistre ensuite.
+router.get('/estimes/rapprochement', requireRole('admin'), (req, res) => {
+  res.json(require('../utils/estRapprochement').etat());
+});
+router.post('/estimes/rapprochement', requireRole('admin'), (req, res) => {
+  const b = req.body || {};
+  if (typeof b.csv !== 'string' || !b.csv.trim()) return res.status(400).json({ error: 'Aucun contenu à lire' });
+  const u = db.prepare('SELECT prenom, nom FROM users WHERE id = ?').get(req.user.id);
+  const r = require('../utils/estRapprochement').importer(b.csv, { simulation: b.ecrire !== true,
+    par: u ? `${u.prenom} ${u.nom}`.trim() : null, fichier: String(b.fichier || '').slice(0, 200) });
+  if (!r.ok) return res.status(400).json(r);
+  if (!r.simulation) journaliser(req.user, 'ESTIMES_RAPPROCHEMENT', { details: { fiches: r.fiches, biens: r.biens, probables: r.probables, introuvables: r.introuvables, rejets: r.rejets.length } });
+  res.json(r);
+});
+
 module.exports = router;

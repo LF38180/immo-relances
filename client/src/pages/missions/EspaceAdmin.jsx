@@ -34,6 +34,7 @@ const AcqHub = lazy(() => import('../acquereurs/AcqHub'))
 const AcqAppel = lazy(() => import('../acquereurs/AcqAppel'))
 const OperationHub = lazy(() => import('../operation/OperationHub'))
 const DemoMission = lazy(() => import('./DemoMission'))
+const EstimesReport = lazy(() => import('./EstimesReport'))
 
 // `lettre` : le pictogramme du logo de la mission (E, A, C).
 const MISSIONS = {
@@ -214,7 +215,7 @@ function ContenuMission({ mission, onglet, setOnglet, sous, setSous, plein, alle
     }
     if (onglet === 'contacts') return <ContactsPage statutInitial={String(sous || '').startsWith('statut:') ? sous.slice(7) : ''} />
     if (onglet === 'import') return <ImportEstimes />
-    if (onglet === 'report') return <AVenir mission="Mission Estimés" />
+    if (onglet === 'report') return <EstimesReport />
     const v = sous || 'delais'
     return (<>
       <Pastilles largeur="max-w-4xl" valeur={v} onChange={setSous} choix={[['delais', 'Délais de relance'], ['scripts', 'Scripts d’appel'], ['fichiers', 'Fichiers et accès']]} />
