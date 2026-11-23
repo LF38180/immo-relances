@@ -87,12 +87,15 @@ export default function SoireePage() {
   }, [data, liste, conseiller, recherche])
 
   // L'export relit le tri juste avant : un appel enregistré il y a une minute compte.
-  const exporter = async (type) => {
+  // `courrier` (facultatif) : un fichier par cas, pour trois messages différents.
+  const exporter = async (type, courrier = null) => {
     const d = await charger()
     if (!d) return toast.error('Export impossible')
-    const lignes = d.lignes.filter(l => l.statut === 'A_INVITER' && l.type === type)
+    const lignes = d.lignes.filter(l => l.statut === 'A_INVITER' && l.type === type
+      && (!courrier || (courrier === 'NPAI' ? l.courrier.startsWith('NPAI') : l.courrier === courrier)))
     if (!lignes.length) return toast('Personne à inviter dans cette liste')
-    telechargerCsv(`soiree-invitations-${type === 'PERSONNALISEE' ? 'personnalisees' : 'generiques'}-${jourParis()}.csv`,
+    const suffixe = { ENVOYE: '-courrier-recu', NPAI: '-courrier-revenu', NON_ENVOYE: '-sans-courrier' }[courrier] || ''
+    telechargerCsv(`soiree-invitations-${type === 'PERSONNALISEE' ? 'personnalisees' : 'generiques'}${suffixe}-${jourParis()}.csv`,
       type === 'GENERIQUE' ? COLS_GEN : COLS, type === 'GENERIQUE' ? lignes.map(avecCourrier) : lignes)
     toast.success(`${lignes.length} ligne${s(lignes.length)} exportée${s(lignes.length)}. Rien n’est marqué tant que le fichier n’est pas réimporté.`, { duration: 6000 })
   }
@@ -180,12 +183,24 @@ export default function SoireePage() {
             n={c.a_inviter.generique} onExporter={() => exporter('GENERIQUE')} />
         </div>
         {c.a_inviter.generique > 0 && c.a_inviter.generique_courrier && (
-          <p className="text-[13px] text-quai-text leading-snug -mt-1" data-courrier>
-            <b>Génériques et courrier du président</b> : {c.a_inviter.generique_courrier.envoye} l’ont reçu,{' '}
-            {c.a_inviter.generique_courrier.npai + c.a_inviter.generique_courrier.npai_renvoye} courrier{s(c.a_inviter.generique_courrier.npai + c.a_inviter.generique_courrier.npai_renvoye)} revenu{s(c.a_inviter.generique_courrier.npai + c.a_inviter.generique_courrier.npai_renvoye)} (NPAI),{' '}
-            {c.a_inviter.generique_courrier.non_envoye} sans courrier. {c.a_inviter.generique_jamais_appeles} pas encore appelé{s(c.a_inviter.generique_jamais_appeles)}.
-            Le détail est dans l’export, colonne « courrier ».
-          </p>
+          <div className="bg-white border border-quai-border rounded-xl p-3 -mt-1" data-courrier>
+            <div className="text-sm font-semibold text-quai-navy">Les génériques, selon le courrier du président</div>
+            <div className="text-[12px] text-quai-muted leading-snug mb-2">
+              Un fichier par cas, si le message change. {c.a_inviter.generique_jamais_appeles} pas encore appelé{s(c.a_inviter.generique_jamais_appeles)}.
+              Après l’envoi, chaque fichier se réimporte ci-dessous, comme les autres.
+            </div>
+            <div className="grid sm:grid-cols-3 gap-2">
+              {[['ENVOYE', 'Courrier reçu', c.a_inviter.generique_courrier.envoye],
+                ['NPAI', 'Courrier revenu (NPAI)', c.a_inviter.generique_courrier.npai + c.a_inviter.generique_courrier.npai_renvoye],
+                ['NON_ENVOYE', 'Sans courrier', c.a_inviter.generique_courrier.non_envoye]].map(([k, label, n]) => (
+                <button key={k} onClick={() => exporter('GENERIQUE', k)} disabled={!n}
+                  className="text-sm px-3 py-2 rounded-lg border border-quai-navy text-quai-navy bg-white inline-flex items-center justify-between gap-2 min-h-[2.75rem] disabled:opacity-40">
+                  <span className="text-left leading-tight">{label}</span>
+                  <span className="inline-flex items-center gap-1.5 shrink-0"><b className="tabular-nums">{n}</b><Icon name="file-down" size="sm" /></span>
+                </button>
+              ))}
+            </div>
+          </div>
         )}
         <p className="text-[13px] text-quai-text leading-snug -mt-1" data-oui>
           <b>{oui.length} « oui » au téléphone</b>{ouiOu.length > 0 && <> : {ouiOu.map(([n, t]) => `${n} ${t}`).join(', ')}</>}.
