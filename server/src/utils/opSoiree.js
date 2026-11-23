@@ -51,7 +51,9 @@ function lire() {
     ORDER BY c.nom, c.prenom, c.id_modelo`).all();
   const invitations = db.prepare(`SELECT id, id_modelo, type, email, envoye_le, vague, canal, par
     FROM op_invitations WHERE annulee_le IS NULL ORDER BY id`).all();
-  return { fiches, invitations };
+  const erreurs = new Map(db.prepare(`SELECT email, motif, code, definitif, le FROM op_emails_en_erreur
+    WHERE annulee_le IS NULL`).all().map(e => [e.email, e]));
+  return { fiches, invitations, erreurs };
 }
 
 // Le tri complet. Chaque fiche reçoit un `statut` et un seul :
@@ -60,13 +62,18 @@ function lire() {
 //   MEME_EMAIL     même adresse qu'une autre fiche à inviter : un seul envoi
 //   STOP_MAIL      à inviter, mais pas par mail
 //   SANS_EMAIL     à inviter, mais pas d'adresse utilisable
+//   MAIL_EN_ERREUR à inviter, mais son adresse est morte (mail revenu en erreur)
 //   EXCLU          jamais d'invitation, avec son motif
 function trier() {
-  const { fiches, invitations } = lire();
-  const parFiche = new Map(), parEmail = new Map();
+  const { fiches, invitations, erreurs } = lire();
+  const morte = (e) => { const x = erreurs.get(e); return x && x.definitif ? x : null; };
+  // Un mail parti vers une adresse morte n'a invité personne : il reste en
+  // base, mais ne compte plus. Un SMS ou un appel noté ensuite, lui, compte.
+  const parFiche = new Map(), parEmail = new Map(), echecs = new Map();
   for (const i of invitations) {
-    if (!parFiche.has(i.id_modelo)) parFiche.set(i.id_modelo, i);
     const e = emailPropre(i.email);
+    if (i.vague > 0 && e && morte(e)) { if (!echecs.has(i.id_modelo)) echecs.set(i.id_modelo, i); continue; }
+    if (!parFiche.has(i.id_modelo)) parFiche.set(i.id_modelo, i);
     if (e && !parEmail.has(e)) parEmail.set(e, i);
   }
 
@@ -75,8 +82,11 @@ function trier() {
     const joint = issues.has('JOINT');
     // L'adresse recueillie au téléphone prime sur celle de la fiche.
     const maj = emailPropre(f.email_maj);
-    const email = emailPlausible(maj) ? maj
-      : (f.email_valide && emailPlausible(emailPropre(f.email)) ? emailPropre(f.email) : '');
+    // Une adresse revenue en erreur n'est plus proposée : on prend l'autre, s'il y en a une.
+    const candidates = [emailPlausible(maj) ? maj : '',
+      f.email_valide && emailPlausible(emailPropre(f.email)) ? emailPropre(f.email) : ''].filter(Boolean);
+    const email = candidates.find(e => !morte(e)) || '';
+    const emailMort = email ? null : candidates.map(morte).find(Boolean) || null;
     const l = {
       id_modelo: f.id_modelo, civilite: f.civilite || '', nom: f.nom || '', prenom: f.prenom || '',
       email, conseiller: (joint && f.appele_par) || f.conseiller || '',
@@ -86,7 +96,14 @@ function trier() {
       // Le courrier du président : parti, revenu (NPAI), ou jamais envoyé.
       courrier: f.npai ? (f.courrier_renvoye ? 'NPAI_RENVOYE' : 'NPAI') : f.courrier_etat === 'ENVOYE' ? 'ENVOYE' : 'NON_ENVOYE',
       appele: issues.size > 0,
+      erreur_mail: null,
     };
+    const echec = echecs.get(f.id_modelo);
+    if (emailMort || echec) {
+      const x = emailMort || erreurs.get(emailPropre(echec.email));
+      l.erreur_mail = { email: x.email, motif: x.motif || 'Adresse en erreur', definitif: true,
+        envoi: echec ? { vague: echec.vague, envoye_le: echec.envoye_le, type: echec.type } : null };
+    }
 
     let motif = null;
     if (f.oppose || issues.has('REFUS_FERME')) motif = 'OPPOSITION';
@@ -106,11 +123,14 @@ function trier() {
       // Bascule : générique reçue, puis « oui » au téléphone. Rien de plus à
       // envoyer, mais son conseiller doit enregistrer sa réponse.
       l.a_confirmer = inv.type === 'GENERIQUE' && l.oui && !motif;
+      // Boîte pleine : l'adresse existe, l'invitation reste comptée, avec une alerte.
+      const pleine = inv.vague > 0 && erreurs.get(emailPropre(inv.email));
+      if (pleine && !pleine.definitif) l.erreur_mail = { email: pleine.email, motif: pleine.motif || 'Boîte pleine', definitif: false, envoi: null };
       return l;
     }
     if (motif) { l.statut = 'EXCLU'; l.motif = motif; return l; }
     if (f.stop_mail) { l.statut = 'STOP_MAIL'; return l; }
-    if (!email) { l.statut = 'SANS_EMAIL'; return l; }
+    if (!email) { l.statut = l.erreur_mail ? 'MAIL_EN_ERREUR' : 'SANS_EMAIL'; return l; }
     l.statut = 'A_INVITER';
     return l;
   });
@@ -161,6 +181,9 @@ function compter(lignes) {
     meme_email: n(l => l.statut === 'MEME_EMAIL'),
     stop_mail: n(l => l.statut === 'STOP_MAIL'),
     sans_email: n(l => l.statut === 'SANS_EMAIL'),
+    mail_en_erreur: n(l => l.statut === 'MAIL_EN_ERREUR'),
+    boite_pleine: n(l => l.statut === 'INVITE' && l.erreur_mail && !l.erreur_mail.definitif),
+    adresses_en_erreur: db.prepare('SELECT COUNT(*) n FROM op_emails_en_erreur WHERE annulee_le IS NULL').get().n,
     exclus: { total: n(l => l.statut === 'EXCLU'), ...exclus },
     vagues,
   };
@@ -216,6 +239,51 @@ function importerEnvoi({ lignes, envoye_le, fichier, par, simulation }) {
   };
 }
 
+// Mails revenus en erreur : un fichier « email ; motif ; code ; definitif ». On
+// retrouve les fiches par l'adresse. En simulation, rien n'est écrit.
+function importerErreurs({ lignes, fichier, par, simulation }) {
+  const avant = trier();
+  const parEmail = new Map();
+  const { fiches, invitations } = lire();
+  const ajouter = (e, id) => { if (!e) return; if (!parEmail.has(e)) parEmail.set(e, new Set()); parEmail.get(e).add(id); };
+  for (const f of fiches) { ajouter(emailPropre(f.email), f.id_modelo); ajouter(emailPropre(f.email_maj), f.id_modelo); }
+  for (const i of invitations) ajouter(emailPropre(i.email), i.id_modelo);
+  const tri = new Map(avant.map(l => [l.id_modelo, l]));
+  const deja = new Set(db.prepare('SELECT email FROM op_emails_en_erreur WHERE annulee_le IS NULL').all().map(x => x.email));
+  const reconnues = [], inconnues = [], rejetees = [], connues = [], vus = new Set();
+  for (const [i, brut] of lignes.entries()) {
+    const email = emailPropre(brut.email || brut.adresse || '');
+    if (!emailPlausible(email)) { rejetees.push({ ligne: i + 2, email, motif: 'adresse illisible' }); continue; }
+    if (vus.has(email)) continue;
+    vus.add(email);
+    const definitif = /^(non|n|0|faux|false)$/i.test(String(brut.definitif ?? '').trim()) ? 0 : 1;
+    const e = { email, motif: String(brut.motif || '').trim().slice(0, 120) || (definitif ? 'Adresse en erreur' : 'Boîte pleine'),
+      code: String(brut.code || '').trim().slice(0, 20) || null, definitif };
+    if (deja.has(email)) { connues.push(e); continue; }
+    const ids = [...(parEmail.get(email) || [])];
+    if (!ids.length) { inconnues.push(e); continue; }
+    reconnues.push({ ...e, fiches: ids.map(id => { const l = tri.get(id); return { id_modelo: id, nom: l.nom, prenom: l.prenom,
+      conseiller: l.conseiller, statut: l.statut, invitee_par_mail: l.statut === 'INVITE' && l.invitation.vague > 0 }; }) });
+  }
+  // Une adresse inconnue de l'opération est gardée aussi : elle ne touche
+  // aucune fiche, et servira si le fichier d'envoi est réimporté après.
+  if (!simulation) {
+    const ins = db.prepare(`INSERT INTO op_emails_en_erreur (email, motif, code, definitif, par, fichier)
+      VALUES (@email, @motif, @code, @definitif, @par, @fichier)
+      ON CONFLICT(email) DO UPDATE SET motif = excluded.motif, code = excluded.code, definitif = excluded.definitif,
+        le = datetime('now'), par = excluded.par, fichier = excluded.fichier, annulee_le = NULL, annulee_par = NULL`);
+    db.transaction(() => { for (const e of [...reconnues, ...inconnues]) ins.run({ email: e.email, motif: e.motif, code: e.code, definitif: e.definitif, par: par || null, fichier: fichier || null }); })();
+  }
+  return { simulation: !!simulation, lues: vus.size, reconnues, inconnues, deja_connues: connues.length, rejetees,
+    definitives: reconnues.filter(e => e.definitif).length, boites_pleines: reconnues.filter(e => !e.definitif).length };
+}
+
+// Une erreur saisie à tort : on l'annule, la ligne reste.
+function annulerErreur({ email, par }) {
+  return db.prepare(`UPDATE op_emails_en_erreur SET annulee_le = datetime('now'), annulee_par = ?
+    WHERE email = ? AND annulee_le IS NULL`).run(par || null, emailPropre(email)).changes;
+}
+
 // Invitation faite autrement que par mail (SMS, téléphone) : notée à la main,
 // une fiche à la fois. Refusée pour une fiche exclue ou déjà invitée.
 function noterInvitation({ id_modelo, canal, envoye_le, par }) {
@@ -238,4 +306,4 @@ function annulerInvitationManuelle({ id_modelo, par }) {
   return r.changes;
 }
 
-module.exports = { trier, compter, importerEnvoi, noterInvitation, annulerInvitationManuelle, MOTIFS, TYPES, plier };
+module.exports = { trier, compter, importerEnvoi, importerErreurs, annulerErreur, noterInvitation, annulerInvitationManuelle, MOTIFS, TYPES, plier };

@@ -48,12 +48,16 @@ const jourParis = () => new Date().toLocaleDateString('fr-CA', { timeZone: 'Euro
 const dateFr = (j) => j ? j.slice(0, 10).split('-').reverse().join('/') : ''
 const s = (n) => n > 1 ? 's' : ''
 
+// Pas d'invitation possible par mail : stop mail, pas d'adresse, ou adresse morte.
+const PAR_TEL = (l) => l.statut === 'STOP_MAIL' || l.statut === 'SANS_EMAIL' || l.statut === 'MAIL_EN_ERREUR'
+
 const LISTES = [
   { id: 'perso', label: 'À inviter : personnalisée', f: l => l.statut === 'A_INVITER' && l.type === 'PERSONNALISEE' },
   { id: 'gen', label: 'À inviter : générique', f: l => l.statut === 'A_INVITER' && l.type === 'GENERIQUE' },
   { id: 'invites', label: 'Personnes invitées', f: l => l.statut === 'INVITE' },
   { id: 'confirmer', label: 'À confirmer', f: l => l.a_confirmer },
-  { id: 'tel', label: 'À inviter par téléphone ou SMS', f: l => l.statut === 'STOP_MAIL' || l.statut === 'SANS_EMAIL' },
+  { id: 'tel', label: 'À inviter par téléphone ou SMS', f: l => PAR_TEL(l) },
+  { id: 'erreurs', label: 'Mails revenus en erreur', f: l => !!l.erreur_mail },
   { id: 'meme', label: 'Même adresse qu’une autre fiche', f: l => l.statut === 'MEME_EMAIL' },
   { id: 'exclus', label: 'Pas d’invitation', f: l => l.statut === 'EXCLU' },
 ]
@@ -68,6 +72,7 @@ export default function SoireePage() {
   const [recherche, setRecherche] = useState('')
   const [apercu, setApercu] = useState(null)   // retour de simulation + lignes du fichier
   const [envoi, setEnvoi] = useState(false)
+  const [erreurs, setErreurs] = useState(null)   // simulation du fichier des mails en erreur
 
   const charger = () => api.get('/operation/soiree')
     .then(r => { setData(r.data); setErreur(false); return r.data })
@@ -121,6 +126,41 @@ export default function SoireePage() {
     }
     lecteur.readAsText(f, 'utf-8')
   }
+  const choisirErreurs = (ev) => {
+    const f = ev.target.files?.[0]; ev.target.value = ''
+    if (!f) return
+    const lecteur = new FileReader()
+    lecteur.onload = async () => {
+      try {
+        const lignes = lireCsv(String(lecteur.result))
+        if (!lignes.length) return toast.error('Le fichier est vide')
+        if (!('email' in lignes[0])) return toast.error('Colonne email introuvable.')
+        setEnvoi(true)
+        const r = await api.post('/operation/soiree/erreurs', { lignes, simulation: true })
+        setErreurs({ ...r.data, lignes, fichier: f.name })
+      } catch (e) { toast.error(e.messageLisible || 'Lecture du fichier impossible') }
+      finally { setEnvoi(false) }
+    }
+    lecteur.readAsText(f, 'utf-8')
+  }
+  const enregistrerErreurs = async () => {
+    setEnvoi(true)
+    try {
+      const r = await api.post('/operation/soiree/erreurs', { lignes: erreurs.lignes, fichier: erreurs.fichier })
+      const n = r.data.reconnues.length + r.data.inconnues.length
+      toast.success(`${n} adresse${s(n)} en erreur enregistrée${s(n)}`, { duration: 6000 })
+      setErreurs(null); setListe('erreurs'); charger()
+    } catch (e) { toast.error(e.messageLisible || 'Enregistrement impossible') }
+    finally { setEnvoi(false) }
+  }
+  // Les adresses mortes, avec leur fiche, pour les corriger dans Modelo.
+  const exporterAdressesMortes = () => {
+    const l = data.lignes.filter(x => x.erreur_mail && x.erreur_mail.definitif)
+      .map(x => ({ id_modelo: x.id_modelo, civilite: x.civilite, nom: x.nom, prenom: x.prenom, conseiller: x.conseiller,
+        email_en_erreur: x.erreur_mail.email, motif: x.erreur_mail.motif }))
+    if (!l.length) return toast('Aucune adresse morte enregistrée')
+    telechargerCsv(`soiree-adresses-mortes-pour-modelo-${jourParis()}.csv`, ['id_modelo', 'civilite', 'nom', 'prenom', 'conseiller', 'email_en_erreur', 'motif'], l)
+  }
   const enregistrer = async () => {
     setEnvoi(true)
     try {
@@ -160,7 +200,7 @@ export default function SoireePage() {
   const ouiOu = [
     [oui.filter(l => l.statut === 'A_INVITER').length, 'à inviter par mail'],
     [oui.filter(l => l.statut === 'INVITE').length, oui.filter(l => l.statut === 'INVITE').length > 1 ? 'déjà invités' : 'déjà invité'],
-    [oui.filter(l => l.statut === 'STOP_MAIL' || l.statut === 'SANS_EMAIL').length, 'à inviter par téléphone ou SMS'],
+    [oui.filter(PAR_TEL).length, 'à inviter par téléphone ou SMS'],
     [oui.filter(l => l.statut === 'MEME_EMAIL').length, 'avec l’adresse d’une autre fiche'],
     [oui.filter(l => l.statut === 'EXCLU').length, 'sans invitation'],
   ].filter(([n]) => n)
@@ -223,12 +263,36 @@ export default function SoireePage() {
           {apercu && <Apercu a={apercu} setA={setApercu} envoi={envoi} onEnregistrer={enregistrer} />}
         </div>
 
+        {/* 2 bis. Mails revenus en erreur */}
+        <div className="bg-white border border-quai-border rounded-xl p-3" data-erreurs>
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-semibold text-quai-navy">Mails revenus en erreur</div>
+              <div className="text-[12px] text-quai-muted leading-snug">
+                Un fichier avec les colonnes email, motif, definitif. Ces personnes repassent « à inviter par téléphone ou SMS ».
+                {c.adresses_en_erreur > 0 && <> {c.adresses_en_erreur} adresse{s(c.adresses_en_erreur)} enregistrée{s(c.adresses_en_erreur)}.</>}
+              </div>
+            </div>
+            {(c.mail_en_erreur > 0 || c.adresses_en_erreur > 0) && (
+              <button onClick={exporterAdressesMortes}
+                className="text-xs px-3 py-2 rounded-lg border border-quai-border text-quai-navy inline-flex items-center gap-1.5 min-h-[2.75rem]">
+                <Icon name="download" size="sm" /> Adresses mortes, pour Modelo
+              </button>
+            )}
+            <label className={`text-sm px-4 py-2.5 rounded-lg border border-quai-navy text-quai-navy bg-white inline-flex items-center gap-2 cursor-pointer min-h-[2.75rem] ${envoi ? 'opacity-40 pointer-events-none' : ''}`}>
+              <Icon name="file-up" size="sm" /> Choisir le fichier des erreurs
+              <input type="file" accept=".csv,text/csv" className="hidden" onChange={choisirErreurs} />
+            </label>
+          </div>
+          {erreurs && <ApercuErreurs a={erreurs} envoi={envoi} onAbandonner={() => setErreurs(null)} onEnregistrer={enregistrerErreurs} />}
+        </div>
+
         {/* 3. Où on en est */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
           <Chiffre n={c.invites.total} label="Personnes invitées"
             sous={`${c.invites.personnalisee} perso. · ${c.invites.generique} génér.${c.invites.par_sms ? ` · ${c.invites.par_sms} par SMS` : ''}${c.invites.par_telephone ? ` · ${c.invites.par_telephone} par téléphone` : ''}${c.invites.meme_adresse ? ` · dont ${c.invites.meme_adresse} par l’adresse d’une autre fiche` : ''}`} />
           <Chiffre n={c.a_confirmer} label="À confirmer" sous="Générique reçue, puis oui au téléphone" />
-          <Chiffre n={c.stop_mail + c.sans_email} label="Par téléphone ou SMS" sous={`${c.sans_email} sans e-mail · ${c.stop_mail} stop mail`} />
+          <Chiffre n={c.stop_mail + c.sans_email + (c.mail_en_erreur || 0)} label="Par téléphone ou SMS" sous={`${c.sans_email} sans e-mail · ${c.stop_mail} stop mail${c.mail_en_erreur ? ` · ${c.mail_en_erreur} mail${s(c.mail_en_erreur)} en erreur` : ''}`} />
           <Chiffre n={c.exclus.total} label="Pas d’invitation"
             sous={Object.entries(data.motifs).filter(([k]) => c.exclus[k]).map(([k, v]) => `${c.exclus[k]} ${v.charAt(0).toLowerCase() + v.slice(1)}`).join(' · ')} />
         </div>
@@ -283,7 +347,7 @@ export default function SoireePage() {
                 <span className="text-[12px] text-quai-muted basis-full sm:basis-auto sm:ml-auto">
                   {partout && <b className="text-quai-navy font-medium">{(LISTES.find(x => x.f(l)) || {}).label} · </b>}{detail(l, data.motifs)}
                 </span>
-                {(l.statut === 'STOP_MAIL' || l.statut === 'SANS_EMAIL') && (
+                {PAR_TEL(l) && (
                   <span className="basis-full flex flex-wrap items-center gap-2 mt-1" data-noter>
                     <span className="text-[12px] text-quai-muted">Invitation faite :</span>
                     <button onClick={() => noter(l, 'SMS')} className="text-xs px-3 py-2 rounded-lg border border-quai-navy text-quai-navy bg-white min-h-[2.5rem]">par SMS</button>
@@ -313,9 +377,15 @@ function detail(l, motifs) {
       ? `par ${i.canal === 'SMS' ? 'SMS' : 'téléphone'} le ${dateFr(i.envoye_le)}${i.par ? ` (${i.par})` : ''}`
       : `vague ${i.vague} du ${dateFr(i.envoye_le)}`
     return `${TYPE[i.type]}, ${quand}${i.via ? ' (même adresse qu’une autre fiche)' : ''}`
+      + (l.erreur_mail ? ` · ${l.erreur_mail.motif.toLowerCase()} : à relancer par un autre moyen` : '')
       + (l.a_confirmer ? ' · a dit oui depuis' : '') + (l.motif ? ` · depuis : ${motifs[l.motif].toLowerCase()}` : '')
   }
   if (l.statut === 'EXCLU') return motifs[l.motif] + (l.oui ? ' · avait dit oui à la soirée' : '')
+  if (l.statut === 'MAIL_EN_ERREUR') {
+    const e = l.erreur_mail
+    return `Mail revenu en erreur (${e.email}) : ${e.motif.toLowerCase()}`
+      + (e.envoi ? ` · envoi du ${dateFr(e.envoi.envoye_le)}, vague ${e.envoi.vague}` : ' · pas encore envoyé') + ` · ${TYPE[l.type].toLowerCase()}`
+  }
   if (l.statut === 'STOP_MAIL') return `Stop mail · ${TYPE[l.type].toLowerCase()}`
   if (l.statut === 'SANS_EMAIL') return `Pas d’e-mail · ${TYPE[l.type].toLowerCase()}`
   if (l.statut === 'MEME_EMAIL') return `Couverte par la fiche ${l.meme_que}`
@@ -344,6 +414,46 @@ function Chiffre({ n, label, sous }) {
       <div className="text-2xl font-display font-bold text-quai-navy tabular-nums">{n}</div>
       <div className="text-[13px] font-medium text-quai-navy">{label}</div>
       {sous && <div className="text-[11px] text-quai-muted leading-snug mt-0.5">{sous}</div>}
+    </div>
+  )
+}
+
+// Ce que le fichier des erreurs va changer, avant de l'enregistrer.
+function ApercuErreurs({ a, envoi, onAbandonner, onEnregistrer }) {
+  const n = a.reconnues.length + a.inconnues.length
+  return (
+    <div className="mt-3 border-t border-quai-border pt-3 space-y-2" data-apercu-erreurs>
+      <div className="text-sm text-quai-navy">
+        <b>{a.fichier}</b> : {a.lues} adresse{s(a.lues)} lue{s(a.lues)}. {a.reconnues.length} retrouvée{s(a.reconnues.length)} dans l’opération
+        ({a.definitives} adresse{s(a.definitives)} morte{s(a.definitives)}, {a.boites_pleines} boîte{s(a.boites_pleines)} pleine{s(a.boites_pleines)})
+        {a.deja_connues > 0 && <>, {a.deja_connues} déjà enregistrée{s(a.deja_connues)}</>}
+        {a.inconnues.length > 0 && <>, <span className="text-amber-800">{a.inconnues.length} inconnue{s(a.inconnues.length)}</span></>}
+        {a.rejetees.length > 0 && <>, <span className="text-red-700">{a.rejetees.length} illisible{s(a.rejetees.length)}</span></>}.
+      </div>
+      {a.reconnues.length > 0 && (
+        <div className="rounded-lg bg-gray-50 border border-quai-border p-2 text-[12px] text-quai-text max-h-56 overflow-y-auto">
+          {a.reconnues.map((e, i) => e.fiches.map(f => (
+            <div key={i + f.id_modelo}>
+              <b>{f.prenom} {f.nom}</b> ({f.conseiller || 'non attribuée'}) · {e.email} · {e.motif}
+              {' · '}{!e.definitif ? (f.invitee_par_mail ? 'reste invitée, avec une alerte' : 'adresse valable, rien ne change') : f.invitee_par_mail ? 'n’est plus comptée invitée' : f.statut === 'EXCLU' ? 'fiche sans invitation' : 'ne sera pas invitée par mail'}
+            </div>
+          )))}
+        </div>
+      )}
+      {a.inconnues.length > 0 && (
+        <div className="rounded-lg bg-amber-50 border border-amber-200 p-2 text-[12px] text-amber-900 max-h-32 overflow-y-auto">
+          <b>Adresses qui ne correspondent à aucune fiche de l’opération (gardées quand même) :</b>
+          {a.inconnues.map((e, i) => <div key={i}>{e.email} · {e.motif}</div>)}
+        </div>
+      )}
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="flex-1" />
+        <button onClick={onAbandonner} className="text-sm px-3 py-2.5 rounded-lg border border-quai-border text-quai-navy min-h-[2.75rem]">Abandonner</button>
+        <button onClick={onEnregistrer} disabled={envoi || !n}
+          className="text-sm px-4 py-2.5 rounded-lg bg-quai-gold text-quai-navy font-semibold min-h-[2.75rem] disabled:opacity-40">
+          {n ? `Enregistrer ${n} adresse${s(n)} en erreur` : 'Rien à enregistrer'}
+        </button>
+      </div>
     </div>
   )
 }

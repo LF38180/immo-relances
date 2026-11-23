@@ -1089,6 +1089,20 @@ db.exec(`
   );
 `);
 
+// Soirée : adresses e-mail dont l'invitation est revenue en erreur. Une ligne
+// par adresse. `definitif` = 1 : l'adresse est morte (inexistante, bloquée) ;
+// 0 : boîte pleine, l'adresse existe. Rien ne se supprime : une erreur saisie
+// à tort est annulée (annulee_le).
+db.exec(`
+  CREATE TABLE IF NOT EXISTS op_emails_en_erreur (
+    email TEXT PRIMARY KEY,
+    motif TEXT, code TEXT,
+    definitif INTEGER NOT NULL DEFAULT 1,
+    le TEXT NOT NULL DEFAULT (datetime('now')), par TEXT, fichier TEXT,
+    annulee_le TEXT, annulee_par TEXT
+  );
+`);
+
 // Soirée des anciens clients (3 décembre). Les invitations partent hors de
 // l'appli, par vagues : on note ici ce qui a été envoyé, pour que l'export
 // suivant ne reprenne que les nouveaux. Rien ne se supprime : une vague

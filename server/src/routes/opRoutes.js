@@ -1655,6 +1655,26 @@ router.post('/soiree/envoye', accesSoiree, (req, res) => {
   res.json(r);
 });
 
+// Mails revenus en erreur : les fiches concernées repassent « à inviter par
+// téléphone ou SMS ». L'envoi d'origine reste en base.
+router.post('/soiree/erreurs', accesSoiree, (req, res) => {
+  const moi = identite(req);
+  const lignes = Array.isArray(req.body?.lignes) ? req.body.lignes : null;
+  if (!lignes || !lignes.length) return res.status(400).json({ error: 'Le fichier est vide' });
+  if (!('email' in lignes[0])) return res.status(400).json({ error: 'Colonne email introuvable' });
+  const r = SO.importerErreurs({ lignes, fichier: String(req.body.fichier || '').slice(0, 200), par: moi?.nom_complet, simulation: !!req.body.simulation });
+  if (!r.simulation && (r.reconnues.length || r.inconnues.length))
+    journaliser(moi, 'SOIREE_MAILS_EN_ERREUR', { details: { adresses: r.reconnues.length + r.inconnues.length, reconnues: r.reconnues.length } });
+  res.json(r);
+});
+router.post('/soiree/erreurs/annuler', requireRole('admin'), (req, res) => {
+  const moi = identite(req);
+  const n = SO.annulerErreur({ email: req.body?.email, par: moi?.nom_complet });
+  if (!n) return res.status(404).json({ error: 'Adresse introuvable parmi les erreurs' });
+  journaliser(moi, 'SOIREE_MAIL_EN_ERREUR_ANNULE', { details: {} });
+  res.json({ ok: true });
+});
+
 // Invitation faite par SMS ou par téléphone : notée à la main, fiche par fiche.
 router.post('/soiree/contacts/:id/invitation', accesSoiree, (req, res) => {
   const moi = identite(req);
