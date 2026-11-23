@@ -139,7 +139,8 @@ app.get('/api/health', (_, res) => {
       acquereurs: (() => {
         const p = require('./utils/acqSortie').perimetre();
         return { contacts: p.contacts, dans_la_file: p.dans_la_file || 0, hors_mission: p.hors_mission || 0,
-          liste_hors_mission: db.prepare('SELECT COUNT(*) n FROM acq_hors_mission WHERE leve_le IS NULL').get().n };
+          liste_hors_mission: db.prepare('SELECT COUNT(*) n FROM acq_hors_mission WHERE leve_le IS NULL').get().n,
+          croisement_estimes: require('./utils/acqEstimes').compter() };
       })(),
       // Invitations à la soirée : comptes anonymes, pour vérifier la prod sans compte.
       soiree_invitations: (() => {

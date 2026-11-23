@@ -168,6 +168,77 @@ function Sortir({ onFait }) {
   )
 }
 
+// Les personnes que Chrystelle (Mission Estimés) a déjà eues au téléphone.
+// Décision du 23/11 : elle a fait le point sur leur achat, elles sortent de la
+// file. L'administration coche et valide ; rien ne sort d'office.
+function DejaVues({ cle, onFait }) {
+  const [d, setD] = useState(null), [coches, setCoches] = useState(new Set()), [envoi, setEnvoi] = useState(false), [ouvert, setOuvert] = useState(false)
+  const charger = () => api.get('/acquereurs/admin/estimes').then(r => {
+    setD(r.data)
+    setCoches(new Set(r.data.lignes.filter(l => l.etat === 'A_SORTIR' && !l.a_verifier).map(l => l.id_contact)))
+  }).catch(err)
+  useEffect(() => { charger() }, [cle])
+  if (!d) return null
+  const c = d.compteurs
+  if (!c.communes && !c.a_sortir && !c.deja_hors_file) return null
+  const s = (n) => n > 1 ? 's' : ''
+  const jour = (x) => x ? String(x).slice(0, 10).split('-').reverse().join('/') : ''
+  const aSortir = d.lignes.filter(l => l.etat === 'A_SORTIR')
+  const basculer = (id) => setCoches(p => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n })
+  const sortir = async () => {
+    if (!window.confirm(`Sortir ${coches.size} personne${s(coches.size)} de la file ?\n\nRien n’est effacé. Chaque sortie peut être levée depuis « Personnes hors de la file ».`)) return
+    setEnvoi(true)
+    try {
+      const r = await api.post('/acquereurs/admin/estimes/sortir', { ids: [...coches] })
+      toast.success(`${r.data.sortis.length} personne${s(r.data.sortis.length)} sortie${s(r.data.sortis.length)} de la file`)
+      await charger(); onFait?.()
+    } catch (e) { toast.error(e.response?.data?.error || e.messageLisible || 'Sortie impossible') } finally { setEnvoi(false) }
+  }
+  return (
+    <Bloc titre="Déjà vues par Chrystelle (Mission Estimés)" icon="users" aide="Chrystelle a déjà eu ces personnes au téléphone et a fait le point sur leur achat. Elles sortent de la file ; elles restent à Chrystelle dans Modelo. Celles qu’elle n’a jamais jointes restent dans la file, et l’écran d’appel le signale.">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-sm" data-deja-vues>
+        {[[c.a_sortir, 'à sortir de la file'], [c.jamais_jointes, 'jamais jointes : restent'], [c.deja_appelees, 'déjà appelées ici : on n’y touche pas'], [c.deja_hors_file, 'déjà hors de la file']].map(([n, l]) => (
+          <div key={l} className="rounded-xl border border-quai-border bg-white px-3 py-2">
+            <div className="text-xl font-display font-bold text-quai-navy tabular-nums">{n}</div>
+            <div className="text-[12px] text-quai-muted leading-snug">{l}</div>
+          </div>
+        ))}
+      </div>
+      {aSortir.length > 0 && (
+        <>
+          <div className="flex flex-wrap items-center gap-2 mt-3">
+            <button className="btn-secondary" onClick={() => setOuvert(o => !o)}>{ouvert ? 'Masquer la liste' : `Voir les ${aSortir.length} personne${s(aSortir.length)}`}</button>
+            <button className="btn-primary" disabled={envoi || !coches.size} onClick={sortir}>{coches.size === 1 ? 'Sortir la personne cochée' : `Sortir les ${coches.size} personnes cochées`}</button>
+            {c.dont_a_verifier > 0 && <span className="text-[12px] text-amber-800">{c.dont_a_verifier} à vérifier, non cochée{s(c.dont_a_verifier)} d’office.</span>}
+          </div>
+          {ouvert && (
+            <div className="mt-3 divide-y divide-quai-border/60 border border-quai-border rounded-xl bg-white max-h-[28rem] overflow-y-auto" data-liste-deja-vues>
+              {aSortir.map(l => {
+                const e = l.estimes, a = e?.dernier_appel
+                return (
+                  <label key={l.id_contact} className="flex items-start gap-3 px-3 py-2.5 cursor-pointer">
+                    <input type="checkbox" className="mt-1 w-5 h-5 shrink-0" checked={coches.has(l.id_contact)} onChange={() => basculer(l.id_contact)} />
+                    <span className="min-w-0 flex-1 text-sm">
+                      <span className="font-medium text-quai-navy">{l.civilite} {l.prenom} {l.nom}</span>
+                      <span className="text-[12px] text-quai-muted"> · n° {l.id_contact}{l.madame_fichier ? ` · file de ${l.madame_fichier}` : ''}</span>
+                      {a && <span className="block text-[13px] text-quai-text">Chrystelle, le {jour(a.le)} : <b>{a.libelle}</b>{e.tentatives > 0 ? ` (après ${e.tentatives} appel${s(e.tentatives)} sans réponse)` : ''}</span>}
+                      {a?.note && <span className="block text-[12px] text-quai-muted line-clamp-2">« {a.note} »</span>}
+                      {!a && l.note_modelo && <span className="block text-[13px] text-quai-text">Dernière note Modelo de Chrystelle, le {jour(l.note_modelo.le)}{l.note_modelo.extrait ? ` : « ${l.note_modelo.extrait} »` : ''}</span>}
+                      {e?.tiers_possible && <span className="block text-[12px] text-amber-800">À vérifier : « n’habite plus à l’adresse », sans nouvelle adresse. Chrystelle a peut-être parlé à quelqu’un d’autre.</span>}
+                      {e?.nom_different && <span className="block text-[12px] text-amber-800">À vérifier : même téléphone, mais la fiche de Chrystelle est au nom de {e.nom_estimes}.</span>}
+                    </span>
+                  </label>
+                )
+              })}
+            </div>
+          )}
+        </>
+      )}
+      {!aSortir.length && <p className="text-sm text-quai-muted mt-3">Personne à sortir pour l’instant.</p>}
+    </Bloc>
+  )
+}
+
 // Les contacts d'essai (nom commençant par ZZTEST) : les seuls que l'on peut
 // effacer, et seulement depuis l'administration. Le bloc ne s'affiche que s'il y en a.
 function Essais({ cle, onFait }) {
@@ -529,6 +600,7 @@ export default function AcqAdmin({ section = null, onUtilisateurs }) {
       {(!section || section === 'report') && <Valider cle={cle} onFait={rafraichir} />}
       {(!section || section === 'report') && <Report cle={cle} />}
       {(!section || section === 'report') && <Transmettre />}
+      {(!section || section === 'import') && <DejaVues cle={cle} onFait={rafraichir} />}
       {(!section || section === 'import') && <Sortir onFait={rafraichir} />}
       {(!section || section === 'import') && <Ecartes cle={cle} />}
       {(!section || section === 'import' || section === 'report') && <Essais cle={cle} onFait={rafraichir} />}

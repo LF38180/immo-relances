@@ -252,6 +252,7 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, onPasser, 
   }, [id, demo])
 
   const c = d?.contact
+  const estimes = d?.estimes
   const gardees = useMemo(() => s ? Object.entries(s.fiches).filter(([, f]) => f.decision === 'GARDER').map(([k]) => k) : [], [s])
   if (!d) return <p className="p-6 text-sm text-quai-muted">Chargement…</p>
   if (d.erreur) return <p className="p-6 text-sm text-red-700">La fiche n’a pas pu être chargée. <button className="underline" onClick={onRetour}>Revenir</button></p>
@@ -485,6 +486,23 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, onPasser, 
           <div className="mt-2.5 bg-quai-light rounded-lg px-3 py-2">
             <div className="text-[11px] text-quai-muted">Dernière note Modelo{c.derniere_note_date ? ` · ${jj(c.derniere_note_date)}` : ''}{c.derniere_note_auteur ? ` · ${c.derniere_note_auteur}` : ''}</div>
             {c.derniere_note_extrait && <p className="text-[13px] text-quai-text mt-0.5 line-clamp-3">« {c.derniere_note_extrait} »</p>}
+          </div>
+        )}
+        {estimes && (
+          <div className={`mt-2.5 rounded-lg px-3 py-2 border ${estimes.jointe ? 'bg-amber-50 border-amber-200' : 'bg-quai-light border-quai-border'}`} data-estimes>
+            <div className="text-[13px] font-medium text-quai-navy">
+              Aussi dans la Mission Estimés (Chrystelle){estimes.jointe ? '' : ' : jamais jointe'}
+            </div>
+            {estimes.jointe && estimes.dernier_appel ? (
+              <>
+                <p className="text-[13px] text-quai-text mt-0.5">Elle l’a eue le {jj(estimes.dernier_appel.le)} : <b>{estimes.dernier_appel.libelle}</b>. Voyez avec elle avant d’appeler.</p>
+                {estimes.dernier_appel.note && <p className="text-[13px] text-quai-text mt-0.5 line-clamp-3">« {estimes.dernier_appel.note} »</p>}
+              </>
+            ) : (
+              <p className="text-[12px] text-quai-muted mt-0.5">
+                {estimes.appels > 0 ? `${estimes.appels} appel${estimes.appels > 1 ? 's' : ''} sans réponse, le dernier le ${jj(estimes.derniere_tentative_le)}.` : 'Pas encore appelée par Chrystelle.'} Vous pouvez appeler.
+              </p>
+            )}
           </div>
         )}
         {horsFile && (

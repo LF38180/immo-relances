@@ -34,6 +34,22 @@ function sortir(texte, { simulation = true, par = null, fichier = null } = {}) {
     if (vide(l.id_fiche)) p.fiches.push(vide(l.id_fiche));
     parContact.set(id, p);
   }
+  return appliquer(parContact, { simulation, par, fichier, lignes: lignes.length });
+}
+
+// La sortie elle-même, pour une liste de personnes déjà établie (fichier, ou
+// liste validée à l'écran) : { id_contact, nom, prenom, motif, fiches }.
+function sortirPersonnes(personnes, { simulation = true, par = null, fichier = null } = {}) {
+  const parContact = new Map();
+  for (const p of personnes) {
+    const id = vide(p.id_contact);
+    if (id && !parContact.has(id)) parContact.set(id, { id_contact: id, nom: vide(p.nom), prenom: vide(p.prenom), motif: vide(p.motif), fiches: p.fiches || [] });
+  }
+  if (!parContact.size) return { ok: false, error: 'Aucune personne à sortir.' };
+  return appliquer(parContact, { simulation, par, fichier, lignes: parContact.size });
+}
+
+function appliquer(parContact, { simulation, par, fichier, lignes: nbLignes }) {
 
   const contact = db.prepare(`SELECT c.id_contact, c.nom, c.prenom, c.exclu, c.statut, c.rappel_le,
       (SELECT COUNT(*) FROM acq_appels a WHERE a.id_contact = c.id_contact) AS appels,
@@ -72,9 +88,9 @@ function sortir(texte, { simulation = true, par = null, fichier = null } = {}) {
   const apres = simulation
     ? { ...avant, dans_la_file: avant.dans_la_file - sortis.filter(s => s.etait_dans_la_file).length }
     : perimetre();
-  return { ok: true, simulation, lignes: lignes.length, contacts: parContact.size, sortis, inconnus, deja, rejetes,
+  return { ok: true, simulation, lignes: nbLignes, contacts: parContact.size, sortis, inconnus, deja, rejetes,
     avant: { contacts: avant.contacts, dans_la_file: avant.dans_la_file || 0 },
     apres: { contacts: apres.contacts, dans_la_file: apres.dans_la_file || 0 } };
 }
 
-module.exports = { sortir, perimetre };
+module.exports = { sortir, sortirPersonnes, perimetre };

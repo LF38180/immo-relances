@@ -189,6 +189,8 @@ router.get('/contacts/:id', acces, (req, res) => {
     contact: c, fiches, appels, memoire: { vendre: memoire.vendre || {}, mandat: memoire.mandat || null }, scripts,
     blocages: A.blocages(c, c.appels_ce_mois), alertes: A.alertes(),
     appel_recent: A.appelRecent(c, A.appelsRecentsAilleurs()),
+    // Aussi dans la Mission Estimés : ce que Chrystelle en sait (lecture seule).
+    estimes: require('../utils/acqEstimes').pourContact(c),
     conseil_tentative: prochainSansRep >= 4 ? 'Quatrième tentative : envoyez un SMS ou un mail si pas de réponse.'
       : prochainSansRep === 3 ? 'Troisième tentative : laissez un message sur le répondeur.' : null,
   });
@@ -517,6 +519,22 @@ router.post('/zones/apercu', acces, (req, res) => {
   const l = require('../utils/acqZones').localisation({ secteurs: req.body?.secteurs, quartiers: req.body?.quartiers });
   res.json({ mode: l.mode, repli: l.repli, nb_zones: l.mode === 'ZONES' ? l.zones.length : (l.nb_zones || 0),
     zones: l.zones.map(z => ({ nom: z.nom, points: z.points.length })), inconnues: l.inconnues, englobes: l.englobes, texte: l.texte });
+});
+
+// Les personnes que Chrystelle (Mission Estimés) a déjà eues : la liste, puis
+// la sortie de celles que l'administration coche.
+router.get('/admin/estimes', admin, (req, res) => {
+  const E = require('../utils/acqEstimes');
+  const lignes = E.croisement();
+  res.json({ compteurs: E.compter(lignes), lignes: lignes.filter(l => l.etat !== 'JAMAIS_JOINTE'), motif: E.MOTIF });
+});
+router.post('/admin/estimes/sortir', admin, (req, res) => {
+  const ids = Array.isArray(req.body?.ids) ? req.body.ids : [];
+  if (!ids.length) return res.status(400).json({ error: 'Aucune personne cochée' });
+  const r = require('../utils/acqEstimes').sortir(ids, { par: req.moi.nom_complet });
+  if (!r.ok) return res.status(400).json(r);
+  journaliser({ id: req.moi.id, nom_complet: req.moi.nom_complet }, 'ACQ_SORTIE_HORS_MISSION', { details: { contacts: r.sortis.length, origine: 'Mission Estimés' } });
+  res.json(r);
 });
 
 // Sortir des personnes de la mission, à partir d'un fichier (id_contact ; nom ;
