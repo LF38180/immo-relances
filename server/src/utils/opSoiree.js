@@ -239,6 +239,21 @@ function importerEnvoi({ lignes, envoye_le, fichier, par, simulation }) {
   };
 }
 
+// Pour l'écran d'appel : où en est l'invitation de cette personne. Rien si
+// rien n'est parti. Lecture seule.
+function pourFiche(id_modelo) {
+  const l = trier().find(x => x.id_modelo === String(id_modelo));
+  if (!l) return null;
+  if (l.statut === 'INVITE') {
+    const i = l.invitation;
+    return { etat: l.erreur_mail && !l.erreur_mail.definitif ? 'BOITE_PLEINE' : 'ENVOYEE', canal: i.vague === 0 ? i.canal : 'MAIL', envoye_le: i.envoye_le, type: i.type };
+  }
+  // Le mail est parti, mais l'adresse est morte : à inviter de vive voix.
+  if (l.statut === 'MAIL_EN_ERREUR' && l.erreur_mail.envoi)
+    return { etat: 'ERREUR', canal: 'MAIL', envoye_le: l.erreur_mail.envoi.envoye_le, type: l.erreur_mail.envoi.type };
+  return null;
+}
+
 // Mails revenus en erreur : un fichier « email ; motif ; code ; definitif ». On
 // retrouve les fiches par l'adresse. En simulation, rien n'est écrit.
 function importerErreurs({ lignes, fichier, par, simulation }) {
@@ -306,4 +321,4 @@ function annulerInvitationManuelle({ id_modelo, par }) {
   return r.changes;
 }
 
-module.exports = { trier, compter, importerEnvoi, importerErreurs, annulerErreur, noterInvitation, annulerInvitationManuelle, MOTIFS, TYPES, plier };
+module.exports = { trier, compter, pourFiche, importerEnvoi, importerErreurs, annulerErreur, noterInvitation, annulerInvitationManuelle, MOTIFS, TYPES, plier };

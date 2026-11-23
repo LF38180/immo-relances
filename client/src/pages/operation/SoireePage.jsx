@@ -377,7 +377,7 @@ function detail(l, motifs) {
       ? `par ${i.canal === 'SMS' ? 'SMS' : 'téléphone'} le ${dateFr(i.envoye_le)}${i.par ? ` (${i.par})` : ''}`
       : `vague ${i.vague} du ${dateFr(i.envoye_le)}`
     return `${TYPE[i.type]}, ${quand}${i.via ? ' (même adresse qu’une autre fiche)' : ''}`
-      + (l.erreur_mail ? ` · ${l.erreur_mail.motif.toLowerCase()} : à relancer par un autre moyen` : '')
+      + (l.erreur_mail ? (l.erreur_mail.definitif ? ` · après un mail revenu en erreur (${l.erreur_mail.email})` : ` · ${l.erreur_mail.motif.toLowerCase()} : à relancer par un autre moyen`) : '')
       + (l.a_confirmer ? ' · a dit oui depuis' : '') + (l.motif ? ` · depuis : ${motifs[l.motif].toLowerCase()}` : '')
   }
   if (l.statut === 'EXCLU') return motifs[l.motif] + (l.oui ? ' · avait dit oui à la soirée' : '')

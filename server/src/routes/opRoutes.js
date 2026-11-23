@@ -483,6 +483,12 @@ router.get('/mes-contacts', conseillerOuPlus, (req, res) => {
 });
 
 // --- Une fiche --------------------------------------------------------------
+// L'invitation à la soirée, pour l'écran d'appel : l'agent sait si le mail est
+// parti (ou revenu en erreur) avant d'en parler. Lecture seule.
+router.get('/contacts/:id/invitation-soiree', conseillerOuPlus, dansPerimetre, (req, res) => {
+  res.json({ invitation: SO.pourFiche(req.params.id) });
+});
+
 router.get('/contacts/:id', conseillerOuPlus, dansPerimetre, (req, res) => {
   const moi = identite(req);
   const c = getContact(req.params.id);

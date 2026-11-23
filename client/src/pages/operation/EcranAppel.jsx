@@ -54,6 +54,14 @@ export default function EcranAppel({ contact: c, onEnregistre, onPasser, horsFil
   const [smsTexte, setSmsTexte] = useState('')
   const [res, setRes] = useState({})
   const [envoi, setEnvoi] = useState(false)
+  // L'invitation à la soirée déjà partie (mail, SMS, téléphone), en lecture seule.
+  const [invitation, setInvitation] = useState(null)
+  useEffect(() => {
+    if (demo || !c?.id_modelo) return
+    let vivant = true
+    api.get(`/operation/contacts/${c.id_modelo}/invitation-soiree`).then(r => { if (vivant) setInvitation(r.data.invitation) }).catch(() => {})
+    return () => { vivant = false }
+  }, [c?.id_modelo, demo])
   // Une clé par fiche ouverte : si la réponse du serveur se perd et que
   // l'agent réessaie, le serveur reconnaît la clé et ne crée pas de doublon.
   const [cle] = useState(() => (globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`))
@@ -534,6 +542,14 @@ export default function EcranAppel({ contact: c, onEnregistre, onPasser, horsFil
             )}
             <Boutons label="2 · Soirée du 3 décembre" valeur={res.soiree}
               options={[[1, 'Oui'], [0, 'Non']]} onChange={v => champ('soiree', v)} />
+            {invitation && (
+              <p className={`text-[13px] -mt-1 ${invitation.etat === 'ENVOYEE' ? 'text-quai-muted' : 'text-amber-800'}`} data-invitation-soiree>
+                {invitation.etat === 'ERREUR'
+                  ? 'Mail d’invitation revenu en erreur : invitez-la de vive voix, et demandez sa nouvelle adresse e-mail.'
+                  : `Invitation ${invitation.canal === 'MAIL' ? 'envoyée par mail' : invitation.canal === 'SMS' ? 'envoyée par SMS' : 'faite par téléphone'} le ${String(invitation.envoye_le || '').slice(0, 10).split('-').reverse().join('/')}`
+                    + (invitation.etat === 'BOITE_PLEINE' ? '. Sa boîte était pleine : parlez-en.' : '.')}
+              </p>
+            )}
             {/* Le panneau se pose chez lui, sur un bien vendu par Le Quai : un
                 vendeur n'y habite plus. On ne cache pas la proposition (il a pu
                 racheter avec nous), on le dit. */}

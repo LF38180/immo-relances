@@ -94,11 +94,24 @@ const par = (c) => Object.fromEntries(c.lignes.map(l => [l.id_modelo, l]));
   t('adresse partagée : les deux fiches repassent en erreur', () => { eq(L.G1.statut, 'MAIL_EN_ERREUR'); eq(L.G2.statut, 'MAIL_EN_ERREUR'); });
   t('compteurs', () => { eq(C.mail_en_erreur, 5); eq(C.boite_pleine, 1); eq(C.invites.total, 1); eq(C.adresses_en_erreur, 7); });
 
+  console.log('\nécran d’appel');
+  r = await req('adm@t.fr', 'GET', '/operation/contacts/A/invitation-soiree');
+  t('mail revenu en erreur', () => { eq(r.corps.invitation.etat, 'ERREUR'); eq(r.corps.invitation.envoye_le, '2026-11-23'); });
+  r = await req('adm@t.fr', 'GET', '/operation/contacts/B/invitation-soiree');
+  t('boîte pleine', () => eq(r.corps.invitation.etat, 'BOITE_PLEINE'));
+  r = await req('adm@t.fr', 'GET', '/operation/contacts/F/invitation-soiree');
+  t('rien d’envoyé : rien', () => eq(r.corps.invitation, null));
+  r = await req('adm@t.fr', 'GET', '/operation/contacts/C/invitation-soiree');
+  t('adresse morte sans envoi : rien', () => eq(r.corps.invitation, null));
+
   console.log('\nsuite');
   r = await req('adm@t.fr', 'POST', '/operation/soiree/erreurs', { lignes: erreurs, simulation: true });
   t('un second import ne refait rien', () => { eq(r.corps.reconnues.length, 0); eq(r.corps.deja_connues, 7); });
   r = await req('adm@t.fr', 'POST', '/operation/soiree/contacts/A/invitation', { canal: 'sms', envoye_le: '2026-11-24' });
   t('on peut noter un SMS', () => eq(r.statut, 200));
+  r = await req('adm@t.fr', 'GET', '/operation/soiree'); L = par(r.corps);
+  r = await req('adm@t.fr', 'GET', '/operation/contacts/A/invitation-soiree');
+  t('l’écran d’appel voit le SMS', () => { eq(r.corps.invitation.etat, 'ENVOYEE'); eq(r.corps.invitation.canal, 'SMS'); });
   r = await req('adm@t.fr', 'GET', '/operation/soiree'); L = par(r.corps);
   t('la fiche est invitée par SMS', () => { eq(L.A.statut, 'INVITE'); eq(L.A.invitation.canal, 'SMS'); });
   r = await req('m@t.fr', 'POST', '/operation/soiree/erreurs/annuler', { email: 'c@ex.fr' });
