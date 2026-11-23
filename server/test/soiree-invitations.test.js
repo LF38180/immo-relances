@@ -43,8 +43,8 @@ const resultat = (id, soiree, extra = {}) => {
 fiche('OUI'); appel('OUI', 'REPONDEUR'); appel('OUI', 'JOINT', 'Marie Manager'); resultat('OUI', 1);
 fiche('NON'); appel('NON', 'JOINT'); resultat('NON', 0);
 fiche('JOINT-RIEN'); appel('JOINT-RIEN', 'JOINT');
-fiche('REP'); appel('REP', 'REPONDEUR');
-fiche('NEUF');
+fiche('REP', { npai: 1 }); appel('REP', 'REPONDEUR');
+fiche('NEUF', { courrier_etat: 'NON_IMPRIME' });
 fiche('REFUS'); appel('REFUS', 'REFUS_FERME');
 fiche('OPPO'); db.prepare("INSERT INTO op_journal_opposition (id_modelo) VALUES ('OPPO')").run();
 fiche('DCD'); appel('DCD', 'DECEDE');
@@ -103,6 +103,10 @@ const ligneCsv = (l, extra = {}) => ({ id_modelo: l.id_modelo, civilite: l.civil
   t('e-mail recueilli au téléphone : utilisé', () => { eq(L.MAJ.statut, 'A_INVITER'); eq(L.MAJ.email, 'nouveau@ex.fr'); });
   t('couple : une seule invitation, la personnalisée', () => {
     eq(L['COUPLE-B'].statut, 'A_INVITER'); eq(L['COUPLE-A'].statut, 'MEME_EMAIL'); eq(L['COUPLE-A'].meme_que, 'COUPLE-B'); });
+  t('courrier du président sur les génériques', () => { eq(L.REP.courrier, 'NPAI'); eq(L.REP.appele, true);
+    eq(L.NEUF.courrier, 'NON_ENVOYE'); eq(L.NEUF.appele, false); eq(L.OUI.courrier, 'ENVOYE');
+    const g = C.a_inviter.generique_courrier;
+    eq(g.npai, 1); eq(g.non_envoye, 1); eq(g.envoye + g.npai + g.npai_renvoye + g.non_envoye, C.a_inviter.generique); });
   t('compteurs', () => { eq(C.a_inviter.personnalisee, 2); eq(C.a_inviter.generique, 4); eq(C.exclus.total, 8);
     eq(C.exclus.A_DIT_NON, 2); eq(C.stop_mail, 1); eq(C.sans_email, 2); eq(C.meme_email, 1); eq(C.total, 18); });
 

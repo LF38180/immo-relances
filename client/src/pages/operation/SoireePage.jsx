@@ -13,6 +13,10 @@ import { useAuth } from '../../hooks/useAuth'
 
 const COLS = ['id_modelo', 'civilite', 'nom', 'prenom', 'email', 'conseiller', 'type']
 const TYPE = { PERSONNALISEE: 'Personnalisée', GENERIQUE: 'Générique' }
+// Le courrier du président, pour trier les invitations génériques.
+const COURRIER = { ENVOYE: 'Envoyé', NPAI: 'Revenu (NPAI)', NPAI_RENVOYE: 'Revenu (NPAI), renvoyé', NON_ENVOYE: 'Non envoyé' }
+const COLS_GEN = [...COLS, 'courrier', 'deja_appele']
+const avecCourrier = (l) => ({ ...l, courrier: COURRIER[l.courrier] || '', deja_appele: l.appele ? 'oui' : 'non' })
 const echCsv = (v) => { const x = v == null ? '' : String(v); return /[";\n]/.test(x) ? '"' + x.replace(/"/g, '""') + '"' : x }
 function telechargerCsv(nom, cols, lignes) {
   const csv = [cols.join(';'), ...lignes.map(l => cols.map(c => echCsv(l[c])).join(';'))].join('\n')
@@ -88,12 +92,13 @@ export default function SoireePage() {
     if (!d) return toast.error('Export impossible')
     const lignes = d.lignes.filter(l => l.statut === 'A_INVITER' && l.type === type)
     if (!lignes.length) return toast('Personne à inviter dans cette liste')
-    telechargerCsv(`soiree-invitations-${type === 'PERSONNALISEE' ? 'personnalisees' : 'generiques'}-${jourParis()}.csv`, COLS, lignes)
+    telechargerCsv(`soiree-invitations-${type === 'PERSONNALISEE' ? 'personnalisees' : 'generiques'}-${jourParis()}.csv`,
+      type === 'GENERIQUE' ? COLS_GEN : COLS, type === 'GENERIQUE' ? lignes.map(avecCourrier) : lignes)
     toast.success(`${lignes.length} ligne${s(lignes.length)} exportée${s(lignes.length)}. Rien n’est marqué tant que le fichier n’est pas réimporté.`, { duration: 6000 })
   }
   const exporterListe = () => {
-    const cols = [...COLS, 'statut', 'detail']
-    telechargerCsv(`soiree-${liste}-${jourParis()}.csv`, cols, visibles.map(l => ({ ...l, detail: detail(l, data.motifs) })))
+    const cols = [...COLS_GEN, 'statut', 'detail']
+    telechargerCsv(`soiree-${liste}-${jourParis()}.csv`, cols, visibles.map(l => ({ ...avecCourrier(l), detail: detail(l, data.motifs) })))
   }
 
   const choisirFichier = (ev) => {
@@ -174,6 +179,14 @@ export default function SoireePage() {
           <BlocExport titre="Invitations génériques" aide="Jamais joints, ou pas encore appelés."
             n={c.a_inviter.generique} onExporter={() => exporter('GENERIQUE')} />
         </div>
+        {c.a_inviter.generique > 0 && c.a_inviter.generique_courrier && (
+          <p className="text-[13px] text-quai-text leading-snug -mt-1" data-courrier>
+            <b>Génériques et courrier du président</b> : {c.a_inviter.generique_courrier.envoye} l’ont reçu,{' '}
+            {c.a_inviter.generique_courrier.npai + c.a_inviter.generique_courrier.npai_renvoye} courrier{s(c.a_inviter.generique_courrier.npai + c.a_inviter.generique_courrier.npai_renvoye)} revenu{s(c.a_inviter.generique_courrier.npai + c.a_inviter.generique_courrier.npai_renvoye)} (NPAI),{' '}
+            {c.a_inviter.generique_courrier.non_envoye} sans courrier. {c.a_inviter.generique_jamais_appeles} pas encore appelé{s(c.a_inviter.generique_jamais_appeles)}.
+            Le détail est dans l’export, colonne « courrier ».
+          </p>
+        )}
         <p className="text-[13px] text-quai-text leading-snug -mt-1" data-oui>
           <b>{oui.length} « oui » au téléphone</b>{ouiOu.length > 0 && <> : {ouiOu.map(([n, t]) => `${n} ${t}`).join(', ')}</>}.
         </p>

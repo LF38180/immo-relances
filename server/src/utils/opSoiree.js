@@ -41,6 +41,7 @@ function lire() {
   const fiches = db.prepare(`
     SELECT c.id_modelo, c.civilite, c.nom, c.prenom, c.conseiller, c.a_dispatcher,
            c.email, c.email_valide, c.stop_mail, c.a_verifier, c.verifie,
+           c.courrier_etat, c.npai, COALESCE(r.courrier_renvoye, 0) AS courrier_renvoye,
            r.email_maj, COALESCE(r.soiree, 0) AS soiree,
       EXISTS (SELECT 1 FROM op_journal_opposition o WHERE o.id_modelo = c.id_modelo) AS oppose,
       (SELECT GROUP_CONCAT(DISTINCT a.issue) FROM op_appels a WHERE a.id_modelo = c.id_modelo) AS issues,
@@ -82,6 +83,9 @@ function trier() {
       joint, oui: joint && f.soiree === 1,
       type: joint && f.soiree === 1 ? 'PERSONNALISEE' : 'GENERIQUE',
       statut: null, motif: null, invitation: null, a_confirmer: false,
+      // Le courrier du président : parti, revenu (NPAI), ou jamais envoyé.
+      courrier: f.npai ? (f.courrier_renvoye ? 'NPAI_RENVOYE' : 'NPAI') : f.courrier_etat === 'ENVOYE' ? 'ENVOYE' : 'NON_ENVOYE',
+      appele: issues.size > 0,
     };
 
     let motif = null;
@@ -139,6 +143,10 @@ function compter(lignes) {
     a_inviter: {
       personnalisee: n(l => l.statut === 'A_INVITER' && l.type === 'PERSONNALISEE'),
       generique: n(l => l.statut === 'A_INVITER' && l.type === 'GENERIQUE'),
+      // Parmi les génériques : qui a eu le courrier du président, et qui a déjà été appelé.
+      generique_courrier: Object.fromEntries(['ENVOYE', 'NPAI', 'NPAI_RENVOYE', 'NON_ENVOYE'].map(k =>
+        [k.toLowerCase(), n(l => l.statut === 'A_INVITER' && l.type === 'GENERIQUE' && l.courrier === k)])),
+      generique_jamais_appeles: n(l => l.statut === 'A_INVITER' && l.type === 'GENERIQUE' && !l.appele),
     },
     invites: {
       total: n(l => l.statut === 'INVITE'),
