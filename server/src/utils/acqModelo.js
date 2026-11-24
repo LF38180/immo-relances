@@ -141,6 +141,10 @@ function noteContact(contact, appels, fiches = []) {
   return morceaux.join(' ');
 }
 
+// « Maison ou appartement » part sous le libellé du type Modelo, « Appartement/Maison »
+// (un seul type par fiche de recherche dans Modelo, cette valeur couvre les deux).
+const typeBienModelo = (t) => /^(maison ou appartement|appartement\s*\/\s*maison|maison\s*\/\s*appartement)$/i.test(String(t || '').trim())
+  ? 'Appartement/Maison' : (t || '');
 const COLONNES = ['id_contact', 'id_fiche', 'nom', 'prenom', 'agent', 'date_note', 'type_note', 'commentaire',
   'stop_tel', 'stop_mail',
   'tel_portable_avant', 'tel_portable_apres', 'tel_fixe_avant', 'tel_fixe_apres', 'email_avant', 'email_apres',
@@ -225,7 +229,7 @@ function lignesReport(jusquA) {
         tel_fixe_avant: i === 0 ? av('tel_fixe') : '', tel_fixe_apres: i === 0 ? ap('tel_fixe') : '',
         email_avant: i === 0 ? av('email') : '', email_apres: i === 0 ? ap('email') : '',
         adresse_avant: i === 0 ? av('adresse') : '', adresse_apres: i === 0 ? ap('adresse') : '',
-        type_bien_apres: garde ? (p.type_bien || '') : '',
+        type_bien_apres: garde ? typeBienModelo(p.type_bien) : '',
         budget_min_apres: garde && p.budget_min ? String(p.budget_min) : '',
         budget_max_avant: budgetDiscute && f.budget_max ? String(f.budget_max) : '',
         budget_max_apres: budgetDiscute ? String(A.budgetModelo(p.budget_max)) : '',

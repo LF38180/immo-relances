@@ -168,14 +168,19 @@ const effacerBrouillon = (id) => { try { localStorage.removeItem(cleBrouillon(id
 // repart de ce qui est enregistré : sa décision, son motif, et son projet —
 // en remettant TOUS les critères dans la liste (seuls ceux qui avaient un
 // niveau sont stockés, les autres doivent rester proposables).
+// « Maison ou appartement » : Modelo a un type tout fait, « Appartement/Maison ».
+// C'est cette valeur qu'on garde et qu'on reporte ; l'ancien libellé de l'appli
+// (saisies du 24/11 au matin) est ramené dessus.
+const MIXTE = 'Appartement/Maison'
+const typeBien = (t) => /^(maison ou appartement|appartement\s*\/\s*maison|maison\s*\/\s*appartement)$/i.test(String(t || '').trim()) ? MIXTE : (t || '')
 function ficheVierge(f) {
   const depuisModelo = (f.criteres_obligatoires || '').split(', ').map(x => DEPUIS_MODELO[x])
   const stockes = Array.isArray(f.requalif?.criteres) ? f.requalif.criteres : []
   const criteres = CRITERES.map(k => stockes.find(x => x.critere === k)
     || { critere: k, valeur: '', niveau: !f.requalif && depuisModelo.includes(k) ? 'INDISPENSABLE' : '' })
   const base = f.requalif
-    ? { ...f.requalif, secteurs: Array.isArray(f.requalif.secteurs) ? f.requalif.secteurs.join(', ') : (f.requalif.secteurs || '') }
-    : { etat_projet: null, type_bien: f.type_bien || '', budget_min: f.budget_min || '', budget_max: f.budget_max || '',
+    ? { ...f.requalif, type_bien: typeBien(f.requalif.type_bien), secteurs: Array.isArray(f.requalif.secteurs) ? f.requalif.secteurs.join(', ') : (f.requalif.secteurs || '') }
+    : { etat_projet: null, type_bien: typeBien(f.type_bien), budget_min: f.budget_min || '', budget_max: f.budget_max || '',
         surface_min: f.surface_min || '', pieces: f.pieces_min || '', chambres: f.chambres_min || '', secteurs: f.communes || '' }
   return { decision: f.decision || null, fusion_dans: f.fusion_dans || '', motif: f.motif_archivage || '', projet: { ...base, criteres } }
 }
@@ -733,8 +738,8 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, onPasser, 
               <h4 className="font-display font-semibold text-quai-navy mt-5 mb-2 pt-4 border-t border-quai-border">2.2 Critères</h4>
               {d.scripts?.['2.2'] && <BlocScript>{script('2.2')}</BlocScript>}
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                <Champ label="Type de bien"><select className="input" value={p.type_bien || ''} onChange={e => set('type_bien', e.target.value)}>
-                  {['', 'Appartement', 'Maison', 'Maison ou appartement', 'Terrain', 'Immobilier Pro', 'Fonds de commerce', 'Parking', 'Autre'].map(t => <option key={t} value={t}>{t || '—'}</option>)}</select></Champ>
+                <Champ label="Type de bien"><select className="input" value={typeBien(p.type_bien)} onChange={e => set('type_bien', e.target.value)}>
+                  {['', 'Appartement', 'Maison', MIXTE, 'Terrain', 'Immobilier Pro', 'Fonds de commerce', 'Parking', 'Autre'].map(t => <option key={t} value={t}>{t === MIXTE ? 'Maison ou appartement' : t || '—'}</option>)}</select></Champ>
                 <Champ label="Budget min. (€)"><input className="input" inputMode="numeric" value={p.budget_min || ''} onChange={e => set('budget_min', e.target.value.replace(/\D/g, ''))} /></Champ>
                 <Champ label="Budget max. annoncé (€)"><input className="input" inputMode="numeric" value={p.budget_max || ''} onChange={e => set('budget_max', e.target.value.replace(/\D/g, ''))} /></Champ>
                 <Champ label="Surface min. acceptée (m²)"><input className="input" inputMode="numeric" value={p.surface_min || ''} onChange={e => set('surface_min', e.target.value.replace(/\D/g, ''))} /></Champ>
