@@ -264,10 +264,23 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, onPasser, 
     o[chemin[chemin.length - 1]] = valeur
     // La « suite donnée » redit l'état du projet saisi plus haut : elle se remplit
     // toute seule, tant que l'agent ne l'a pas choisie lui-même.
+    // Elle suit aussi un changement d'état quand elle valait encore ce que
+    // l'état précédent donnait, et se pose dès « Joint » quand le projet est
+    // déjà connu d'un appel précédent (retour de Lilas, 23/11).
     const dernier = chemin[chemin.length - 1]
-    if ((dernier === 'etat_projet' || dernier === 'decision') && !n._statut_manuel) {
+    if (dernier === 'etat_projet' || dernier === 'decision') {
       const auto = statutDepuisProjets(n)
-      if (auto) appliquerStatut(n, auto)
+      const libre = !n._statut_manuel || !n.statut_final || n.statut_final === statutDepuisProjets(prev)
+      if (auto && libre) { appliquerStatut(n, auto); n._statut_manuel = false; n._statut_par_joint = false }
+    }
+    if (dernier === 'issue') {
+      if (valeur === 'JOINT' && !n.statut_final && !n._statut_manuel) {
+        const auto = statutDepuisProjets(n)
+        if (auto) { n.statut_final = auto; n._statut_par_joint = true }
+      } else if (valeur !== 'JOINT' && n._statut_par_joint) {
+        // Mauvais bouton : on retire ce que « Joint » avait posé tout seul.
+        n.statut_final = null; n._statut_par_joint = false
+      }
     }
     return n
   })
@@ -419,6 +432,7 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, onPasser, 
     const n = structuredClone(prev)
     appliquerStatut(n, v)
     n._statut_manuel = !!v && v !== statutDepuisProjets(n)
+    n._statut_par_joint = false
     return n
   })
 
@@ -720,7 +734,7 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, onPasser, 
               {d.scripts?.['2.2'] && <BlocScript>{script('2.2')}</BlocScript>}
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                 <Champ label="Type de bien"><select className="input" value={p.type_bien || ''} onChange={e => set('type_bien', e.target.value)}>
-                  {['', 'Appartement', 'Maison', 'Terrain', 'Immobilier Pro', 'Fonds de commerce', 'Parking', 'Autre'].map(t => <option key={t} value={t}>{t || '—'}</option>)}</select></Champ>
+                  {['', 'Appartement', 'Maison', 'Maison ou appartement', 'Terrain', 'Immobilier Pro', 'Fonds de commerce', 'Parking', 'Autre'].map(t => <option key={t} value={t}>{t || '—'}</option>)}</select></Champ>
                 <Champ label="Budget min. (€)"><input className="input" inputMode="numeric" value={p.budget_min || ''} onChange={e => set('budget_min', e.target.value.replace(/\D/g, ''))} /></Champ>
                 <Champ label="Budget max. annoncé (€)"><input className="input" inputMode="numeric" value={p.budget_max || ''} onChange={e => set('budget_max', e.target.value.replace(/\D/g, ''))} /></Champ>
                 <Champ label="Surface min. acceptée (m²)"><input className="input" inputMode="numeric" value={p.surface_min || ''} onChange={e => set('surface_min', e.target.value.replace(/\D/g, ''))} /></Champ>
@@ -878,7 +892,7 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, onPasser, 
           {statutAuto && statutChoisi && statutChoisi !== statutAuto && statutChoisi !== 'A_RAPPELER' && <p className="text-sm text-amber-800">Attention : l’état du projet saisi plus haut donnerait « {STATUTS.find(x => x[0] === statutAuto)?.[1]} ».</p>}
           {statutChoisi === 'REQUALIFIE' && !projetActif && <p className="text-sm text-red-700">Requalifié : le projet doit être « Actif » sur au moins une recherche gardée.</p>}
           {statutChoisi === 'REQUALIFIE' && projetActif && manquesReq.filter(m => !m.startsWith('projet actif')).length > 0 && <p className="text-[12px] text-amber-900 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">Requalifié. Pour une fiche complète, il resterait à préciser : {manquesReq.filter(m => !m.startsWith('projet actif')).join(', ')}. Ce n’est pas obligatoire.</p>}
-          {statutChoisi === 'DEJA_ACHETE' && <Champ label="Acheté où, chez qui ? (part dans la note Modelo)"><input className="input" value={s.achat || ''} onChange={e => maj(['achat'], e.target.value)} /></Champ>}
+          {statutChoisi === 'DEJA_ACHETE' && !gardees.some(k => s.fiches[k].projet?.etat_projet === 'DEJA_ACHETE') && <Champ label="Acheté où, chez qui ? (part dans la note Modelo)"><input className="input" value={s.achat || ''} onChange={e => maj(['achat'], e.target.value)} /></Champ>}
           {['DEJA_ACHETE', 'ABANDONNE'].includes(statutChoisi) && <p className="text-[11px] text-quai-muted">Les recherches sans décision sont passées en « Archiver ». L’archivage sera validé par l’administration avant de partir dans Modelo.</p>}
           <Champ label="Prochaine action"><Choix petit valeur={s.prochaine_action} onChange={v => maj(['prochaine_action'], v)} options={ACTIONS.map(a => [a, a])} /></Champ>
           {(s.prochaine_action || statutChoisi === 'A_RAPPELER') && <div><span className="text-[11px] text-quai-muted">{statutChoisi === 'A_RAPPELER' ? 'Rappeler le' : 'Date'}</span>
