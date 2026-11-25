@@ -205,6 +205,19 @@ export function VueCourtage() {
     return (
       <div>
         <Titre>Courtage — boîtes de relance</Titre>
+        {/* Transmis par la Mission Acquéreurs : même série qu'en tête de l'écran de Marine. */}
+        {boites.transmises > 0 && (
+          <button onClick={() => setBoite('acquereurs')} data-boite-acquereurs
+            className="text-left card w-full mb-3 border-2 border-quai-navy bg-quai-navy text-white hover:opacity-95 transition-opacity">
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <div className="font-medium">Transmis par Lilas - Mission Acquéreurs</div>
+                <div className="text-xs text-white/80">À appeler en premier : le client a donné son accord pour être rappelé</div>
+              </div>
+              <div className="font-display text-3xl font-semibold leading-none text-quai-gold">{boites.transmises}</div>
+            </div>
+          </button>
+        )}
         <button onClick={() => setBoite('relances')}
           className="text-left card w-full mb-3 border-quai-gold hover:shadow-md transition-all">
           <div className="flex items-center justify-between gap-2">
@@ -234,7 +247,7 @@ export function VueCourtage() {
     )
   }
 
-  const libelle = boite === 'relances'
+  const libelle = boite === 'acquereurs' ? 'Transmis par Lilas - Mission Acquéreurs' : boite === 'relances'
     ? 'Relances prévues'
     : (boites.mois.find(m => m.cle === boite)?.libelle || boite)
 
