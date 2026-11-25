@@ -189,6 +189,8 @@ router.get('/contacts/:id', acces, (req, res) => {
     contact: c, fiches, appels, memoire: { vendre: memoire.vendre || {}, mandat: memoire.mandat || null }, scripts,
     blocages: A.blocages(c, c.appels_ce_mois), alertes: A.alertes(),
     appel_recent: A.appelRecent(c, A.appelsRecentsAilleurs()),
+    // Transmise à Marine : où elle en est (lecture seule).
+    courtage: require('../utils/acqCourtage').retour(c.id_contact),
     // Aussi dans la Mission Estimés : ce que Chrystelle en sait (lecture seule).
     estimes: require('../utils/acqEstimes').pourContact(c),
     conseil_tentative: prochainSansRep >= 4 ? 'Quatrième tentative : envoyez un SMS ou un mail si pas de réponse.'
@@ -403,7 +405,16 @@ router.post('/contacts/:id/cloture', acces, (req, res) => {
     return id;
   });
   const id = ecrire();
-  res.status(201).json({ id, statut });
+  // Accord pour être rappelé par Marine : la fiche part chez elle aussitôt.
+  // Un échec ici ne doit jamais faire perdre l'appel, déjà enregistré.
+  let courtage = null;
+  if (objet(b.marine).proposee && objet(b.marine).accord) {
+    try {
+      courtage = require('../utils/acqCourtage').transmettre(c.id_contact, { par: req.moi.nom_complet, note: notes });
+      if (courtage.ok && !courtage.deja) journaliser({ id: req.moi.id, nom_complet: req.moi.nom_complet }, 'ACQ_TRANSMIS_MARINE', { details: { id_contact: c.id_contact, fiche: courtage.fiche_id, existait: !!courtage.existait } });
+    } catch (e) { console.error('[acquéreurs] transmission à Marine :', e.message); courtage = { ok: false, motif: 'Transmission impossible, l’administration est prévenue par la liste « À transmettre »' }; }
+  }
+  res.status(201).json({ id, statut, courtage });
 });
 
 // --- Retrouver quelqu'un : un client rappelle, ou on veut rouvrir sa fiche ---
@@ -730,7 +741,10 @@ function aTransmettre() {
       tel: l.tel_portable || l.tel_fixe, conseiller: l.conseiller };
     if (d.marine?.proposee && !vus.has('M' + l.id_contact)) {
       vus.add('M' + l.id_contact); const t = transmis(l.id_contact, 'MARINE');
-      lignes.push({ ...base, type: 'MARINE', pret: !!d.marine.accord, transmis_le: t && t.le >= l.horodatage ? t.le : null, transmis_par: t?.par || null });
+      // Une fiche déjà créée chez Marine vaut transmission, quel que soit l'appel.
+      const fiche = require('../utils/acqCourtage').retour(l.id_contact);
+      lignes.push({ ...base, type: 'MARINE', pret: !!d.marine.accord, transmis_le: fiche ? fiche.transmis_le : t && t.le >= l.horodatage ? t.le : null,
+        transmis_par: t?.par || null, courtage: fiche });
     }
     if (d.vendre?.estimation_proposee && !vus.has('E' + l.id_contact)) {
       vus.add('E' + l.id_contact); const t = transmis(l.id_contact, 'ESTIMATION');
@@ -749,6 +763,14 @@ router.post('/admin/transmettre', admin, (req, res) => {
   if (!['MARINE', 'ESTIMATION'].includes(b.type)) return res.status(400).json({ error: 'Type inconnu' });
   const id = String(b.id_contact || '');
   if (!db.prepare('SELECT 1 FROM acq_contacts WHERE id_contact = ?').get(id)) return res.status(404).json({ error: 'Contact introuvable' });
+  // Marine : le bouton envoie vraiment la fiche chez elle (accords d'avant le
+  // 25/11, ou envoi automatique refusé puis corrigé).
+  if (b.type === 'MARINE') {
+    const r = require('../utils/acqCourtage').transmettre(id, { par: req.moi.nom_complet });
+    if (!r.ok) return res.status(409).json({ error: r.motif });
+    if (!r.deja) journaliser({ id: req.moi.id, nom_complet: req.moi.nom_complet }, 'ACQ_TRANSMIS_MARINE', { details: { id_contact: id, fiche: r.fiche_id, existait: !!r.existait } });
+    return res.json({ ok: true, courtage: r });
+  }
   db.prepare('INSERT INTO acq_transmissions (id_contact, type, par) VALUES (?, ?, ?)').run(id, b.type, req.moi.nom_complet);
   res.json({ ok: true });
 });

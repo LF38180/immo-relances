@@ -24,6 +24,8 @@ export const STATUTS_COURTAGE = {
 
 // Qualification d'origine du lead (colonne M du cahier des messages) affichee en carte.
 export const CATEGORIES_COURTAGE = {
+  // Transmis par l'appelante de la Mission Acquéreurs : en tête de file (25/11/2026).
+  acquereurs:  { label: 'Transmis par Lilas - Mission Acquéreurs', color: 'bg-quai-gold text-quai-navy' },
   manuel:      { label: 'CI Facile',                     color: 'bg-quai-navy text-white' },
   oui_agent:   { label: 'Intéressé courtage : OUI (agent)', color: 'bg-emerald-50 text-emerald-700 border border-emerald-200' },
   oui_gabby:   { label: 'Intéressé courtage : OUI (Gabby)', color: 'bg-teal-50 text-teal-700 border border-teal-200' },
@@ -250,6 +252,23 @@ export default function CourtagePage() {
                 Choisissez la série de contacts à traiter.
               </div>
 
+              {/* Transmis par la Mission Acquéreurs : priorité numéro 1, série affichée seulement s'il y en a. */}
+              {boites.transmises > 0 && (
+                <button onClick={() => setBoite('acquereurs')} data-boite-acquereurs
+                  className="w-full text-left card border-2 border-quai-navy bg-quai-navy text-white hover:opacity-95 transition-opacity">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <Icon name="users" size="lg" className="text-quai-gold" />
+                      <div>
+                        <div className="font-display font-bold">Transmis par Lilas - Mission Acquéreurs</div>
+                        <div className="text-xs text-white/80">À appeler en premier : le client a donné son accord pour être rappelé</div>
+                      </div>
+                    </div>
+                    <div className="text-3xl font-bold text-quai-gold">{boites.transmises}</div>
+                  </div>
+                </button>
+              )}
+
               <button onClick={() => setBoite('relances')}
                 className="w-full text-left card border-2 border-quai-gold bg-quai-gold/10 hover:bg-quai-gold/20 transition-colors">
                 <div className="flex items-center justify-between gap-3">
@@ -292,7 +311,7 @@ export default function CourtagePage() {
                 <Icon name="arrow-left" size="sm" /> Retour aux séries
               </button>
               <div className="font-display font-bold text-quai-navy text-lg">
-                {boite === 'relances' ? 'Mes relances prévues'
+                {boite === 'acquereurs' ? 'Transmis par Lilas - Mission Acquéreurs' : boite === 'relances' ? 'Mes relances prévues'
                   : (boites.mois.find(m => m.cle === boite)?.libelle || boite)}
               </div>
               {(relances.length > 0 || qualification) && (

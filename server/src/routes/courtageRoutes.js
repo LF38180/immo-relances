@@ -76,13 +76,21 @@ router.get('/fiches', lireSeule, (req, res) => {
   res.json(db.prepare(sql).all(...args));
 });
 
+// Une fiche transmise par la Mission Acquéreurs (25/11/2026) reste « à traiter »
+// tant que Marine n'a rien noté dessus depuis la transmission. Elle a sa propre
+// série, en tête de l'écran, et ne compte dans aucune autre en attendant.
+const TRANSMISE_A_TRAITER = `(f.categorie = 'acquereurs' AND NOT EXISTS (SELECT 1 FROM courtage_actions a
+  WHERE a.fiche_id = f.id AND a.type <> 'creation'
+    AND a.id > COALESCE((SELECT MAX(t.id) FROM courtage_actions t WHERE t.fiche_id = f.id
+      AND t.commentaire LIKE 'Transmis par %(Mission Acquéreurs)%'), 0)))`;
+
 // GET /fiches/relances-jour — fiches à relancer aujourd'hui (ou en retard)
 router.get('/fiches/relances-jour', lireSeule, (req, res) => {
   // tri = 'recent' (defaut) | 'ancien' : sens sur la date du message, choisi par Marine.
   const sens = req.query.tri === 'ancien' ? 'ASC' : 'DESC';
   // qualification = 'qualifie' (OUI agent/Gabby + CI Facile) | 'a_qualifier' | '' (tout).
   const q = req.query.qualification;
-  const filtreQualif = q === 'qualifie' ? " AND f.categorie IN ('manuel','oui_agent','oui_gabby')"
+  const filtreQualif = q === 'qualifie' ? " AND f.categorie IN ('acquereurs','manuel','oui_agent','oui_gabby')"
     : q === 'a_qualifier' ? " AND f.categorie = 'a_qualifier'" : '';
   // boite = 'relances' (fiches deja travaillees par Marine) | 'AAAA-MM' (mois du cahier,
   // uniquement les leads jamais travailles) | '' (tout, comportement historique).
@@ -90,10 +98,13 @@ router.get('/fiches/relances-jour', lireSeule, (req, res) => {
   const dejaTravaillee = "EXISTS (SELECT 1 FROM courtage_actions a WHERE a.fiche_id = f.id AND a.type <> 'creation')";
   let filtreBoite = '';
   const argsBoite = [];
-  if (boite === 'relances') {
-    filtreBoite = ` AND ${dejaTravaillee}`;
+  if (boite === 'acquereurs') {
+    // Transmises par la Mission Acquéreurs, pas encore reprises par Marine.
+    filtreBoite = ` AND ${TRANSMISE_A_TRAITER}`;
+  } else if (boite === 'relances') {
+    filtreBoite = ` AND ${dejaTravaillee} AND NOT ${TRANSMISE_A_TRAITER}`;
   } else if (/^\d{4}-\d{2}$/.test(boite || '')) {
-    filtreBoite = ` AND NOT ${dejaTravaillee} AND substr(COALESCE(f.date_contact, f.created_at), 1, 7) = ?`;
+    filtreBoite = ` AND NOT ${dejaTravaillee} AND NOT ${TRANSMISE_A_TRAITER} AND substr(COALESCE(f.date_contact, f.created_at), 1, 7) = ?`;
     argsBoite.push(boite);
   }
   const rows = db.prepare(`
@@ -132,7 +143,8 @@ router.get('/fiches/boites', lireSeule, (req, res) => {
   const rows = db.prepare(`
     SELECT f.id, f.date_contact, f.created_at, f.priorite,
       EXISTS (SELECT 1 FROM courtage_actions a
-              WHERE a.fiche_id = f.id AND a.type <> 'creation') AS travaillee
+              WHERE a.fiche_id = f.id AND a.type <> 'creation') AS travaillee,
+      ${TRANSMISE_A_TRAITER} AS transmise
     FROM courtage_fiches f
     WHERE f.statut NOT IN ('gagne','perdu','ne_plus_contacter','faux_numero')
       AND f.prochaine_relance IS NOT NULL
@@ -140,8 +152,9 @@ router.get('/fiches/boites', lireSeule, (req, res) => {
 
   const MOIS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
   const boites = new Map();
-  let relancesPrevues = 0;
+  let relancesPrevues = 0, transmises = 0;
   for (const f of rows) {
+    if (f.transmise) { transmises++; continue; }
     if (f.travaillee) { relancesPrevues++; continue; }
     const d = String(f.date_contact || f.created_at || '').slice(0, 7);   // AAAA-MM
     if (!/^\d{4}-\d{2}$/.test(d)) continue;
@@ -152,7 +165,7 @@ router.get('/fiches/boites', lireSeule, (req, res) => {
     boites.get(d).total++;
   }
   res.json({
-    relancesPrevues,
+    relancesPrevues, transmises,
     mois: [...boites.values()].sort((a, b) => b.cle.localeCompare(a.cle)),   // plus recent d'abord
   });
 });
@@ -255,7 +268,8 @@ router.post('/fiches/:id/pas-de-reponse', ecriture, (req, res) => {
 // PUT /fiches/:id/categorie — Marine corrige une qualification erronee de l'import
 // (un OUI classe Gabby alors qu'il vient d'un agent, un a-qualifier en fait qualifie...).
 // La priorite suit automatiquement la categorie, la fiche se replace dans la file.
-const PRIORITE_PAR_CATEGORIE = { manuel: 1, oui_agent: 2, oui_gabby: 3, a_qualifier: 4 };
+// « acquereurs » : transmis par l'appelante de la Mission Acquéreurs, en tête de file (25/11/2026).
+const PRIORITE_PAR_CATEGORIE = { acquereurs: 0, manuel: 1, oui_agent: 2, oui_gabby: 3, a_qualifier: 4 };
 router.put('/fiches/:id/categorie', ecriture, (req, res) => {
   const fiche = getFiche(req.params.id);
   if (!fiche) return res.status(404).json({ error: 'Fiche introuvable' });

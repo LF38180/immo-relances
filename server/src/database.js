@@ -1089,6 +1089,11 @@ db.exec(`
   );
 `);
 
+// Transmission à Marine (25/11/2026) : la fiche créée, ou remontée, dans la
+// Mission Courtage. Vide pour les transmissions notées à la main avant cette date.
+if (!db.prepare('PRAGMA table_info(acq_transmissions)').all().some(c => c.name === 'courtage_fiche_id'))
+  db.exec('ALTER TABLE acq_transmissions ADD COLUMN courtage_fiche_id INTEGER');
+
 // Sorties d'office (25/11/2026) : une personne aussi présente dans la Mission
 // Estimés ou dans l'opération anciens clients quitte la file acquéreurs.
 // `origine` dit pourquoi ; `reporter_appels` = 1 : les appels déjà passés ici

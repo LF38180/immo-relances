@@ -353,7 +353,7 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, onPasser, 
     if (demo) return finDemo('appel enregistré')
     setEnvoi(true)
     try {
-      await api.post(`/acquereurs/contacts/${id}/cloture`, {
+      const rep = await api.post(`/acquereurs/contacts/${id}/cloture`, {
         cle: cle.current + '-cloture', statut_final: statut, prochaine_action: impose ? 'Rappel' : s.prochaine_action,
         date_prochaine_action: dateAction || null, notes: s.notes || null,
         joint: true, coordonnees, vendre: s.vendre, marine: s.marine, fiches, entrant,
@@ -362,6 +362,10 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, onPasser, 
       })
       effacerBrouillon(id)
       toast.success('Appel enregistré')
+      // L'accord pour Marine : la fiche est partie chez elle, ou pourquoi non.
+      const ct = rep.data?.courtage
+      if (ct?.ok && !ct.deja) toast.success(ct.existait ? 'Déjà connue de Marine : sa fiche est remontée en tête de sa file' : 'Transmis à Marine : la fiche est en tête de sa file', { duration: 6000 })
+      else if (ct && !ct.ok) toast.error(`Pas transmis à Marine : ${ct.motif}`, { duration: 9000 })
       onSuivant()
     } catch (e) { toast.error(e.messageLisible || e.message) } finally { setEnvoi(false) }
   }
@@ -506,6 +510,15 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, onPasser, 
           <div className="mt-2.5 bg-quai-light rounded-lg px-3 py-2">
             <div className="text-[11px] text-quai-muted">Dernière note Modelo{c.derniere_note_date ? ` · ${jj(c.derniere_note_date)}` : ''}{c.derniere_note_auteur ? ` · ${c.derniere_note_auteur}` : ''}</div>
             {c.derniere_note_extrait && <p className="text-[13px] text-quai-text mt-0.5 line-clamp-3">« {c.derniere_note_extrait} »</p>}
+          </div>
+        )}
+        {d.courtage && (
+          <div className="mt-2.5 rounded-lg px-3 py-2 border bg-quai-light border-quai-border" data-courtage>
+            <div className="text-[13px] font-medium text-quai-navy">Transmise à Marine le {jj(d.courtage.transmis_le)}</div>
+            <p className="text-[13px] text-quai-text mt-0.5">
+              {d.courtage.statut_libelle ? <>Chez Marine : <b>{d.courtage.statut_libelle}</b>. </> : 'Fiche introuvable chez Marine. '}
+              {d.courtage.derniere_action ? `Dernière action : ${d.courtage.derniere_action.libelle}, le ${jj(d.courtage.derniere_action.le)}.` : 'Marine ne l’a pas encore traitée.'}
+            </p>
           </div>
         )}
         {estimes && (

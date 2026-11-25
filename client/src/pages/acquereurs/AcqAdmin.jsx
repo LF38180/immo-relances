@@ -479,7 +479,9 @@ export function Transmettre({ compact = false }) {
   useEffect(() => { charger() }, [charger])
   if (!d) return compact ? null : <Bloc titre="À transmettre" icon="arrow-right"><p className="text-sm text-quai-muted animate-pulse">Chargement…</p></Bloc>
   if (d.panne) return compact ? null : <Bloc titre="À transmettre" icon="arrow-right"><p className="text-sm text-red-700">Chargement impossible. <button className="underline" onClick={() => { setD(null); charger() }}>Réessayer</button></p></Bloc>
-  const fait = (l) => api.post('/acquereurs/admin/transmettre', { id_contact: l.id_contact, type: l.type }).then(() => { toast.success('Noté comme transmis'); charger() }).catch(err)
+  const fait = (l) => api.post('/acquereurs/admin/transmettre', { id_contact: l.id_contact, type: l.type })
+    .then(r => { toast.success(l.type === 'MARINE' ? (r.data.courtage?.existait ? 'Fiche déjà chez Marine : remontée en tête de sa file' : 'Fiche créée chez Marine, en tête de sa file') : 'Noté comme transmis'); charger() })
+    .catch(e => toast.error(e.response?.data?.error || e.messageLisible || 'Envoi impossible'))
   const vue = (o) => api.post(`/acquereurs/admin/oppositions/${o.id_contact}/vue`).then(() => { toast.success('Noté comme traité'); charger() }).catch(err)
   const lignes = [...d.marine, ...d.estimations]
   const attente = lignes.filter(l => l.pret && !l.transmis_le)
@@ -494,8 +496,8 @@ export function Transmettre({ compact = false }) {
           {' '}· appel du {jj(l.horodatage)} par {l.madame_fichier}
         </span>
       </span>
-      {l.transmis_le ? <span className="text-[11px] text-emerald-700">transmis le {jj(l.transmis_le)}{l.transmis_par ? ` par ${l.transmis_par}` : ''}</span>
-        : l.pret ? <button className="btn-secondary btn-sm inline-flex items-center gap-1.5" onClick={() => fait(l)}><Icon name="check-circle-2" size="sm" /> Transmis</button>
+      {l.transmis_le ? <span className="text-[11px] text-emerald-700">{l.courtage ? 'chez Marine depuis le' : 'transmis le'} {jj(l.transmis_le)}{l.transmis_par ? ` par ${l.transmis_par}` : ''}{l.courtage?.statut_libelle ? ` · ${l.courtage.statut_libelle}` : ''}{l.courtage?.derniere_action ? ` · ${l.courtage.derniere_action.libelle} le ${jj(l.courtage.derniere_action.le)}` : ''}</span>
+        : l.pret ? <button className="btn-secondary btn-sm inline-flex items-center gap-1.5" onClick={() => fait(l)}><Icon name="check-circle-2" size="sm" /> {l.type === 'MARINE' ? 'Envoyer à Marine' : 'Transmis'}</button>
         : <span className="text-[11px] text-quai-muted">rien à transmettre</span>}
     </li>
   )

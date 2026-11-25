@@ -388,8 +388,9 @@ const t = (n, fn) => { try { fn(); console.log('  OK  ' + n) } catch (e) { conso
 
     // Transmissions : la ligne sort de la liste une fois transmise.
     x = await call('GET', '/acquereurs/admin/transmettre', tAdmin);
-    t('à transmettre : le rendez-vous courtage et l estimation de la personne 21', () => {
-      assert.ok(x.body.marine.some(l => l.id_contact === '21' && l.pret && !l.transmis_le));
+    // Depuis le 25/11, l'accord pour Marine part chez elle dès l'enregistrement.
+    t('le rendez-vous courtage est déjà chez Marine, l estimation reste à transmettre', () => {
+      assert.ok(x.body.marine.some(l => l.id_contact === '21' && l.pret && l.transmis_le && l.courtage));
       assert.ok(x.body.estimations.some(l => l.id_contact === '21' && l.pret && !l.transmis_le));
     });
     await call('POST', '/acquereurs/admin/transmettre', tAdmin, { id_contact: '21', type: 'MARINE' });
