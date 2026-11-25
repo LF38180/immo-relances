@@ -27,10 +27,9 @@ const plier = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').to
 // jointe sort-elle aussi ? (false : elle reste dans la file, avec le bandeau.)
 const ESTIMES_JAMAIS_JOINTES = true;
 
-// Mise en route en deux temps : d'abord le compte (visible dans /api/health et
-// dans l'espace admin), puis la sortie elle-même une fois le nombre vu par
-// Loïck. Les tests la forcent par ACQ_SORTIES_AUTO=1.
-const ACTIVES = process.env.ACQ_SORTIES_AUTO ? process.env.ACQ_SORTIES_AUTO === '1' : false;
+// Active depuis le 25/11/2026 (33 personnes au lancement, nombre vu par Loïck
+// avant). ACQ_SORTIES_AUTO=0 la coupe sans redéployer le code.
+const ACTIVES = process.env.ACQ_SORTIES_AUTO ? process.env.ACQ_SORTIES_AUTO === '1' : true;
 
 function operation() {
   const parId = new Map(), parTel = new Map();
