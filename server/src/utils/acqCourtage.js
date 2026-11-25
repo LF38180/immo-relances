@@ -106,4 +106,22 @@ function retour(id_contact) {
     derniere_action: a ? { type: a.type, libelle: LIB_ACTION[a.type] || a.type, le: a.created_at } : null };
 }
 
-module.exports = { transmettre, retour, dejaTransmis, CATEGORIE, PRIORITE, SOURCE };
+// Le bilan pour le tableau de bord de l'appelante : combien de dossiers sont
+// partis chez Marine, combien elle en a repris, combien ont abouti.
+// `idsContacts` : le périmètre de qui regarde (ses contacts, ou tous).
+function suivi(idsContacts) {
+  const voulus = idsContacts ? new Set([...idsContacts].map(String)) : null;
+  const ids = db.prepare("SELECT DISTINCT id_contact FROM acq_transmissions WHERE type = 'MARINE' AND courtage_fiche_id IS NOT NULL").all()
+    .map(x => x.id_contact).filter(id => !voulus || voulus.has(String(id)));
+  const nom = db.prepare('SELECT nom, prenom FROM acq_contacts WHERE id_contact = ?');
+  const liste = ids.map((id) => { const r = retour(id), c = nom.get(id) || {};
+    return { id_contact: id, nom: c.nom || '', prenom: c.prenom || '', ...r,
+      // Traité : Marine a noté quelque chose, ou a fait avancer le dossier.
+      traite: !!r.derniere_action || ['simulation_faite', 'dossier_en_cours', 'gagne', 'perdu'].includes(r.statut) }; })
+    .sort((a, b) => String(b.transmis_le).localeCompare(String(a.transmis_le)));
+  const n = (f) => liste.filter(f).length;
+  return { envoyes: liste.length, traites: n(l => l.traite), aboutis: n(l => l.statut === 'gagne'),
+    en_cours: n(l => ['simulation_faite', 'dossier_en_cours'].includes(l.statut)), sans_suite: n(l => l.statut === 'perdu'), liste };
+}
+
+module.exports = { transmettre, retour, suivi, dejaTransmis, CATEGORIE, PRIORITE, SOURCE };

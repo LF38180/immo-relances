@@ -152,6 +152,8 @@ router.get('/accueil', acces, (req, res) => {
     courtage_accords: det.filter(d => d.marine?.accord).length,
     mandats_proposes: det.filter(d => d.mandat).length,
     mandats_acceptes: det.filter(d => d.mandat?.etat === 'ACCEPTE').length,
+    // Les dossiers partis chez Marine, et ce qu'elle en a fait.
+    chez_marine: require('../utils/acqCourtage').suivi(db.prepare(`SELECT c.id_contact FROM acq_contacts c WHERE ${where}`).all(...params).map(x => x.id_contact)),
     // Ce qui est déjà dans Modelo : contacts dont tout le travail est reporté,
     // et ceux qui ont du nouveau depuis.
     reportes_modelo: n(`SELECT COUNT(*) n FROM acq_contacts c WHERE ${where} AND c.modelo_reporte_le IS NOT NULL

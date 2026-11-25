@@ -72,6 +72,33 @@ export default function AcqAccueil({ onCommencer, onAdmin, estAdmin }) {
         </div>
       </section>
 
+      {d.chez_marine?.envoyes > 0 && (
+        <section data-chez-marine>
+          <Titre>Chez Marine</Titre>
+          <div className="grid grid-cols-3 gap-2">
+            <Chiffre valeur={d.chez_marine.envoyes} libelle={`dossier${d.chez_marine.envoyes > 1 ? 's' : ''} envoyé${d.chez_marine.envoyes > 1 ? 's' : ''}`} icon="users" />
+            <Chiffre valeur={d.chez_marine.traites} libelle={`traité${d.chez_marine.traites > 1 ? 's' : ''} par Marine`} icon="phone-call" />
+            <Chiffre valeur={d.chez_marine.aboutis} libelle={`abouti${d.chez_marine.aboutis > 1 ? 's' : ''}`} icon="check-circle-2" />
+          </div>
+          {(d.chez_marine.en_cours > 0 || d.chez_marine.sans_suite > 0) && (
+            <p className="text-[12px] text-quai-muted mt-1.5">
+              {[d.chez_marine.en_cours > 0 && `${d.chez_marine.en_cours} en cours (simulation ou dossier)`, d.chez_marine.sans_suite > 0 && `${d.chez_marine.sans_suite} sans suite`].filter(Boolean).join(' · ')}
+            </p>
+          )}
+          <div className="mt-2 bg-white border border-quai-border rounded-xl divide-y divide-quai-border text-sm">
+            {d.chez_marine.liste.slice(0, 30).map(l => (
+              <div key={l.id_contact} className="flex flex-wrap items-baseline justify-between gap-x-3 px-4 py-2.5">
+                <span className="text-quai-navy font-medium">{l.prenom} {l.nom}</span>
+                <span className="text-[12px] text-quai-muted">
+                  envoyé le {String(l.transmis_le || '').slice(0, 10).split('-').reverse().join('/')} · <b className="text-quai-text font-medium">{l.statut_libelle || 'fiche introuvable'}</b>
+                  {l.derniere_action ? ` · ${l.derniere_action.libelle} le ${String(l.derniere_action.le).slice(0, 10).split('-').reverse().join('/')}` : l.traite ? '' : ' · pas encore traité'}
+                </span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       <section>
         <Titre>Le fichier</Titre>
         <div className="bg-white border border-quai-border rounded-xl divide-y divide-quai-border text-sm">

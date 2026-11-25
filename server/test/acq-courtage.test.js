@@ -105,6 +105,16 @@ const clore = (idc, idf, marine, extra = {}) => req('l@t.fr', 'POST', `/acquereu
   r = await req('l@t.fr', 'GET', '/acquereurs/contacts/44');
   t('jamais transmise : rien', () => eq(r.corps.courtage, null));
 
+  console.log('\ntableau de bord de l’appelante');
+  r = await req('l@t.fr', 'GET', '/acquereurs/accueil');
+  let cm = r.corps.chez_marine;
+  t('2 envoyés, 2 traités, 0 abouti, 1 en cours', () => { eq(cm.envoyes, 2); eq(cm.traites, 2); eq(cm.aboutis, 0); eq(cm.en_cours, 1); });
+  t('la liste dit où en est chacun', () => { eq(cm.liste.length, 2); eq(cm.liste.find(l => l.id_contact === '41').statut_libelle, 'simulation faite'); });
+  db.prepare("UPDATE courtage_fiches SET statut = 'gagne' WHERE id = ?").run(f41.id);
+  r = await req('l@t.fr', 'GET', '/acquereurs/accueil'); cm = r.corps.chez_marine;
+  t('un dossier gagné compte en abouti', () => { eq(cm.aboutis, 1); eq(cm.en_cours, 0); });
+  db.prepare("UPDATE courtage_fiches SET statut = 'simulation_faite' WHERE id = ?").run(f41.id);
+
   console.log('\nespace admin');
   r = await req('adm@t.fr', 'GET', '/acquereurs/admin/transmettre');
   const M41 = r.corps.marine.find(x => x.id_contact === '41'), M45 = r.corps.marine.find(x => x.id_contact === '45'), M43 = r.corps.marine.find(x => x.id_contact === '43');
