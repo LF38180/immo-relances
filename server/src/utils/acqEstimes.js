@@ -15,7 +15,6 @@
 const { db } = require('../database');
 const { cleTel } = require('../blocs');
 const { blocsEstimes } = require('./estRapprochement');
-const { sortirPersonnes } = require('./acqSortie');
 
 const MOTIF = 'Déjà vue par Chrystelle (Mission Estimés)';
 const LIBELLES = { projet: 'Projet', rappel: 'À recontacter plus tard', demenage: 'N’habite plus à l’adresse',
@@ -113,13 +112,4 @@ function compter(lignes = croisement()) {
     jamais_jointes: n(l => l.etat === 'JAMAIS_JOINTE'), liees_par_modelo: n(l => l.estimes && l.estimes.lien === 'MODELO') };
 }
 
-// Sortie des personnes choisies. Seules celles encore « à sortir » passent.
-function sortir(ids, { par = null, simulation = false } = {}) {
-  const voulues = new Set((ids || []).map(String));
-  const personnes = croisement().filter(l => l.etat === 'A_SORTIR' && voulues.has(String(l.id_contact)))
-    .map(l => ({ id_contact: l.id_contact, nom: l.nom, prenom: l.prenom, motif: MOTIF, fiches: l.fiches }));
-  if (!personnes.length) return { ok: false, error: 'Aucune de ces personnes n’est à sortir.' };
-  return sortirPersonnes(personnes, { simulation, par, fichier: 'Croisement Mission Estimés' });
-}
-
-module.exports = { croisement, compter, sortir, pourContact, MOTIF };
+module.exports = { croisement, compter, pourContact, MOTIF };

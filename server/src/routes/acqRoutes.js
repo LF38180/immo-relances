@@ -340,7 +340,7 @@ router.post('/contacts/:id/cloture', acces, (req, res) => {
   }
   const stopMail = b.stop_mail === true;
   const achat = texteCourt(b.achat);
-  const details = { coordonnees, vendre: objet(b.vendre), marine: objet(b.marine), consentement_rappel: !!b.consentement_rappel,
+  const details = { coordonnees, vendre: objet(b.vendre), marine: objet(b.marine), 
     ...(mandat ? { mandat } : {}), ...(b.entrant === true ? { entrant: true } : {}),
     ...(stopMail ? { stop_mail: true } : {}), ...(achat ? { achat } : {}) };
   const ecrire = db.transaction(() => {
@@ -365,7 +365,9 @@ router.post('/contacts/:id/cloture', acces, (req, res) => {
     }
     sets.push("statut = ?", "statut_le = datetime('now')", 'rappel_le = ?');
     vals.push(statut, statut === 'A_RAPPELER' ? b.date_prochaine_action : null);
-    if (b.consentement_rappel) sets.push("consentement_rappel = 1", "consentement_le = datetime('now')");
+    // Accord pour être recontacté : acquis d'office dès que la personne a été
+    // eue sans demander à ne plus l'être (Loïck, 25/11). Plus de case à cocher.
+    if (issue === 'JOINT') sets.push("consentement_rappel = 1", "consentement_le = COALESCE(consentement_le, datetime('now'))");
     if (stopMail) sets.push('stop_mail = 1');
     db.prepare(`UPDATE acq_contacts SET ${sets.join(', ')} WHERE id_contact = ?`).run(...vals, c.id_contact);
     for (const idf of fiches) {
@@ -482,7 +484,13 @@ router.post('/admin/import', admin, (req, res) => {
   if (typeof b.csv !== 'string' || !b.csv.trim()) return res.status(400).json({ error: 'Aucun contenu à importer' });
   const r = I.importer(b.csv, { doublonsCsv: b.doublons_csv || null, madameFichier: b.madame_fichier, simulation: b.ecrire !== true });
   if (!r.ok) return res.status(400).json(r);
-  if (b.ecrire === true) journaliser({ id: req.moi.id, nom_complet: req.moi.nom_complet }, 'IMPORT', { details: { module: 'acquereurs', contacts: r.contacts, fiches: r.fiches } });
+  if (b.ecrire === true) {
+    journaliser({ id: req.moi.id, nom_complet: req.moi.nom_complet }, 'IMPORT', { details: { module: 'acquereurs', contacts: r.contacts, fiches: r.fiches } });
+    // Les nouvelles personnes déjà présentes dans une autre mission sortent aussitôt.
+    const fait = require('../utils/acqSortiesAuto').appliquer();
+    if (fait.sortis) journaliser({ id: req.moi.id, nom_complet: req.moi.nom_complet }, 'ACQ_SORTIE_HORS_MISSION', { details: { contacts: fait.sortis, origine: 'office', ...fait.par_origine } });
+    r.sorties_d_office = fait;
+  }
   res.json(r);
 });
 
@@ -521,19 +529,24 @@ router.post('/zones/apercu', acces, (req, res) => {
     zones: l.zones.map(z => ({ nom: z.nom, points: z.points.length })), inconnues: l.inconnues, englobes: l.englobes, texte: l.texte });
 });
 
-// Les personnes que Chrystelle (Mission Estimés) a déjà eues : la liste, puis
-// la sortie de celles que l'administration coche.
-router.get('/admin/estimes', admin, (req, res) => {
-  const E = require('../utils/acqEstimes');
-  const lignes = E.croisement();
-  res.json({ compteurs: E.compter(lignes), lignes: lignes.filter(l => l.etat !== 'JAMAIS_JOINTE'), motif: E.MOTIF });
+// Sorties d'office : les personnes aussi présentes dans la Mission Estimés ou
+// dans l'opération anciens clients. Ce qui est sûr sort tout seul (à chaque
+// import, au démarrage, puis régulièrement) ; le reste est proposé ici.
+router.get('/admin/sorties-auto', admin, (req, res) => {
+  const SA = require('../utils/acqSortiesAuto');
+  const fait = SA.appliquer();
+  if (fait.sortis) journaliser({ id: req.moi.id, nom_complet: req.moi.nom_complet }, 'ACQ_SORTIE_HORS_MISSION', { details: { contacts: fait.sortis, origine: 'office', ...fait.par_origine } });
+  const sorties = db.prepare(`SELECT h.id_contact, h.nom, h.prenom, h.motif, h.origine, h.le,
+      (SELECT COUNT(*) FROM acq_appels a WHERE a.id_contact = h.id_contact) AS appels_acq
+    FROM acq_hors_mission h WHERE h.leve_le IS NULL AND h.origine IS NOT NULL ORDER BY h.nom, h.prenom`).all();
+  res.json({ etat: SA.etat(), a_verifier: SA.candidats().filter(p => !p.sur), sorties, vient_de_sortir: fait.sortis });
 });
-router.post('/admin/estimes/sortir', admin, (req, res) => {
+router.post('/admin/sorties-auto/sortir', admin, (req, res) => {
   const ids = Array.isArray(req.body?.ids) ? req.body.ids : [];
   if (!ids.length) return res.status(400).json({ error: 'Aucune personne cochée' });
-  const r = require('../utils/acqEstimes').sortir(ids, { par: req.moi.nom_complet });
+  const r = require('../utils/acqSortiesAuto').sortirChoisies(ids, { par: req.moi.nom_complet });
   if (!r.ok) return res.status(400).json(r);
-  journaliser({ id: req.moi.id, nom_complet: req.moi.nom_complet }, 'ACQ_SORTIE_HORS_MISSION', { details: { contacts: r.sortis.length, origine: 'Mission Estimés' } });
+  journaliser({ id: req.moi.id, nom_complet: req.moi.nom_complet }, 'ACQ_SORTIE_HORS_MISSION', { details: { contacts: r.sortis.length, origine: 'à vérifier' } });
   res.json(r);
 });
 

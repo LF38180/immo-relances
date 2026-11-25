@@ -43,7 +43,8 @@ function sortirPersonnes(personnes, { simulation = true, par = null, fichier = n
   const parContact = new Map();
   for (const p of personnes) {
     const id = vide(p.id_contact);
-    if (id && !parContact.has(id)) parContact.set(id, { id_contact: id, nom: vide(p.nom), prenom: vide(p.prenom), motif: vide(p.motif), fiches: p.fiches || [] });
+    if (id && !parContact.has(id)) parContact.set(id, { id_contact: id, nom: vide(p.nom), prenom: vide(p.prenom), motif: vide(p.motif), fiches: p.fiches || [],
+      origine: p.origine || null, reporter_appels: p.reporter_appels ? 1 : 0 });
   }
   if (!parContact.size) return { ok: false, error: 'Aucune personne à sortir.' };
   return appliquer(parContact, { simulation, par, fichier, lignes: parContact.size });
@@ -71,16 +72,18 @@ function appliquer(parContact, { simulation, par, fichier, lignes: nbLignes }) {
 
   const avant = perimetre();
   if (!simulation) {
-    const noter = db.prepare(`INSERT INTO acq_hors_mission (id_contact, nom, prenom, motif, fiches, par, fichier)
-      VALUES (@id_contact, @nom, @prenom, @motif, @fiches, @par, @fichier)
+    const noter = db.prepare(`INSERT INTO acq_hors_mission (id_contact, nom, prenom, motif, fiches, par, fichier, origine, reporter_appels)
+      VALUES (@id_contact, @nom, @prenom, @motif, @fiches, @par, @fichier, @origine, @reporter_appels)
       ON CONFLICT(id_contact) DO UPDATE SET nom = excluded.nom, prenom = excluded.prenom, motif = excluded.motif,
         fiches = excluded.fiches, par = excluded.par, fichier = excluded.fichier, le = datetime('now'),
+        origine = excluded.origine, reporter_appels = excluded.reporter_appels,
         leve_le = NULL, leve_par = NULL`);
     // Un motif déjà posé (stop téléphone, opposition...) reste : il dit plus.
     const ecarter = db.prepare("UPDATE acq_contacts SET exclu = 'HORS_MISSION' WHERE id_contact = ? AND exclu IS NULL");
     db.transaction(() => {
       for (const p of [...sortis, ...inconnus]) {
-        noter.run({ id_contact: p.id_contact, nom: p.nom, prenom: p.prenom, motif: p.motif, fiches: p.fiches.join(',') || null, par, fichier });
+        noter.run({ id_contact: p.id_contact, nom: p.nom, prenom: p.prenom, motif: p.motif, fiches: p.fiches.join(',') || null, par, fichier,
+          origine: p.origine || null, reporter_appels: p.reporter_appels ? 1 : 0 });
         ecarter.run(p.id_contact);
       }
     })();

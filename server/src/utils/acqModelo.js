@@ -134,7 +134,6 @@ function noteContact(contact, appels, fiches = []) {
     if (d.marine?.proposee) morceaux.push(`Rendez-vous courtage proposé${d.marine.accord ? ', client d’accord' : ''}.`);
     if (d.vendre?.estimation_proposee) morceaux.push(`Estimation proposée${d.vendre.estimation_acceptee ? `, acceptée${d.vendre.date_rdv_estimation ? ' (rdv le ' + jjh(d.vendre.date_rdv_estimation) + ')' : ''}` : ''}.`);
     if (d.mandat) morceaux.push(`Mandat de recherche ${texteMandat(d.mandat)}.`);
-    if (d.consentement_rappel) morceaux.push('Accepte d’être rappelé.');
     if (fin.notes) morceaux.push(fin.notes);
   } else if (!tent.length && !messages.length) return null;
   else morceaux.splice(1, 0, 'Non joint.');
@@ -165,7 +164,7 @@ function archivagesEnAttente() {
   return db.prepare(`SELECT f.*, c.nom, c.prenom, c.statut AS statut_contact FROM acq_fiches f
     JOIN acq_contacts c ON c.id_contact = f.id_contact
     WHERE f.archivage_valide IS NULL
-      AND NOT EXISTS (SELECT 1 FROM acq_hors_mission h WHERE h.id_contact = c.id_contact AND h.leve_le IS NULL)
+      AND NOT EXISTS (SELECT 1 FROM acq_hors_mission h WHERE h.id_contact = c.id_contact AND h.leve_le IS NULL AND h.reporter_appels = 0)
       AND (f.decision IN ('ARCHIVER','FUSIONNER') OR c.statut IN (${STATUTS_ARCHIVANT.map(() => '?').join(',')}))
     ORDER BY c.nom, c.prenom`).all(...STATUTS_ARCHIVANT);
 }
@@ -174,13 +173,15 @@ function aReporter() {
   return db.prepare(`SELECT c.* FROM acq_contacts c
     WHERE EXISTS (SELECT 1 FROM acq_appels a WHERE a.id_contact = c.id_contact
       AND a.horodatage > COALESCE(c.modelo_reporte_le, ''))
-      -- Sorti hors mission : Modelo est déjà à jour, plus aucune ligne de report.
-      AND NOT EXISTS (SELECT 1 FROM acq_hors_mission h WHERE h.id_contact = c.id_contact AND h.leve_le IS NULL)
+      -- Sorti hors mission par fichier : Modelo est déjà à jour, plus aucune ligne de
+      -- report. Sorti d'office (autre mission) : les appels déjà passés partent.
+      AND NOT EXISTS (SELECT 1 FROM acq_hors_mission h WHERE h.id_contact = c.id_contact AND h.leve_le IS NULL AND h.reporter_appels = 0)
     ORDER BY c.nom, c.prenom`).all();
 }
 
 function lignesReport(jusquA) {
   const lignes = [];
+  const sortisDOffice = new Set(db.prepare('SELECT id_contact FROM acq_hors_mission WHERE leve_le IS NULL AND reporter_appels = 1').all().map(x => x.id_contact));
   for (const c of aReporter()) {
     const appels = db.prepare(`SELECT * FROM acq_appels WHERE id_contact = ? AND horodatage > COALESCE(?, '') AND horodatage <= ?
       ORDER BY horodatage`).all(c.id_contact, c.modelo_reporte_le, jusquA);
@@ -194,6 +195,9 @@ function lignesReport(jusquA) {
     // contient l'appel abouti : après un report, une simple tentative sur un
     // contact requalifié ne donne qu'une note (et `fin` n'existe pas).
     const requal = c.statut === 'REQUALIFIE' && !!fin;
+    // Sortie d'office : la personne reste au conseiller de l'autre mission.
+    // Sa note et la mise à jour de sa recherche partent, pas la réattribution.
+    const resteAilleurs = sortisDOffice.has(c.id_contact);
     const archiveTout = STATUTS_ARCHIVANT.includes(c.statut);
     const vendeur = !!fin && d.vendre?.doit_vendre === 'OUI' && !/vendeur/i.test(c.type_contact || '');
     const av = (k) => { const x = co[k]; return x && ['MODIFIE', 'A_SUPPRIMER'].includes(x.etat) ? (typeof x.avant === 'object' ? Object.values(x.avant || {}).filter(Boolean).join(' ') : x.avant || '') : ''; };
@@ -242,9 +246,12 @@ function lignesReport(jusquA) {
         priorite_apres: garde ? (A.prioriteModelo(p.urgence) || '') : '',
         criteres_obligatoires_apres: garde ? (p.criteres || []).filter(x => x.niveau === 'INDISPENSABLE').map(x => x.valeur ? `${x.critere} : ${x.valeur}` : x.critere).join(', ') : '',
         precisions_apres: garde ? blocPrecisions(f, c, fin, d) : '',
-        nego_contact_cible: i === 0 && requal ? fin.madame_fichier : '',
-        nego_fiche_cible: requal && garde ? fin.madame_fichier : '',
-        alerte_mail: garde ? (requal ? 'oui' : c.statut === 'EN_PAUSE' ? 'non' : '') : (archiver || (archiveTout && f.decision === 'GARDER') ? 'non' : ''),
+        nego_contact_cible: i === 0 && requal && !resteAilleurs ? fin.madame_fichier : '',
+        nego_fiche_cible: requal && garde && !resteAilleurs ? fin.madame_fichier : '',
+        // Projet actif confirmé à l'appel : l'acquéreur doit recevoir les biens,
+        // d'office (Loïck, 25/11). L'état se lit recherche par recherche.
+        alerte_mail: garde ? (p.etat_projet === 'ACTIF' ? 'oui' : p.etat_projet === 'EN_PAUSE' ? 'non' : requal ? 'oui' : c.statut === 'EN_PAUSE' ? 'non' : '')
+          : (archiver || (archiveTout && f.decision === 'GARDER') ? 'non' : ''),
         archiver_fiche: archiver ? 'oui' : '',
         commentaire_fiche: archiver ? `${PREFIXE} Fiche archivée le ${jj(f.decision_le || fin?.horodatage)} par ${fin?.madame_fichier || ''} : ${motif}.` : '',
         fusion_dans: archiver && f.decision === 'FUSIONNER' ? (f.fusion_dans || '') : '',

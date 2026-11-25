@@ -29,7 +29,8 @@ const ISSUES = [['JOINT', 'Joint', 'emerald'], ['REPONDEUR', 'Répondeur'], ['PA
 const TENTATIVES = ['REPONDEUR', 'PAS_DE_REPONSE', 'SMS', 'MAIL', 'FAUX_NUMERO']
 // Joint : la suite donnée au projet.
 const STATUTS = [['REQUALIFIE', 'Requalifié'], ['A_RAPPELER', 'À rappeler'], ['EN_PAUSE', 'En pause'], ['ABANDONNE', 'Abandonné'], ['DEJA_ACHETE', 'Déjà acheté']]
-const ACTIONS = ['Visite', 'Estimation', 'Rendez-vous de signature', 'Alerte Modelo à créer', 'Rappel', 'Retour au conseiller']
+// « Alerte Modelo à créer » retiré le 25/11 : l'alerte mail part d'office dès que le projet est actif.
+const ACTIONS = ['Visite', 'Estimation', 'Rendez-vous de signature', 'Rappel', 'Retour au conseiller']
 // Le mandat de recherche (complément au cahier, 18/11).
 const RDV_SIGNATURE = 'Rendez-vous de signature'
 const ETATS_MANDAT = [['NON_PROPOSE', 'Pas proposé'], ['PROPOSE', 'Proposé'], ['ACCEPTE', 'Accepté'], ['REFUSE', 'Refusé'], ['A_REPROPOSER', 'À reproposer']]
@@ -354,7 +355,7 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, onPasser, 
     try {
       await api.post(`/acquereurs/contacts/${id}/cloture`, {
         cle: cle.current + '-cloture', statut_final: statut, prochaine_action: impose ? 'Rappel' : s.prochaine_action,
-        date_prochaine_action: dateAction || null, notes: s.notes || null, consentement_rappel: s.consentement_rappel,
+        date_prochaine_action: dateAction || null, notes: s.notes || null,
         joint: true, coordonnees, vendre: s.vendre, marine: s.marine, fiches, entrant,
         stop_mail: s.stop_mail || undefined, achat: statut === 'DEJA_ACHETE' ? (s.achat || '').trim() || null : null,
         mandat: mandatVisible && mandat.etat ? mandat : null,
@@ -903,7 +904,6 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, onPasser, 
           {(s.prochaine_action || statutChoisi === 'A_RAPPELER') && <div><span className="text-[11px] text-quai-muted">{statutChoisi === 'A_RAPPELER' ? 'Rappeler le' : 'Date'}</span>
             {statutChoisi === 'A_RAPPELER' ? <ChoixDate valeur={s.date_prochaine_action} onChange={v => maj(['date_prochaine_action'], v)} />
               : <input type="datetime-local" className="input max-w-[14rem] mt-0.5 block" aria-label="Date de la prochaine action" value={s.date_prochaine_action} onChange={e => maj(['date_prochaine_action'], e.target.value)} />}</div>}
-          <label className="text-sm flex items-center gap-2 py-1.5 cursor-pointer"><input type="checkbox" className="w-5 h-5" checked={s.consentement_rappel} onChange={e => maj(['consentement_rappel'], e.target.checked)} /> Consent à être recontacté(e) par l’agence</label>
           <Champ label="Note (faits utiles à la recherche, jamais d’appréciation sur la personne)">
             <textarea className="input min-h-[4rem]" value={s.notes} onChange={e => maj(['notes'], e.target.value)} /></Champ>
         </div>

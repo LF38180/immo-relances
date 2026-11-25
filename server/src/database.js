@@ -1089,6 +1089,17 @@ db.exec(`
   );
 `);
 
+// Sorties d'office (25/11/2026) : une personne aussi présente dans la Mission
+// Estimés ou dans l'opération anciens clients quitte la file acquéreurs.
+// `origine` dit pourquoi ; `reporter_appels` = 1 : les appels déjà passés ici
+// partent quand même dans Modelo (la sortie par fichier, elle, vaut « Modelo
+// est déjà à jour »).
+{
+  const cols = db.prepare("PRAGMA table_info(acq_hors_mission)").all().map(c => c.name);
+  if (!cols.includes('origine')) db.exec("ALTER TABLE acq_hors_mission ADD COLUMN origine TEXT");
+  if (!cols.includes('reporter_appels')) db.exec("ALTER TABLE acq_hors_mission ADD COLUMN reporter_appels INTEGER NOT NULL DEFAULT 0");
+}
+
 // Soirée : adresses e-mail dont l'invitation est revenue en erreur. Une ligne
 // par adresse. `definitif` = 1 : l'adresse est morte (inexistante, bloquée) ;
 // 0 : boîte pleine, l'adresse existe. Rien ne se supprime : une erreur saisie

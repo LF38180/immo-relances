@@ -140,7 +140,8 @@ app.get('/api/health', (_, res) => {
         const p = require('./utils/acqSortie').perimetre();
         return { contacts: p.contacts, dans_la_file: p.dans_la_file || 0, hors_mission: p.hors_mission || 0,
           liste_hors_mission: db.prepare('SELECT COUNT(*) n FROM acq_hors_mission WHERE leve_le IS NULL').get().n,
-          croisement_estimes: require('./utils/acqEstimes').compter() };
+          croisement_estimes: require('./utils/acqEstimes').compter(),
+          sorties_auto: require('./utils/acqSortiesAuto').etat() };
       })(),
       // Invitations à la soirée : comptes anonymes, pour vérifier la prod sans compte.
       soiree_invitations: (() => {
@@ -204,6 +205,22 @@ if (isProd) {
   app.get('/assets/*', (_, res) => res.status(404).end());
   app.get('*', (_, res) => res.sendFile(path.join(clientBuild, 'index.html')));
 }
+
+// Mission Acquéreurs, sorties d'office : une personne aussi présente dans la
+// Mission Estimés ou dans l'opération anciens clients quitte la file. Au
+// démarrage, puis toutes les quinze minutes (Chrystelle et les conseillers
+// ajoutent des appels dans la journée). Une erreur ici ne doit rien bloquer.
+const sortiesDOffice = () => {
+  try {
+    const fait = require('./utils/acqSortiesAuto').appliquer();
+    if (fait.sortis) {
+      console.log('[acquéreurs] sorties d’office :', JSON.stringify(fait));
+      require('./utils/journal').journaliser({ nom_complet: 'Sortie d’office' }, 'ACQ_SORTIE_HORS_MISSION', { details: { contacts: fait.sortis, origine: 'office', ...fait.par_origine } });
+    }
+  } catch (e) { console.error('[acquéreurs] sorties d’office :', e.message); }
+};
+setTimeout(sortiesDOffice, 5000);
+setInterval(sortiesDOffice, 15 * 60 * 1000).unref();
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Serveur démarré sur http://0.0.0.0:${PORT}`);
