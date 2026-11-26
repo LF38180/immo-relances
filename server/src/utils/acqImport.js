@@ -177,6 +177,7 @@ function importer(texte, { doublonsCsv = null, madameFichier, suiveursRepris = [
     // Sorti de la mission par l'agence : il n'y revient pas, même si sa fiche
     // réapparaît active. Un motif calculé (stop, décès...) reste prioritaire.
     const horsMission = db.prepare('SELECT 1 FROM acq_hors_mission WHERE id_contact = ? AND leve_le IS NULL');
+    const creeesIci = new Set(db.prepare('SELECT id_modelo_cree FROM acq_fiches WHERE id_modelo_cree IS NOT NULL').all().map(x => String(x.id_modelo_cree)));
     for (const { contact, fiches } of parContact.values()) {
       const exclu = motifExclusion(contact, fiches, { doublons, suiveursRepris: repris })
         || (horsMission.get(contact.id_contact) ? 'HORS_MISSION' : null);
@@ -195,6 +196,10 @@ function importer(texte, { doublonsCsv = null, madameFichier, suiveursRepris = [
       for (const f of fiches) {
         // Une fiche déjà connue sous un autre contact : elle y reste (on ne
         // déplace pas le travail fait), et on le dit.
+        // Une recherche créée depuis l'appli (26/11/2026) revient ici sous son
+        // numéro Modelo : elle existe déjà chez nous, sous sa référence N-….
+        // On ne la recrée pas, sinon la personne aurait deux fois le même projet.
+        if (creeesIci.has(String(f.id_fiche))) { bilan.fiches_creees_reconnues = (bilan.fiches_creees_reconnues || 0) + 1; continue; }
         const avant = ficheDe.get(f.id_fiche);
         if (avant && avant.id_contact !== f.id_contact) { erreurs.push(`Fiche ${f.id_fiche} : présentée sous le contact ${f.id_contact}, déjà rattachée au contact ${avant.id_contact}. Non déplacée.`); continue; }
         insF.run(f);

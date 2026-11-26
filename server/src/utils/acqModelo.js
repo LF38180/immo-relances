@@ -160,14 +160,21 @@ const COLONNES = ['id_contact', 'id_fiche', 'nom', 'prenom', 'agent', 'date_note
   'statut', 'motif_echec',
   // Zones à tracer sur la carte de Modelo (quartiers de Grenoble). Ajoutée le
   // 20/11/2026 tout à la fin : aucune colonne existante ne change de place.
-  'zones_apres'];
+  'zones_apres',
+  // Création d'une recherche (26/11/2026), tout à la fin elles aussi.
+  'creer_fiche', 'ref_creation'];
 
 // Un nouveau projet saisi à l'appel, pas encore créé dans Modelo (26/11/2026).
-// Tant que la création par Exploration Modelo n'est pas confirmée, ces projets
-// ne partent dans aucune ligne de report : ils attendent, et la note du contact
-// les décrit pour que rien ne soit perdu. ENVOI_CREATIONS passera à true à ce
-// moment-là (colonne « créer la recherche », retour du numéro).
-const ENVOI_CREATIONS = false;
+// Exploration Modelo a confirmé le 26/11 qu'il crée la recherche et rend son
+// numéro (essai ZZTEST, fiche 16049). Le projet part donc sur une ligne à part :
+// `id_fiche` vide, `creer_fiche` = oui, `ref_creation` = notre identifiant
+// provisoire, toujours le même d'un report à l'autre (c'est par lui
+// qu'Exploration évite de créer deux fois). Au retour, le numéro rendu dans
+// `id_fiche` est rangé dans `id_modelo_cree`. Tant qu'il n'est pas revenu, la
+// ligne repart à chaque report. ACQ_ENVOI_CREATIONS=0 referme l'envoi.
+const ENVOI_CREATIONS = process.env.ACQ_ENVOI_CREATIONS !== '0';
+// Le numéro Modelo d'une recherche : le sien, ou celui rendu après sa création.
+const idModelo = (f) => f.id_modelo_cree || f.id_fiche;
 const aCreer = (f) => f.creee_appli === 1 && !f.id_modelo_cree;
 const resumeNouveau = (f) => { const p = json(f.requalif);
   const bien = typeBienModelo(p.type_bien || f.type_bien) === 'Appartement/Maison' ? 'maison ou appartement' : (p.type_bien || f.type_bien || '');
@@ -194,8 +201,11 @@ function archivagesEnAttente() {
 
 function aReporter() {
   return db.prepare(`SELECT c.* FROM acq_contacts c
-    WHERE EXISTS (SELECT 1 FROM acq_appels a WHERE a.id_contact = c.id_contact
+    WHERE (EXISTS (SELECT 1 FROM acq_appels a WHERE a.id_contact = c.id_contact
       AND a.horodatage > COALESCE(c.modelo_reporte_le, ''))
+      -- Un projet saisi à l'appel attend sa création dans Modelo : le contact
+      -- reste à reporter tant que le numéro n'est pas revenu.
+      ${ENVOI_CREATIONS ? "OR EXISTS (SELECT 1 FROM acq_fiches f WHERE f.id_contact = c.id_contact AND f.creee_appli = 1 AND f.id_modelo_cree IS NULL AND f.decision = 'GARDER')" : ''})
       -- Sorti hors mission par fichier : Modelo est déjà à jour, plus aucune ligne de
       -- report. Sorti d'office (autre mission) : les appels déjà passés partent.
       AND NOT EXISTS (SELECT 1 FROM acq_hors_mission h WHERE h.id_contact = c.id_contact AND h.leve_le IS NULL AND h.reporter_appels = 0)
@@ -208,13 +218,20 @@ function lignesReport(jusquA) {
   for (const c of aReporter()) {
     const appels = db.prepare(`SELECT * FROM acq_appels WHERE id_contact = ? AND horodatage > COALESCE(?, '') AND horodatage <= ?
       ORDER BY horodatage`).all(c.id_contact, c.modelo_reporte_le, jusquA);
-    if (!appels.length) continue;
+    if (!appels.length) {
+      // Plus aucun appel à reporter, mais un projet attend sa création : sa
+      // ligne seule, sans note (la note est déjà partie avec l'appel).
+      if (ENVOI_CREATIONS) for (const f of db.prepare("SELECT * FROM acq_fiches WHERE id_contact = ? AND creee_appli = 1 AND id_modelo_cree IS NULL AND decision = 'GARDER' ORDER BY id_fiche").all(c.id_contact))
+        lignes.push(ligneCreation(c, f, jusquA));
+      continue;
+    }
     const fin = [...appels].reverse().find(a => a.statut_final);
     const d = fusionDetails(appels);
     const co = d.coordonnees || {};
     const toutes = db.prepare('SELECT * FROM acq_fiches WHERE id_contact = ? ORDER BY id_fiche').all(c.id_contact);
     // Les projets à créer n'ont pas de ligne tant que l'envoi n'est pas ouvert.
-    const fiches = ENVOI_CREATIONS ? toutes : toutes.filter(f => !aCreer(f));
+    // Les projets à créer ont leur propre ligne, ajoutée après celles des recherches.
+    const fiches = toutes.filter(f => !aCreer(f));
     const note = noteContact(c, appels, toutes);
     // La réattribution et la mise à jour des fiches ne partent que si CE lot
     // contient l'appel abouti : après un report, une simple tentative sur un
@@ -250,7 +267,7 @@ function lignesReport(jusquA) {
         : f.decision === 'ARCHIVER' ? (f.motif_archivage || 'projet ancien')
         : archiveTout ? LIB_STATUT[c.statut] : '';
       lignes.push({
-        id_contact: c.id_contact, id_fiche: f.id_fiche, nom: c.nom || '', prenom: c.prenom || '',
+        id_contact: c.id_contact, id_fiche: idModelo(f), nom: c.nom || '', prenom: c.prenom || '',
         agent: fin?.madame_fichier || appels[appels.length - 1].madame_fichier, date_note: jj((fin || appels[appels.length - 1]).horodatage),
         type_note: TYPE_NOTE, commentaire: i === 0 ? (note || '') : '',
         stop_tel: i === 0 && c.statut === 'NE_PLUS_CONTACTER' ? 'OUI' : '', stop_mail: i === 0 && d.stop_mail ? 'OUI' : '',
@@ -279,20 +296,54 @@ function lignesReport(jusquA) {
           : (archiver || (archiveTout && f.decision === 'GARDER') ? 'non' : ''),
         archiver_fiche: archiver ? 'oui' : '',
         commentaire_fiche: archiver ? `${PREFIXE} Fiche archivée le ${jj(f.decision_le || fin?.horodatage)} par ${fin?.madame_fichier || ''} : ${motif}.` : '',
-        fusion_dans: archiver && f.decision === 'FUSIONNER' ? (f.fusion_dans || '') : '',
+        fusion_dans: archiver && f.decision === 'FUSIONNER' ? (toutes.find(x => x.id_fiche === f.fusion_dans)?.id_modelo_cree || f.fusion_dans || '') : '',
         type_contact_ajout: i === 0 && vendeur ? 'Vendeur' : '',
         a_proposer_a_loick: [i === 0 && vendeur ? 'oui' : '', repli].filter(Boolean).join(' ; '),
         jusqu_a: jusquA,
         zones_apres: garde && loc.mode === 'ZONES' ? JSON.stringify(loc.zones) : '',
+        creer_fiche: '', ref_creation: '',
       });
     });
+    if (ENVOI_CREATIONS) for (const f of toutes.filter(x => aCreer(x) && x.decision === 'GARDER')) lignes.push(ligneCreation(c, f, jusquA, fin, d));
   }
   return lignes;
+}
+
+// La ligne qui demande la création d'une recherche : pas de numéro, notre
+// référence, et tout ce qu'il faut pour la remplir. Elle ne porte ni note ni
+// coordonnées (celles-ci sont sur la première ligne du contact). Le conseiller
+// de la recherche est toujours renseigné : vide, Modelo y mettrait Loïck.
+function ligneCreation(c, f, jusquA, fin = null, fusion = null) {
+  const p = json(f.requalif);
+  const loc = Z.localisation({ secteurs: p.secteurs, quartiers: p.quartiers_grenoble });
+  const secteurs = loc.repli === 'SANS_CONTOUR' ? '' : loc.mode === 'ZONES' ? loc.texte : loc.communes;
+  const qui = f.creee_par || fin?.madame_fichier || c.madame_fichier || '';
+  const vide = Object.fromEntries(COLONNES.map(k => [k, '']));
+  return { ...vide,
+    id_contact: c.id_contact, id_fiche: '', nom: c.nom || '', prenom: c.prenom || '',
+    agent: qui, date_note: jj(f.creee_le), type_note: TYPE_NOTE,
+    type_bien_apres: typeBienModelo(p.type_bien || f.type_bien),
+    budget_min_apres: p.budget_min ? String(p.budget_min) : '',
+    budget_max_apres: p.budget_max ? String(A.budgetModelo(p.budget_max)) : '',
+    surface_min_apres: p.surface_min ? String(p.surface_min) : '',
+    pieces_min_apres: p.pieces ? String(p.pieces) : '',
+    chambres_min_apres: p.chambres ? String(p.chambres) : '',
+    secteurs_apres: secteurs,
+    priorite_apres: A.prioriteModelo(p.urgence) || '',
+    criteres_obligatoires_apres: (p.criteres || []).filter(x => x.niveau === 'INDISPENSABLE').map(x => x.valeur ? `${x.critere} : ${x.valeur}` : x.critere).join(', '),
+    precisions_apres: blocPrecisions(f, c, fin || { horodatage: f.creee_le, madame_fichier: qui }, fusion),
+    nego_fiche_cible: qui,
+    alerte_mail: p.etat_projet === 'ACTIF' ? 'oui' : 'non',
+    a_proposer_a_loick: Z.mentionRepli(loc) || '',
+    jusqu_a: jusquA,
+    zones_apres: loc.mode === 'ZONES' ? JSON.stringify(loc.zones) : '',
+    creer_fiche: 'oui', ref_creation: f.id_fiche,
+  };
 }
 
 const cellule = (v) => { const s = String(v ?? ''); return /[;"\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
 const enCsv = (lignes) => '﻿' + [COLONNES.join(';'), ...lignes.map(l => COLONNES.map(k => cellule(l[k])).join(';'))].join('\r\n');
 
 const jour = (s) => jj(s);
-module.exports = { jour, fusionDetails, blocPrecisions, noteContact, lignesReport, enCsv, archivagesEnAttente, aReporter, creationsEnAttente, ENVOI_CREATIONS, COLONNES,
+module.exports = { jour, fusionDetails, blocPrecisions, noteContact, lignesReport, enCsv, archivagesEnAttente, aReporter, creationsEnAttente, ENVOI_CREATIONS, idModelo, COLONNES,
   STATUTS_ARCHIVANT, LIB_STATUT, PREFIXE };

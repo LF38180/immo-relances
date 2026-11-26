@@ -91,7 +91,8 @@ contact('3'); fiche('31', '3', { secteurs: ['Grenoble', 'Meylan'], quartiers_gre
 contact('4'); fiche('41', '4', { secteurs: ['Grenoble', 'Voiron', 'Vif', 'Crolles'], quartiers_grenoble: [Q(VALLIER)] }); appel('4');
 contact('5'); fiche('51', '5', { secteurs: ['Grenoble', 'Chambéry'], quartiers_grenoble: [Q(VALLIER)] }); appel('5');
 const L = Object.fromEntries(M.lignesReport('9999-12-31 23:59:59').map(x => [x.id_fiche, x]));
-t('zones_apres est la dernière colonne', () => eq(M.COLONNES[M.COLONNES.length - 1], 'zones_apres'));
+// Depuis le 26/11/2026, deux colonnes de création la suivent : aucune colonne d'avant n'a changé de place.
+t('zones_apres garde sa place, suivie des deux colonnes de création', () => { eq(M.COLONNES.slice(-3).join(','), 'zones_apres,creer_fiche,ref_creation'); eq(M.COLONNES.indexOf('motif_echec'), M.COLONNES.indexOf('zones_apres') - 1); });
 t('cas 1 : communes, pas de zone', () => { eq(L['11'].secteurs_apres, 'Grenoble, Meylan'); eq(L['11'].zones_apres, ''); eq(L['11'].a_proposer_a_loick, ''); });
 t('cas 2 : zones en JSON, secteurs en texte', () => { eq(L['21'].secteurs_apres, 'Grenoble (quartiers : Saint-Bruno, Vallier)');
   const z = JSON.parse(L['21'].zones_apres); eq(z.length, 2); eq(Object.keys(z[0]).join(','), 'nom,type,commune,code_iris,points'); });

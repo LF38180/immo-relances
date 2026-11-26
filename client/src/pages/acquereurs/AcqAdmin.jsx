@@ -53,6 +53,8 @@ async function telechargerReport() {
 }
 const messageRetour = (d) => {
   toast.success(`${d.reportes} contact${d.reportes > 1 ? 's' : ''} reporté${d.reportes > 1 ? 's' : ''}, ${d.echecs} en échec${d.inconnus.length ? `, ${d.inconnus.length} inconnu(s)` : ''}`, { duration: 7000 })
+  if (d.creations?.length) toast.success(`${d.creations.length} recherche${d.creations.length > 1 ? 's' : ''} créée${d.creations.length > 1 ? 's' : ''} dans Modelo : ${d.creations.map(c => `n° ${c.numero}`).join(', ')}`, { duration: 9000 })
+  if (d.creations_refusees?.length) toast.error(`${d.creations_refusees.length} création(s) non rangée(s) : le numéro rendu existe déjà dans l’appli (${d.creations_refusees.map(c => c.numero).join(', ')}).`, { duration: 12000 })
   if (d.sans_date?.length) toast.error(`${d.sans_date.length} contact(s) non marqué(s) : colonne « jusqu_a » vide ou illisible dans le retour.`, { duration: 9000 })
   if (d.date_future?.length) toast.error(`${d.date_future.length} contact(s) non marqué(s) : la date « jusqu_a » du retour est dans le futur.`, { duration: 9000 })
 }
@@ -595,7 +597,7 @@ function CreationsEnAttente() {
     <div className="mt-3 rounded-xl bg-quai-light border border-quai-border px-3 py-2.5" data-creations>
       <p className="text-sm font-medium text-quai-navy"><span className="text-[11px] bg-quai-gold text-quai-navy rounded-full px-2 py-0.5 mr-1.5">Création</span>
         {d.creations.length} nouveau{d.creations.length > 1 ? 'x' : ''} projet{d.creations.length > 1 ? 's' : ''} à créer dans Modelo</p>
-      <p className="text-[11px] text-quai-muted mt-0.5">{d.envoi_ouvert ? 'Ils partent dans le prochain fichier de report.' : 'En attente : la création par Exploration Modelo n’est pas encore ouverte. Ils sont décrits dans la note du contact, rien n’est perdu.'}</p>
+      <p className="text-[11px] text-quai-muted mt-0.5">{d.envoi_ouvert ? 'Ils partent dans le prochain fichier de report, sur une ligne « créer la recherche ». Ils restent ici tant que le retour n’a pas rendu leur numéro Modelo.' : 'En attente : la création par Exploration Modelo n’est pas encore ouverte. Ils sont décrits dans la note du contact, rien n’est perdu.'}</p>
       <ul className="mt-1.5 text-xs text-quai-navy space-y-0.5">
         {d.creations.map(c => <li key={c.id_fiche}><b>{c.prenom} {c.nom}</b> · {c.resume || 'projet à préciser'} <span className="text-quai-muted">· saisi le {jj(c.creee_le)} par {c.creee_par}</span></li>)}
       </ul>

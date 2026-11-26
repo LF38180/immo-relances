@@ -653,7 +653,8 @@ router.get('/admin/report', admin, (req, res) => {
   res.json({ jusqu_a: jusquA, contacts, fiches: lignes.length, lignes,
     // Ce que ce report change dans Modelo, à relire avant de télécharger.
     reattributions: lignes.filter(l => l.nego_contact_cible).map(l => ({ id_contact: l.id_contact, nom: l.nom, prenom: l.prenom, vers: l.nego_contact_cible })),
-    archivages: lignes.filter(l => l.archiver_fiche).length });
+    archivages: lignes.filter(l => l.archiver_fiche).length,
+    creations: lignes.filter(l => l.creer_fiche).length });
 });
 
 // Où en est le report : le dernier fichier téléchargé, s'il attend son retour,
@@ -714,11 +715,15 @@ router.post('/admin/report/retour', admin, (req, res) => {
       const recu = (String(l.zones_enregistrees || '').match(/\d+/g) || []).join(' ');
       if (recu !== attendu.cle) { statut = 'ECHEC'; motif_echec = `zones : ${attendu.texte} attendu, ${String(l.zones_enregistrees || '').trim() || 'rien'} reçu`; }
     }
+    // Création d'une recherche : « reporté » sans le numéro créé ne suffit pas.
+    // Sans lui, la recherche reviendrait en double au prochain export Modelo.
+    const ref = String(l.ref_creation || '').trim();
+    if (ref && statut === 'REPORTE' && !/^\d+$/.test(String(l.id_fiche || '').trim())) { statut = 'ECHEC'; motif_echec = 'création reportée sans le numéro de la recherche dans id_fiche'; }
     if (!parContact.has(id)) parContact.set(id, []);
     parContact.get(id).push({ ...l, statut, motif_echec });
   }
   const maintenant = db.prepare("SELECT datetime('now') d").get().d;
-  let reportes = 0, echecs = 0; const motifs = [], sansDate = [], dateFuture = [];
+  let reportes = 0, echecs = 0; const motifs = [], sansDate = [], dateFuture = [], creations = [], creationsRefusees = [];
   // « 2026-11-18 10:00:00 », « 2026-11-18T10:00 » ou « 18/11/2026 10:00 » (tableur).
   const dateRetour = (v) => {
     const t = String(v || '').trim(); let m;
@@ -730,6 +735,18 @@ router.post('/admin/report/retour', admin, (req, res) => {
     for (const [id, ls] of parContact) {
       for (const l of ls) inserer.run(id, String(l.id_fiche || '').trim() || null, String(l.horodatage || '').trim() || maintenant,
         l.statut, String(l.motif_echec || '').trim() || null, req.moi.nom_complet);
+      // Les recherches créées : le numéro rendu par Modelo est rangé sur notre
+      // projet. Dès lors il n'est plus « à créer », et ses mises à jour suivantes
+      // partent sous ce numéro. Indépendant des autres lignes du contact.
+      for (const l of ls) {
+        const ref = String(l.ref_creation || '').trim(), num = String(l.id_fiche || '').trim();
+        if (!ref || l.statut !== 'REPORTE') continue;
+        const pris = db.prepare('SELECT id_fiche FROM acq_fiches WHERE id_fiche = ? OR id_modelo_cree = ?').get(num, num);
+        if (pris && pris.id_fiche !== ref) { creationsRefusees.push({ id_contact: id, ref, numero: num }); continue; }
+        const r = db.prepare(`UPDATE acq_fiches SET id_modelo_cree = ?, creation_reportee_le = datetime('now')
+          WHERE id_fiche = ? AND id_contact = ? AND creee_appli = 1 AND id_modelo_cree IS NULL`).run(num, ref, id);
+        if (r.changes) creations.push({ id_contact: id, ref, numero: num });
+      }
       if (ls.every(l => l.statut === 'REPORTE')) {
         // La date « jusqu_a » dit jusqu'où le fichier allait. Sans elle (colonne
         // perdue, ou reformatée par un tableur), on ne devine pas : marquer
@@ -748,7 +765,9 @@ router.post('/admin/report/retour', admin, (req, res) => {
     db.prepare('INSERT INTO acq_reports (par, jusqu_a, contacts, fiches, empreinte) VALUES (?, ?, ?, ?, ?)').run(req.moi.nom_complet, maintenant, reportes, lignes.length, empreinte);
   })();
   journaliser({ id: req.moi.id, nom_complet: req.moi.nom_complet }, 'MODELO_RETOUR', { details: { module: 'acquereurs', reportes, echecs, inconnus: inconnus.size } });
-  res.json({ ok: true, reportes, echecs, inconnus: [...inconnus], motifs, sans_date: sansDate, date_future: dateFuture });
+  res.json({ ok: true, reportes, echecs, inconnus: [...inconnus], motifs, sans_date: sansDate, date_future: dateFuture,
+    // Les recherches créées dans Modelo, avec leur numéro ; et celles dont le numéro rendu est déjà pris ici.
+    creations, creations_refusees: creationsRefusees });
 });
 
 // Ce qui part chez Marine et les estimations à caler (aucune fiche créée chez
