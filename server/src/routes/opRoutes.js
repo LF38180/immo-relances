@@ -1670,6 +1670,19 @@ router.post('/soiree/envoye', accesSoiree, (req, res) => {
   res.json(r);
 });
 
+// Relance par mail : qui a été relancé, et quand. L'invitation d'origine ne bouge pas.
+router.post('/soiree/relance', accesSoiree, (req, res) => {
+  const moi = identite(req);
+  const lignes = Array.isArray(req.body?.lignes) ? req.body.lignes : null;
+  if (!lignes || !lignes.length) return res.status(400).json({ error: 'Le fichier est vide' });
+  if (lignes.length > 5000) return res.status(400).json({ error: 'Trop de lignes' });
+  if (!lignes.some(l => l && 'id_modelo' in l)) return res.status(400).json({ error: 'Colonne id_modelo introuvable : il faut les fichiers exportés par l’appli' });
+  const r = SO.importerRelance({ lignes, relance_le: req.body.relance_le, fichier: String(req.body.fichier || '').slice(0, 200),
+    par: moi?.nom_complet, simulation: !!req.body.simulation });
+  if (!r.simulation && r.acceptees) journaliser(moi, 'SOIREE_RELANCE', { details: { relance_le: r.relance_le, relancees: r.acceptees, rejetees: r.rejetees.length } });
+  res.json(r);
+});
+
 // Mails revenus en erreur : les fiches concernées repassent « à inviter par
 // téléphone ou SMS ». L'envoi d'origine reste en base.
 router.post('/soiree/erreurs', accesSoiree, (req, res) => {

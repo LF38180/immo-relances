@@ -135,6 +135,13 @@ function trier() {
     return l;
   });
 
+  // La relance par mail (26/11/2026) : la dernière, et combien il y en a eu.
+  const relances = new Map();
+  for (const r of db.prepare('SELECT id_modelo, relance_le FROM op_relances_soiree WHERE annulee_le IS NULL ORDER BY relance_le, id').all()) {
+    const x = relances.get(r.id_modelo); relances.set(r.id_modelo, { le: r.relance_le, n: (x?.n || 0) + 1 });
+  }
+  for (const l of lignes) l.relance = relances.get(l.id_modelo) || null;
+
   // Une invitation par adresse : la personnalisée l'emporte, puis l'ordre du fichier.
   const garde = new Map();
   for (const l of lignes) {
@@ -178,6 +185,15 @@ function compter(lignes) {
       par_telephone: n(l => l.statut === 'INVITE' && l.invitation.canal === 'TELEPHONE'),
     },
     a_confirmer: n(l => l.a_confirmer),
+    // Relancés par mail, et parmi les invités par mail ceux qui ne l'ont pas
+    // été : ils ont répondu (oui, non, à retirer) ou leur mail est en erreur.
+    relances: {
+      total: n(l => l.relance),
+      personnalisee: n(l => l.relance && l.statut === 'INVITE' && l.invitation.type === 'PERSONNALISEE'),
+      generique: n(l => l.relance && l.statut === 'INVITE' && l.invitation.type === 'GENERIQUE'),
+      invites_non_relances: n(l => !l.relance && l.statut === 'INVITE' && l.invitation.vague > 0 && !l.invitation.via),
+      jours: db.prepare(`SELECT relance_le, COUNT(*) AS n, MAX(par) AS par FROM op_relances_soiree WHERE annulee_le IS NULL GROUP BY relance_le ORDER BY relance_le`).all(),
+    },
     meme_email: n(l => l.statut === 'MEME_EMAIL'),
     stop_mail: n(l => l.statut === 'STOP_MAIL'),
     sans_email: n(l => l.statut === 'SANS_EMAIL'),
@@ -239,6 +255,43 @@ function importerEnvoi({ lignes, envoye_le, fichier, par, simulation }) {
   };
 }
 
+// Relance par mail : les fichiers envoyés à ceux qui n'avaient pas répondu.
+// Ce sont les exports de l'appli, lignes retirées : on retrouve chaque personne
+// par son identifiant Modelo, et on vérifie son nom. En simulation, rien n'est
+// écrit. Rejouer le même fichier pour le même jour ne crée pas de doublon.
+function importerRelance({ lignes, relance_le, fichier, par, simulation }) {
+  const tri = new Map(trier().map(l => [l.id_modelo, l]));
+  const jour = /^\d{4}-\d{2}-\d{2}$/.test(String(relance_le || '')) ? relance_le : new Date().toLocaleDateString('fr-CA', { timeZone: 'Europe/Paris' });
+  const deja = new Set(db.prepare('SELECT id_modelo FROM op_relances_soiree WHERE relance_le = ? AND annulee_le IS NULL').all(jour).map(x => x.id_modelo));
+  const acceptees = [], rejetees = [], connues = [], alertes = [], vus = new Set();
+  for (const [i, brut] of lignes.entries()) {
+    const id = String(brut.id_modelo || '').trim().replace(/\.0$/, '');
+    const rejet = (motif) => rejetees.push({ ligne: brut._ligne || i + 2, fichier: brut._fichier || '', id_modelo: id, nom: brut.nom || '', prenom: brut.prenom || '', motif });
+    if (!id) { rejet('identifiant Modelo manquant'); continue; }
+    const l = tri.get(id);
+    if (!l) { rejet('identifiant inconnu dans l’opération'); continue; }
+    if (plier(brut.nom) !== plier(l.nom) || plier(brut.prenom) !== plier(l.prenom)) { rejet(`le nom ne correspond pas (fiche : ${l.nom} ${l.prenom})`); continue; }
+    if (vus.has(id)) { rejet('ligne en double dans les fichiers'); continue; }
+    vus.add(id);
+    if (deja.has(id)) { connues.push(id); continue; }
+    const invitee = l.statut === 'INVITE' || (l.statut === 'MAIL_EN_ERREUR' && l.erreur_mail?.envoi);
+    if (!invitee) { rejet('relancée sans avoir été invitée par mail dans l’appli'); continue; }
+    // Relancée alors que l'appli la croit injoignable par mail ou hors liste : on
+    // enregistre ce qui s'est passé, et on le signale.
+    if (l.statut === 'MAIL_EN_ERREUR') alertes.push({ id_modelo: id, nom: l.nom, prenom: l.prenom, motif: 'son mail d’invitation était revenu en erreur' });
+    const t = plier(brut.type || '');
+    acceptees.push({ id_modelo: id, email: emailPropre(brut.email || '') || l.email || null, fichier: brut._fichier || fichier || null,
+      type: t.startsWith('perso') ? 'PERSONNALISEE' : t.startsWith('gener') ? 'GENERIQUE' : (l.invitation?.type || l.type || null) });
+  }
+  if (!simulation && acceptees.length) {
+    const ins = db.prepare('INSERT OR IGNORE INTO op_relances_soiree (id_modelo, relance_le, email, type, par, fichier) VALUES (?, ?, ?, ?, ?, ?)');
+    db.transaction(() => { for (const a of acceptees) ins.run(a.id_modelo, jour, a.email, a.type, par || null, String(a.fichier || '').slice(0, 200) || null); })();
+  }
+  return { simulation: !!simulation, relance_le: jour, acceptees: acceptees.length,
+    personnalisees: acceptees.filter(a => a.type === 'PERSONNALISEE').length, generiques: acceptees.filter(a => a.type === 'GENERIQUE').length,
+    deja_enregistrees: connues.length, rejetees, alertes };
+}
+
 // Pour l'écran d'appel : où en est l'invitation de cette personne. Rien si
 // rien n'est parti. Lecture seule.
 function pourFiche(id_modelo) {
@@ -246,11 +299,12 @@ function pourFiche(id_modelo) {
   if (!l) return null;
   if (l.statut === 'INVITE') {
     const i = l.invitation;
-    return { etat: l.erreur_mail && !l.erreur_mail.definitif ? 'BOITE_PLEINE' : 'ENVOYEE', canal: i.vague === 0 ? i.canal : 'MAIL', envoye_le: i.envoye_le, type: i.type };
+    return { etat: l.erreur_mail && !l.erreur_mail.definitif ? 'BOITE_PLEINE' : 'ENVOYEE', canal: i.vague === 0 ? i.canal : 'MAIL', envoye_le: i.envoye_le, type: i.type,
+      relance_le: l.relance?.le || null };
   }
   // Le mail est parti, mais l'adresse est morte : à inviter de vive voix.
   if (l.statut === 'MAIL_EN_ERREUR' && l.erreur_mail.envoi)
-    return { etat: 'ERREUR', canal: 'MAIL', envoye_le: l.erreur_mail.envoi.envoye_le, type: l.erreur_mail.envoi.type };
+    return { etat: 'ERREUR', canal: 'MAIL', envoye_le: l.erreur_mail.envoi.envoye_le, type: l.erreur_mail.envoi.type, relance_le: l.relance?.le || null };
   return null;
 }
 
@@ -321,4 +375,4 @@ function annulerInvitationManuelle({ id_modelo, par }) {
   return r.changes;
 }
 
-module.exports = { trier, compter, pourFiche, importerEnvoi, importerErreurs, annulerErreur, noterInvitation, annulerInvitationManuelle, MOTIFS, TYPES, plier };
+module.exports = { trier, compter, pourFiche, importerEnvoi, importerRelance, importerErreurs, annulerErreur, noterInvitation, annulerInvitationManuelle, MOTIFS, TYPES, plier };

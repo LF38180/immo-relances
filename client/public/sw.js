@@ -5,7 +5,7 @@
 // travailler des jours sur une version corrigée depuis longtemps, sans aucun
 // moyen de s'en apercevoir. À incrémenter à chaque livraison qui change le
 // comportement de l'application.
-const CACHE_NAME = 'immo-relances-v100';
+const CACHE_NAME = 'immo-relances-v101';
 
 self.addEventListener('install', () => {
   // Pas de pré-chargement : l'index mis en cache à l'installation fige les

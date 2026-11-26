@@ -75,6 +75,8 @@ export default function EcranAppel({ contact: c, onEnregistre, onPasser, horsFil
     ? 'Mail d’invitation revenu en erreur : invitez-la de vive voix, et demandez sa nouvelle adresse e-mail.'
     : `Invitation ${invitation.canal === 'MAIL' ? 'envoyée par mail' : invitation.canal === 'SMS' ? 'envoyée par SMS' : 'faite par téléphone'} le ${String(invitation.envoye_le || '').slice(0, 10).split('-').reverse().join('/')}`
       + (invitation.etat === 'BOITE_PLEINE' ? '. Sa boîte était pleine : parlez-en.' : '.'))
+  // La relance par mail, envoyée à ceux qui n'avaient pas répondu.
+  const texteRelance = invitation?.relance_le ? `Relance par mail le ${String(invitation.relance_le).slice(0, 10).split('-').reverse().join('/')} : pas encore de réponse à ce moment-là.` : null
   // Une clé par fiche ouverte : si la réponse du serveur se perd et que
   // l'agent réessaie, le serveur reconnaît la clé et ne crée pas de doublon.
   const [cle] = useState(() => (globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`))
@@ -343,6 +345,7 @@ export default function EcranAppel({ contact: c, onEnregistre, onPasser, horsFil
                     <Icon name="mail" size="sm" className="shrink-0 mt-px" /><span>Soirée du 3 décembre : {texteInvitation}</span>
                   </div>
                 )}
+                {texteRelance && <div className="mt-0.5 pl-[1.35rem] text-amber-200" data-suivi-relance>{texteRelance}</div>}
                 {suivi[0]?.issue === 'A_RAPPELER' && suivi[0].rappel_le && (
                   <div className="mt-1 font-semibold text-amber-200">
                     Rappel convenu : {new Date(suivi[0].rappel_le).toLocaleString('fr-FR',
@@ -590,7 +593,7 @@ export default function EcranAppel({ contact: c, onEnregistre, onPasser, horsFil
               options={[[1, 'Oui'], [0, 'Non']]} onChange={v => champ('soiree', v)} />
             {invitation && (
               <p className={`text-[13px] -mt-1 ${invitation.etat === 'ENVOYEE' ? 'text-quai-muted' : 'text-amber-800'}`} data-invitation-soiree>
-                {texteInvitation}
+                {texteInvitation}{texteRelance ? ' ' + texteRelance : ''}
               </p>
             )}
             {/* Le panneau se pose chez lui, sur un bien vendu par Le Quai : un

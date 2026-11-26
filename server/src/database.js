@@ -1091,6 +1091,22 @@ db.exec(`
 
 // Transmission à Marine (25/11/2026) : la fiche créée, ou remontée, dans la
 // Mission Courtage. Vide pour les transmissions notées à la main avant cette date.
+// Soirée : les relances par mail (26/11/2026). Une ligne par personne et par
+// jour de relance. Table à part : l'invitation d'origine n'est pas touchée.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS op_relances_soiree (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id_modelo TEXT NOT NULL REFERENCES op_contacts(id_modelo) ON DELETE CASCADE,
+    relance_le TEXT NOT NULL,
+    email TEXT, type TEXT,
+    par TEXT, fichier TEXT,
+    annulee_le TEXT, annulee_par TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (id_modelo, relance_le)
+  );
+  CREATE INDEX IF NOT EXISTS idx_op_relances_soiree_fiche ON op_relances_soiree(id_modelo);
+`);
+
 // Nouveau projet d'achat saisi à l'appel (26/11/2026) : une recherche qui
 // n'existe pas encore dans Modelo. `creee_appli` = 1, identifiant « N-… » en
 // attendant ; `id_modelo_cree` recevra le numéro rendu par Modelo une fois la
