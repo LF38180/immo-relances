@@ -112,10 +112,51 @@ function Effectues({ onChoisir, onFermer }) {
   )
 }
 
+// Les sans-réponse dont le délai est passé (48 h, puis 7 jours) : ils sont
+// dans la file, mais tout au bout, après les jamais appelés. Cette liste les
+// sort à part, pour les rappeler sans attendre la fin de la file (26/11/2026).
+// Messages laissés d'abord, puis du plus ancien au plus récent.
+export const sansReponse = (file) => (file || []).filter(c => c.groupe === 'RELANCE')
+  .sort((a, b) => ((b.derniere_issue === 'REPONDEUR') - (a.derniere_issue === 'REPONDEUR')) || String(a.dernier_appel_le).localeCompare(String(b.dernier_appel_le)))
+const dernierEssai = (c) => c.dernier_canal === 'SMS' ? 'SMS envoyé' : c.dernier_canal === 'MAIL' ? 'mail envoyé' : c.derniere_issue === 'REPONDEUR' ? 'message laissé' : 'pas de réponse'
+function SansReponse({ lignes, enAttente, prochain, onChoisir, onSerie, onFermer }) {
+  useEffect(() => { const e = (ev) => { if (ev.key === 'Escape') onFermer() }; window.addEventListener('keydown', e); return () => window.removeEventListener('keydown', e) }, [onFermer])
+  return (
+    <div className="fixed inset-0 z-[1250] bg-black/40 flex items-end md:items-center justify-center md:p-4" onClick={onFermer}>
+      <div role="dialog" aria-modal="true" aria-label="Sans réponse" onClick={e => e.stopPropagation()} data-sans-reponse
+        className="bg-white w-full md:max-w-lg max-h-[85vh] rounded-t-2xl md:rounded-xl flex flex-col overflow-hidden">
+        <div className="px-4 py-3 border-b border-quai-border">
+          <div className="flex items-center justify-between">
+            <span className="font-semibold text-quai-navy text-sm">Sans réponse, à retenter ({lignes.length})</span>
+            <button onClick={onFermer} aria-label="Fermer" className="text-quai-muted -mr-2 min-w-[2.75rem] min-h-[2.75rem] grid place-items-center"><Icon name="x" size="sm" /></button>
+          </div>
+          <p className="text-[11px] text-quai-muted mt-0.5">Message laissé ou pas de réponse, et le délai est passé : 48 heures après le premier essai, 7 jours après les suivants (SMS compris).</p>
+          {lignes.length > 0 && <button className="btn-primary w-full mt-2" onClick={onSerie}><Icon name="play" size="sm" className="inline mr-1" /> Les rappeler à la suite</button>}
+        </div>
+        <div className="overflow-y-auto divide-y divide-quai-border/60" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+          {!lignes.length && <p className="p-4 text-sm text-quai-muted">Personne à retenter pour l’instant.</p>}
+          {lignes.map(c => (
+            <button key={c.id_contact} onClick={() => onChoisir(c.id_contact)} className="w-full text-left px-4 py-2.5 hover:bg-quai-light flex items-center gap-3 transition-colors">
+              <Initiales prenom={c.prenom} nom={c.nom} taille="sm" />
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm text-quai-navy font-medium truncate">{c.civilite} {c.prenom} {c.nom}</span>
+                <span className="block text-[11px] text-quai-muted truncate">{[`${dernierEssai(c)} le ${jour(c.dernier_appel_le)}`,
+                  `${c.sans_reponse_de_suite} essai${c.sans_reponse_de_suite > 1 ? 's' : ''} sans réponse`, c.commune].filter(Boolean).join(' · ')}</span>
+              </span>
+              <Icon name="chevron-right" size="sm" className="text-quai-muted shrink-0" />
+            </button>
+          ))}
+          {enAttente > 0 && <p className="px-4 py-3 text-[11px] text-quai-muted">{enAttente} autre{enAttente > 1 ? 's' : ''} sans réponse attend{enAttente > 1 ? 'ent' : ''} encore son délai{prochain ? `, le premier revient le ${jj(prochain)}` : ''}.</p>}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // La barre du haut, toujours là, comme dans l'opération anciens clients : où
 // j'en suis, « À faire », « Effectués », « Mes contacts », et la recherche
 // « Il vous rappelle ? » qui ouvre la fiche sans perdre l'appel en cours.
-function Barre({ index, total, horsFile, faits, plage, contacts, onOuvrir, onAFaire, onEffectues, onContacts }) {
+function Barre({ index, total, horsFile, origine, serie, sansRep = 0, faits, plage, contacts, onOuvrir, onAFaire, onEffectues, onContacts, onSansRep }) {
   const [q, setQ] = useState('')
   // Pendant un appel, sur téléphone, la recherche se replie derrière une
   // loupe : la barre prenait un tiers de l'écran. Sur ordinateur, elle reste
@@ -132,10 +173,12 @@ function Barre({ index, total, horsFile, faits, plage, contacts, onOuvrir, onAFa
     <div className="bg-white border-b border-quai-border py-2 sticky top-0 z-20">
       <div className="max-w-3xl mx-auto px-3">
         <div className="flex items-center justify-between gap-2 text-xs mb-1.5 flex-wrap">
-          <span className="text-quai-muted">{horsFile ? <span className="text-quai-gold font-medium">Fiche ouverte hors de la file</span>
+          <span className="text-quai-muted">{serie ? <span className="text-quai-gold font-medium">Sans réponse · fiche <b>{serie.rang}</b> / {serie.total}</span>
+            : horsFile ? <span className="text-quai-gold font-medium">{origine || 'Fiche ouverte à la main'}</span>
             : index != null ? <>Fiche <b className="text-quai-navy">{index + 1}</b> / {total}</> : <>{total} à appeler</>}</span>
           <div className="flex items-center gap-2 text-[11px]">
             <button onClick={onAFaire} className={pastille}><Icon name="table" size="sm" /> À faire <b>{total}</b></button>
+            {sansRep > 0 && <button onClick={onSansRep} className={pastille} data-pastille-sans-reponse><Icon name="phone-off" size="sm" /> <span className={enAppel ? 'hidden sm:inline' : ''}>Sans réponse</span> <b>{sansRep}</b></button>}
             <button onClick={onEffectues} className={pastille}><Icon name="history" size="sm" /> Effectués <b>{faits}</b></button>
             <button onClick={onContacts} className={pastille}><Icon name="users" size="sm" /> <span className={enAppel ? 'hidden sm:inline' : ''}>Mes contacts</span></button>
             {enAppel && <button onClick={() => setLoupe(l => !l)} aria-label="Rechercher quelqu’un qui rappelle" className={`${pastille} md:hidden`}><Icon name="search" size="sm" /></button>}
@@ -184,15 +227,30 @@ export default function AcqFile({ lecture = false, onEnAppel }) {
   // `rappelEntrant` : la fiche a été trouvée par « Il vous rappelle ? » — c'est
   // donc la personne qui appelle. Depuis « Mes contacts » ou « Effectués », non.
   const [entrant, setEntrant] = useState(false)
-  const ouvrirHorsFile = (id, rappelEntrant = false) => {
-    setFenetre(null); setRecherche('')
+  // D'où vient la fiche ouverte à la main : c'est ce que lit l'appelante, à la
+  // place de « hors de la file », qui laissait croire que le contact était exclu.
+  const [origine, setOrigine] = useState(null)
+  // La série « Sans réponse » : les fiches à retenter, enchaînées à part.
+  const [serie, setSerie] = useState(null)   // { ids, total }
+  const ouvrirHorsFile = (id, rappelEntrant = false, dOu = null) => {
+    setFenetre(null); setRecherche(''); setSerie(null)
     if (ouvert && ouvert !== id) setPrecedent(ouvert)
+    setOrigine(dOu || (rappelEntrant ? 'Fiche ouverte depuis la recherche' : 'Fiche ouverte à la main'))
     setEntrant(rappelEntrant === true); setHorsFile(true); setOuvert(id)
   }
+  const lancerSerie = () => {
+    const ids = sansReponse(d?.file).map(c => c.id_contact)
+    if (!ids.length) return
+    setFenetre(null); setPrecedent(null); setHorsFile(false); setEntrant(false); setOrigine(null)
+    setSerie({ ids, total: ids.length }); setOuvert(ids[0])
+  }
+  const quitter = () => { setOuvert(null); setHorsFile(false); setPrecedent(null); setSerie(null); charger() }
   const outils = (
     <>
-      {fenetre === 'contacts' && <MesContacts depart={recherche} onChoisir={(id) => ouvrirHorsFile(id)} onFermer={() => { setFenetre(null); setRecherche('') }} />}
-      {fenetre === 'effectues' && <Effectues onChoisir={(id) => ouvrirHorsFile(id)} onFermer={() => setFenetre(null)} />}
+      {fenetre === 'contacts' && <MesContacts depart={recherche} onChoisir={(id) => ouvrirHorsFile(id, false, 'Fiche ouverte depuis Mes contacts')} onFermer={() => { setFenetre(null); setRecherche('') }} />}
+      {fenetre === 'effectues' && <Effectues onChoisir={(id) => ouvrirHorsFile(id, false, 'Fiche ouverte depuis Effectués')} onFermer={() => setFenetre(null)} />}
+      {fenetre === 'sansrep' && <SansReponse lignes={sansReponse(d?.file)} enAttente={d?.groupes?.en_attente || 0} prochain={d?.prochain_retour}
+        onChoisir={(id) => ouvrirHorsFile(id, false, 'Sans réponse, à retenter')} onSerie={lancerSerie} onFermer={() => setFenetre(null)} />}
     </>
   )
   const charger = useCallback(() => api.get('/acquereurs/file').then(r => setD(r.data)).catch(() => setD({ erreur: true })), [])
@@ -201,7 +259,14 @@ export default function AcqFile({ lecture = false, onEnAppel }) {
 
   if (ouvert) {
     const idx = d?.file?.findIndex(c => c.id_contact === ouvert) ?? -1
+    // Dans la série « Sans réponse » : la suivante de la série, puis retour à la liste.
+    const suiteSerie = () => {
+      const k = serie.ids.indexOf(ouvert), prochain = serie.ids[k + 1]
+      if (prochain) { charger(); setOuvert(prochain); return }
+      toast.success('Série « Sans réponse » terminée'); quitter()
+    }
     const suivant = () => {
+      if (serie) return suiteSerie()
       // Une fiche ouverte hors file : on revient là où on en était.
       if (horsFile) {
         setHorsFile(false)
@@ -226,16 +291,18 @@ export default function AcqFile({ lecture = false, onEnAppel }) {
     }
     // « Passer » : la fiche reste dans la file, on ouvre la suivante.
     const apres = !horsFile && idx >= 0 ? d.file[idx + 1] : null
-    const passer = apres ? () => setOuvert(apres.id_contact) : null
+    const passer = serie ? (serie.ids.indexOf(ouvert) < serie.ids.length - 1 ? suiteSerie : null) : apres ? () => setOuvert(apres.id_contact) : null
+    const rangSerie = serie ? { rang: serie.ids.indexOf(ouvert) + 1, total: serie.total } : null
+    const nbSansRep = sansReponse(d?.file).length
     return (
       <Suspense fallback={<div className="p-6 text-sm text-quai-muted animate-pulse">Chargement…</div>}>
-        <Barre index={horsFile || idx < 0 ? null : idx} total={d?.file?.length || 0} horsFile={horsFile} faits={faits} plage={null}
-          contacts={contacts} onOuvrir={(id) => ouvrirHorsFile(id, true)} onAFaire={() => { setOuvert(null); setHorsFile(false); setPrecedent(null); charger() }}
-          onEffectues={() => setFenetre('effectues')} onContacts={() => setFenetre('contacts')} />
-        <AcqAppel key={ouvert} id={ouvert} position={horsFile ? 'Hors de la file' : idx >= 0 ? `${idx + 1} / ${d.file.length}` : ''}
-          horsFile={horsFile} entrantInitial={horsFile && entrant} lecture={lecture} onPasser={passer}
+        <Barre index={horsFile || idx < 0 ? null : idx} total={d?.file?.length || 0} horsFile={horsFile} origine={origine} serie={rangSerie} sansRep={nbSansRep} faits={faits} plage={null}
+          contacts={contacts} onOuvrir={(id) => ouvrirHorsFile(id, true)} onAFaire={quitter}
+          onEffectues={() => setFenetre('effectues')} onContacts={() => setFenetre('contacts')} onSansRep={() => setFenetre('sansrep')} />
+        <AcqAppel key={ouvert} id={ouvert} position={rangSerie ? `Sans réponse ${rangSerie.rang} / ${rangSerie.total}` : horsFile ? (origine || 'Ouverte à la main') : idx >= 0 ? `${idx + 1} / ${d.file.length}` : ''}
+          horsFile={horsFile} origine={origine} entrantInitial={horsFile && entrant} lecture={lecture} onPasser={passer}
           revenir={precedent ? { libelle: 'Revenir à l’appel en cours', aller: () => { const p = precedent; setPrecedent(null); setHorsFile(false); setOuvert(p) } } : null}
-          onSuivant={suivant} onRetour={() => { setOuvert(null); setHorsFile(false); setPrecedent(null); charger() }} />
+          onSuivant={suivant} onRetour={quitter} />
         {outils}
       </Suspense>
     )
@@ -251,13 +318,13 @@ export default function AcqFile({ lecture = false, onEnAppel }) {
   // La file, rangée par raison d'appeler : on voit d'un coup d'œil ce qui
   // presse (un rappel convenu) et ce qui peut attendre.
   const SECTIONS = [['RAPPEL', 'Rappels convenus', 'ambre'], ['DELEGUE', 'Délégués par un conseiller', 'or'], ['VENDEUR', 'Aussi vendeurs', 'or'],
-    ['NOUVEAU', 'Jamais appelés', 'neutre'], ['RELANCE', 'À relancer', 'neutre']]
+    ['NOUVEAU', 'Jamais appelés', 'neutre'], ['RELANCE', 'Sans réponse, à retenter', 'neutre']]
     .map(([k, l, ton]) => ({ k, l, ton, lignes: d.file.filter(c => c.groupe === k) })).filter(x => x.lignes.length)
   const premier = d.file[0]
   return (
     <>
-    <Barre index={null} total={d.file.length} faits={faits} plage={null} contacts={contacts} onOuvrir={(id) => ouvrirHorsFile(id, true)}
-      onAFaire={() => {}} onEffectues={() => setFenetre('effectues')} onContacts={() => setFenetre('contacts')} />
+    <Barre index={null} total={d.file.length} sansRep={sansReponse(d.file).length} faits={faits} plage={null} contacts={contacts} onOuvrir={(id) => ouvrirHorsFile(id, true)}
+      onAFaire={() => {}} onEffectues={() => setFenetre('effectues')} onContacts={() => setFenetre('contacts')} onSansRep={() => setFenetre('sansrep')} />
     <div className="p-3 max-w-3xl mx-auto pb-8">
       {outils}
       <div className={`rounded-xl px-3 py-2.5 mb-3 text-sm flex items-center gap-2 ${d.plage.ok ? 'bg-emerald-50 text-emerald-900' : 'bg-amber-50 text-amber-900'}`}>

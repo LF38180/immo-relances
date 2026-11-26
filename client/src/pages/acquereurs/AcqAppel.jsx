@@ -191,7 +191,7 @@ function ficheVierge(f) {
 const CLE_DERNIER_SMS = 'acq-dernier-sms'
 const dernierSms = () => { try { return localStorage.getItem(CLE_DERNIER_SMS) || '' } catch { return '' } }
 
-export default function AcqAppel({ id, position, onSuivant, onRetour, onPasser, horsFile, revenir, demo, lecture = false, entrantInitial = false }) {
+export default function AcqAppel({ id, position, onSuivant, onRetour, onPasser, horsFile, origine, revenir, demo, lecture = false, entrantInitial = false }) {
   const [d, setD] = useState(null)
   const [s, setS] = useState(null)       // la saisie
   const [ouv, setOuv] = useState({ fiches: true, p0: true })
@@ -540,7 +540,7 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, onPasser, 
         )}
         {horsFile && (
           <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]">
-            <span className="text-amber-800">Fiche ouverte hors de l’ordre de la file.</span>
+            <span className="text-amber-800">{origine || 'Fiche ouverte à la main'}, en dehors de l’ordre de la file.</span>
             {!demo && (
               <label className="inline-flex items-center gap-1.5 text-quai-navy cursor-pointer">
                 <input type="checkbox" className="w-5 h-5" checked={entrant} onChange={e => setEntrant(e.target.checked)} />

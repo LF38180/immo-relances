@@ -55,6 +55,7 @@ const SQL_COMPTEURS = `
   (SELECT COUNT(*) FROM acq_appels a WHERE a.id_contact = c.id_contact) AS appels_total,
   (SELECT MAX(a.horodatage) FROM acq_appels a WHERE a.id_contact = c.id_contact) AS dernier_appel_le,
   (SELECT a.issue FROM acq_appels a WHERE a.id_contact = c.id_contact ORDER BY a.horodatage DESC, a.id DESC LIMIT 1) AS derniere_issue,
+  (SELECT a.canal FROM acq_appels a WHERE a.id_contact = c.id_contact ORDER BY a.horodatage DESC, a.id DESC LIMIT 1) AS dernier_canal,
   (SELECT COUNT(*) FROM acq_appels a WHERE a.id_contact = c.id_contact AND a.issue IN ('PAS_DE_REPONSE','REPONDEUR')
      AND a.horodatage > COALESCE((SELECT MAX(b.horodatage) FROM acq_appels b WHERE b.id_contact = c.id_contact
        AND b.issue NOT IN ('PAS_DE_REPONSE','REPONDEUR')), '')) AS sans_reponse_de_suite,
@@ -112,6 +113,8 @@ function calculerFile(m) {
     derniere_issue: c.derniere_issue, statut: c.statut, rappel_le: c.rappel_le, source: c.source,
     acheteur_vendeur: c.acheteur_vendeur, derniere_note_date: c.derniere_note_date,
     appel_recent: A.appelRecent(c, recents),
+    // Pour la liste « Sans réponse » (26/11/2026) : quand, et par quel moyen.
+    dernier_appel_le: c.dernier_appel_le, dernier_canal: c.dernier_canal, sans_reponse_de_suite: c.sans_reponse_de_suite,
     groupe: rappels.includes(c) ? 'RAPPEL' : delegues.includes(c) ? 'DELEGUE' : vendeurs.includes(c) ? 'VENDEUR' : aRelancer.includes(c) ? 'RELANCE' : 'NOUVEAU',
   }));
   return ({
