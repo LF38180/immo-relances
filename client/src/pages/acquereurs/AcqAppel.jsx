@@ -47,6 +47,15 @@ function statutDepuisProjets(n) {
   if (etats.includes('EN_PAUSE')) return 'EN_PAUSE'
   if (etats.includes('DEJA_ACHETE')) return 'DEJA_ACHETE'
   if (etats.includes('ABANDONNE')) return 'ABANDONNE'
+  // Aucune recherche gardée, toutes archivées (retour de Lilas, 26/11) : la
+  // suite se lit dans le motif d'archivage. « Doublon » ou une fusion ne disent
+  // rien du projet, on ne déduit rien.
+  const toutes = Object.values(n.fiches || {})
+  if (toutes.length && toutes.every(f => f.decision) && !toutes.some(f => f.decision === 'GARDER')) {
+    const motifs = toutes.filter(f => f.decision === 'ARCHIVER').map(f => String(f.motif || '').toLowerCase())
+    if (motifs.some(m => /achet/.test(m))) return 'DEJA_ACHETE'
+    if (motifs.some(m => /abandon|ancien|plus de projet|renonc/.test(m))) return 'ABANDONNE'
+  }
   return null
 }
 // Déjà acheté, abandonné : les recherches sans décision partent à l'archivage,
@@ -288,10 +297,13 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, onPasser, 
     // l'état précédent donnait, et se pose dès « Joint » quand le projet est
     // déjà connu d'un appel précédent (retour de Lilas, 23/11).
     const dernier = chemin[chemin.length - 1]
-    if (dernier === 'etat_projet' || dernier === 'decision') {
+    if (dernier === 'etat_projet' || dernier === 'decision' || dernier === 'motif') {
       const auto = statutDepuisProjets(n)
       const libre = !n._statut_manuel || !n.statut_final || n.statut_final === statutDepuisProjets(prev)
       if (auto && libre) { appliquerStatut(n, auto); n._statut_manuel = false; n._statut_par_joint = false }
+      // Plus rien à déduire (le motif devient « doublon », par exemple) : on retire
+      // ce qui avait été rempli tout seul, pas ce que l'agent a choisi lui-même.
+      else if (!auto && !n._statut_manuel && n.statut_final && n.statut_final === statutDepuisProjets(prev)) n.statut_final = null
     }
     if (dernier === 'issue') {
       if (valeur === 'JOINT' && !n.statut_final && !n._statut_manuel) {
@@ -785,7 +797,7 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, onPasser, 
               {d.scripts?.['2.2'] && <BlocScript>{script('2.2')}</BlocScript>}
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                 <Champ label="Type de bien"><select className="input" value={typeBien(p.type_bien)} onChange={e => set('type_bien', e.target.value)}>
-                  {['', 'Appartement', 'Maison', MIXTE, 'Terrain', 'Immobilier Pro', 'Fonds de commerce', 'Parking', 'Autre'].map(t => <option key={t} value={t}>{t === MIXTE ? 'Maison ou appartement' : t || '—'}</option>)}</select></Champ>
+                  {['', 'Appartement', 'Maison', MIXTE, 'Immeuble', 'Terrain', 'Immobilier Pro', 'Fonds de commerce', 'Parking', 'Autre'].map(t => <option key={t} value={t}>{t === MIXTE ? 'Maison ou appartement' : t || '—'}</option>)}</select></Champ>
                 <Champ label="Budget min. (€)"><input className="input" inputMode="numeric" value={p.budget_min || ''} onChange={e => set('budget_min', e.target.value.replace(/\D/g, ''))} /></Champ>
                 <Champ label="Budget max. annoncé (€)"><input className="input" inputMode="numeric" value={p.budget_max || ''} onChange={e => set('budget_max', e.target.value.replace(/\D/g, ''))} /></Champ>
                 <Champ label="Surface min. acceptée (m²)"><input className="input" inputMode="numeric" value={p.surface_min || ''} onChange={e => set('surface_min', e.target.value.replace(/\D/g, ''))} /></Champ>
