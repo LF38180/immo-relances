@@ -145,8 +145,17 @@ function noteContact(contact, appels, fiches = []) {
 
 // « Maison ou appartement » part sous le libellé du type Modelo, « Appartement/Maison »
 // (un seul type par fiche de recherche dans Modelo, cette valeur couvre les deux).
-const typeBienModelo = (t) => /^(maison ou appartement|appartement\s*\/\s*maison|maison\s*\/\s*appartement)$/i.test(String(t || '').trim())
-  ? 'Appartement/Maison' : (t || '');
+// Les libellés de Modelo (liste donnée par Exploration Modelo le 26/11/2026) :
+// Appartement, Maison, Appartement/Maison, Immeuble, Terrain, Immobilier Pro,
+// Fonds de commerce, Stationnement, Droit au Bail, Programme immobilier.
+// « Parking » s'y appelle « Stationnement ». « Autre » n'y existe pas : on
+// n'envoie alors aucun type, Modelo garde le sien et le reste de la ligne passe
+// (décision de Loïck). Tout autre libellé part tel quel.
+const typeBienModelo = (t) => { const v = String(t || '').trim();
+  if (/^(maison ou appartement|appartement\s*\/\s*maison|maison\s*\/\s*appartement)$/i.test(v)) return 'Appartement/Maison';
+  if (/^(parking|stationnement)$/i.test(v)) return 'Stationnement';
+  if (/^autre$/i.test(v)) return '';
+  return v; };
 const COLONNES = ['id_contact', 'id_fiche', 'nom', 'prenom', 'agent', 'date_note', 'type_note', 'commentaire',
   'stop_tel', 'stop_mail',
   'tel_portable_avant', 'tel_portable_apres', 'tel_fixe_avant', 'tel_fixe_apres', 'email_avant', 'email_apres',
@@ -345,5 +354,5 @@ const cellule = (v) => { const s = String(v ?? ''); return /[;"\n\r]/.test(s) ? 
 const enCsv = (lignes) => '﻿' + [COLONNES.join(';'), ...lignes.map(l => COLONNES.map(k => cellule(l[k])).join(';'))].join('\r\n');
 
 const jour = (s) => jj(s);
-module.exports = { jour, fusionDetails, blocPrecisions, noteContact, lignesReport, enCsv, archivagesEnAttente, aReporter, creationsEnAttente, ENVOI_CREATIONS, idModelo, COLONNES,
+module.exports = { jour, fusionDetails, blocPrecisions, noteContact, lignesReport, enCsv, archivagesEnAttente, aReporter, creationsEnAttente, ENVOI_CREATIONS, idModelo, typeBienModelo, COLONNES,
   STATUTS_ARCHIVANT, LIB_STATUT, PREFIXE };

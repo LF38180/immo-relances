@@ -123,5 +123,17 @@ const clore = (idc, corps) => req('l@t.fr', 'POST', `/acquereurs/contacts/${idc}
   r = await clore('52', { cle: 'f', statut_final: 'REQUALIFIE', fiches: { 502: { decision: 'ARCHIVER', motif: 'projet ancien' }, 'N-52-1': { decision: 'ARCHIVER', motif: 'projet abandonné' } }, nouvelles: [{ cle: 'NOUVEAU-1', projet: resid }, { cle: 'NOUVEAU-2', projet: { ...resid, type_bien: 'Terrain' } }] });
   t('ancienne recherche archivée, deux nouveaux projets : requalifié accepté', () => { eq(r.statut, 201); eq(r.corps.nouveaux_projets.join(','), 'N-52-2,N-52-3'); });
 
+  console.log('\nles types de bien de Modelo');
+  r = await clore('52', { cle: 'i', statut_final: 'REQUALIFIE', fiches: Object.fromEntries(db.prepare("SELECT id_fiche FROM acq_fiches WHERE id_contact = '52'").all().map(f => [f.id_fiche, { decision: 'ARCHIVER', motif: 'projet ancien' }])),
+    nouvelles: [{ cle: 'NOUVEAU-1', projet: { ...resid, type_bien: 'Autre' } }] });
+  t('nouveau projet en « Autre » : refusé, Modelo ne le connaît pas', () => eq(r.statut, 400));
+  t('Parking part sous le nom Modelo', () => { eq(M.typeBienModelo('Parking'), 'Stationnement'); eq(M.typeBienModelo('Stationnement'), 'Stationnement'); });
+  t('« Autre » n’envoie aucun type', () => eq(M.typeBienModelo('Autre'), ''));
+  t('les autres types partent tels quels', () => { for (const x of ['Appartement', 'Maison', 'Immeuble', 'Terrain', 'Immobilier Pro', 'Fonds de commerce']) eq(M.typeBienModelo(x), x); eq(M.typeBienModelo('Maison ou appartement'), 'Appartement/Maison'); });
+  db.prepare("UPDATE acq_contacts SET modelo_reporte_le = datetime('now', '-1 minute') WHERE id_contact = '51'").run();
+  r = await clore('51', { cle: 'j', statut_final: 'REQUALIFIE', fiches: { 501: { decision: 'ARCHIVER', motif: 'projet abandonné' }, 'N-51-1': { decision: 'GARDER', projet: { ...resid, type_bien: 'Autre', budget_max: 410000 } } } });
+  const la = M.lignesReport(quand()).find(l => l.id_fiche === '16049');
+  t('recherche existante en « Autre » : le type n’est pas envoyé, le reste oui', () => { eq(r.statut, 201); eq(la.type_bien_apres, ''); eq(Number(la.budget_max_apres) >= 410000, true); });
+
   console.log(`\n${ok} OK, ${ko} KO`); process.exit(ko ? 1 : 0);
 })();

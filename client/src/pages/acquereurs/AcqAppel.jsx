@@ -182,7 +182,9 @@ const effacerBrouillon = (id) => { try { localStorage.removeItem(cleBrouillon(id
 // C'est cette valeur qu'on garde et qu'on reporte ; l'ancien libellé de l'appli
 // (saisies du 24/11 au matin) est ramené dessus.
 const MIXTE = 'Appartement/Maison'
-const typeBien = (t) => /^(maison ou appartement|appartement\s*\/\s*maison|maison\s*\/\s*appartement)$/i.test(String(t || '').trim()) ? MIXTE : (t || '')
+// « Stationnement » est le nom Modelo de ce que la liste appelle « Parking ».
+const typeBien = (t) => /^(maison ou appartement|appartement\s*\/\s*maison|maison\s*\/\s*appartement)$/i.test(String(t || '').trim()) ? MIXTE
+  : /^stationnement$/i.test(String(t || '').trim()) ? 'Parking' : (t || '')
 function ficheVierge(f) {
   const depuisModelo = (f.criteres_obligatoires || '').split(', ').map(x => DEPUIS_MODELO[x])
   const stockes = Array.isArray(f.requalif?.criteres) ? f.requalif.criteres : []
@@ -797,7 +799,8 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, onPasser, 
               {d.scripts?.['2.2'] && <BlocScript>{script('2.2')}</BlocScript>}
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                 <Champ label="Type de bien"><select className="input" value={typeBien(p.type_bien)} onChange={e => set('type_bien', e.target.value)}>
-                  {['', 'Appartement', 'Maison', MIXTE, 'Immeuble', 'Terrain', 'Immobilier Pro', 'Fonds de commerce', 'Parking', 'Autre'].map(t => <option key={t} value={t}>{t === MIXTE ? 'Maison ou appartement' : t || '—'}</option>)}</select></Champ>
+                  {/* « Autre » n'existe pas dans Modelo : gardé pour une recherche existante (le type n'y est alors pas modifié), pas proposé pour un nouveau projet. */}
+                  {['', 'Appartement', 'Maison', MIXTE, 'Immeuble', 'Terrain', 'Immobilier Pro', 'Fonds de commerce', 'Parking', ...(nouveauProjet(k) ? [] : ['Autre'])].map(t => <option key={t} value={t}>{t === MIXTE ? 'Maison ou appartement' : t === 'Autre' ? 'Autre (type non modifié dans Modelo)' : t || '—'}</option>)}</select></Champ>
                 <Champ label="Budget min. (€)"><input className="input" inputMode="numeric" value={p.budget_min || ''} onChange={e => set('budget_min', e.target.value.replace(/\D/g, ''))} /></Champ>
                 <Champ label="Budget max. annoncé (€)"><input className="input" inputMode="numeric" value={p.budget_max || ''} onChange={e => set('budget_max', e.target.value.replace(/\D/g, ''))} /></Champ>
                 <Champ label="Surface min. acceptée (m²)"><input className="input" inputMode="numeric" value={p.surface_min || ''} onChange={e => set('surface_min', e.target.value.replace(/\D/g, ''))} /></Champ>

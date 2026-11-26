@@ -306,6 +306,8 @@ router.post('/contacts/:id/cloture', acces, (req, res) => {
   if (nouvelles.length > 5) return res.status(400).json({ error: 'Cinq nouveaux projets au plus par appel.' });
   if (nouvelles.length && sansProjet) return res.status(400).json({ error: 'Un nouveau projet ne s’ajoute que sur un appel où le projet a été discuté.' });
   if (nouvelles.some(n => !String(n.projet.type_bien || '').trim())) return res.status(400).json({ error: 'Nouveau projet : indiquez le type de bien.' });
+  // « Autre » n'existe pas dans Modelo : la recherche ne pourrait pas y être créée.
+  if (nouvelles.some(n => /^autre$/i.test(String(n.projet.type_bien).trim()))) return res.status(400).json({ error: 'Nouveau projet : choisissez un type de bien précis, « Autre » n’existe pas dans Modelo.' });
   if (statut === 'REQUALIFIE') {
     const gardees = fiches.filter(id => dec[id]?.decision === 'GARDER');
     if (!gardees.length && !nouvelles.length) return res.status(400).json({ error: 'Requalifié : gardez au moins une recherche.' });
