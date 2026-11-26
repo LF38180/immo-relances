@@ -1091,6 +1091,18 @@ db.exec(`
 
 // Transmission à Marine (25/11/2026) : la fiche créée, ou remontée, dans la
 // Mission Courtage. Vide pour les transmissions notées à la main avant cette date.
+// Nouveau projet d'achat saisi à l'appel (26/11/2026) : une recherche qui
+// n'existe pas encore dans Modelo. `creee_appli` = 1, identifiant « N-… » en
+// attendant ; `id_modelo_cree` recevra le numéro rendu par Modelo une fois la
+// recherche créée là-bas, `creation_reportee_le` la date d'envoi.
+{
+  const cols = db.prepare('PRAGMA table_info(acq_fiches)').all().map(c => c.name);
+  if (!cols.includes('creee_appli')) db.exec('ALTER TABLE acq_fiches ADD COLUMN creee_appli INTEGER NOT NULL DEFAULT 0');
+  if (!cols.includes('creee_le')) db.exec('ALTER TABLE acq_fiches ADD COLUMN creee_le TEXT');
+  if (!cols.includes('creee_par')) db.exec('ALTER TABLE acq_fiches ADD COLUMN creee_par TEXT');
+  if (!cols.includes('id_modelo_cree')) db.exec('ALTER TABLE acq_fiches ADD COLUMN id_modelo_cree TEXT');
+  if (!cols.includes('creation_reportee_le')) db.exec('ALTER TABLE acq_fiches ADD COLUMN creation_reportee_le TEXT');
+}
 if (!db.prepare('PRAGMA table_info(acq_transmissions)').all().some(c => c.name === 'courtage_fiche_id'))
   db.exec('ALTER TABLE acq_transmissions ADD COLUMN courtage_fiche_id INTEGER');
 

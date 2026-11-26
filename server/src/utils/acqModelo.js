@@ -134,6 +134,9 @@ function noteContact(contact, appels, fiches = []) {
     if (d.marine?.proposee) morceaux.push(`Rendez-vous courtage proposé${d.marine.accord ? ', client d’accord' : ''}.`);
     if (d.vendre?.estimation_proposee) morceaux.push(`Estimation proposée${d.vendre.estimation_acceptee ? `, acceptée${d.vendre.date_rdv_estimation ? ' (rdv le ' + jjh(d.vendre.date_rdv_estimation) + ')' : ''}` : ''}.`);
     if (d.mandat) morceaux.push(`Mandat de recherche ${texteMandat(d.mandat)}.`);
+    // Un projet saisi à l'appel et absent de Modelo : décrit ici, pour qu'il
+    // soit lisible dans Modelo même avant la création de sa fiche.
+    for (const f of fiches.filter(x => aCreer(x) && x.decision === 'GARDER')) morceaux.push(`Nouveau projet d’achat, en plus : ${resumeNouveau(f)}.`);
     if (fin.notes) morceaux.push(fin.notes);
   } else if (!tent.length && !messages.length) return null;
   else morceaux.splice(1, 0, 'Non joint.');
@@ -159,11 +162,31 @@ const COLONNES = ['id_contact', 'id_fiche', 'nom', 'prenom', 'agent', 'date_note
   // 20/11/2026 tout à la fin : aucune colonne existante ne change de place.
   'zones_apres'];
 
+// Un nouveau projet saisi à l'appel, pas encore créé dans Modelo (26/11/2026).
+// Tant que la création par Exploration Modelo n'est pas confirmée, ces projets
+// ne partent dans aucune ligne de report : ils attendent, et la note du contact
+// les décrit pour que rien ne soit perdu. ENVOI_CREATIONS passera à true à ce
+// moment-là (colonne « créer la recherche », retour du numéro).
+const ENVOI_CREATIONS = false;
+const aCreer = (f) => f.creee_appli === 1 && !f.id_modelo_cree;
+const resumeNouveau = (f) => { const p = json(f.requalif);
+  const bien = typeBienModelo(p.type_bien || f.type_bien) === 'Appartement/Maison' ? 'maison ou appartement' : (p.type_bien || f.type_bien || '');
+  const secteurs = Array.isArray(p.secteurs) ? p.secteurs.join(', ') : (p.secteurs || '');
+  const eur = (n) => Number(n) > 0 ? Math.round(Number(n)).toLocaleString('fr-FR').replace(/\s/g, ' ') + ' €' : '';
+  return [bien, eur(p.budget_max) && `budget ${eur(p.budget_max)}`, p.surface_min && `${p.surface_min} m² minimum`, secteurs && `secteur ${secteurs}`].filter(Boolean).join(', '); };
+function creationsEnAttente() {
+  return db.prepare(`SELECT f.id_fiche, f.id_contact, f.type_bien, f.requalif, f.creee_le, f.creee_par, c.nom, c.prenom FROM acq_fiches f
+    JOIN acq_contacts c ON c.id_contact = f.id_contact
+    WHERE f.creee_appli = 1 AND f.id_modelo_cree IS NULL AND f.decision = 'GARDER' ORDER BY f.creee_le`).all()
+    .map(f => ({ id_fiche: f.id_fiche, id_contact: f.id_contact, nom: f.nom, prenom: f.prenom, creee_le: f.creee_le, creee_par: f.creee_par, resume: resumeNouveau(f) }));
+}
+
 // Les fiches dont l'archivage attend la validation de Loïck ou Thomas.
 function archivagesEnAttente() {
   return db.prepare(`SELECT f.*, c.nom, c.prenom, c.statut AS statut_contact FROM acq_fiches f
     JOIN acq_contacts c ON c.id_contact = f.id_contact
     WHERE f.archivage_valide IS NULL
+      AND NOT (f.creee_appli = 1 AND f.id_modelo_cree IS NULL)
       AND NOT EXISTS (SELECT 1 FROM acq_hors_mission h WHERE h.id_contact = c.id_contact AND h.leve_le IS NULL AND h.reporter_appels = 0)
       AND (f.decision IN ('ARCHIVER','FUSIONNER') OR c.statut IN (${STATUTS_ARCHIVANT.map(() => '?').join(',')}))
     ORDER BY c.nom, c.prenom`).all(...STATUTS_ARCHIVANT);
@@ -189,8 +212,10 @@ function lignesReport(jusquA) {
     const fin = [...appels].reverse().find(a => a.statut_final);
     const d = fusionDetails(appels);
     const co = d.coordonnees || {};
-    const fiches = db.prepare('SELECT * FROM acq_fiches WHERE id_contact = ? ORDER BY id_fiche').all(c.id_contact);
-    const note = noteContact(c, appels, fiches);
+    const toutes = db.prepare('SELECT * FROM acq_fiches WHERE id_contact = ? ORDER BY id_fiche').all(c.id_contact);
+    // Les projets à créer n'ont pas de ligne tant que l'envoi n'est pas ouvert.
+    const fiches = ENVOI_CREATIONS ? toutes : toutes.filter(f => !aCreer(f));
+    const note = noteContact(c, appels, toutes);
     // La réattribution et la mise à jour des fiches ne partent que si CE lot
     // contient l'appel abouti : après un report, une simple tentative sur un
     // contact requalifié ne donne qu'une note (et `fin` n'existe pas).
@@ -269,5 +294,5 @@ const cellule = (v) => { const s = String(v ?? ''); return /[;"\n\r]/.test(s) ? 
 const enCsv = (lignes) => '﻿' + [COLONNES.join(';'), ...lignes.map(l => COLONNES.map(k => cellule(l[k])).join(';'))].join('\r\n');
 
 const jour = (s) => jj(s);
-module.exports = { jour, fusionDetails, blocPrecisions, noteContact, lignesReport, enCsv, archivagesEnAttente, aReporter, COLONNES,
+module.exports = { jour, fusionDetails, blocPrecisions, noteContact, lignesReport, enCsv, archivagesEnAttente, aReporter, creationsEnAttente, ENVOI_CREATIONS, COLONNES,
   STATUTS_ARCHIVANT, LIB_STATUT, PREFIXE };

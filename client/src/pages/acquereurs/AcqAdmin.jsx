@@ -405,6 +405,7 @@ function Report({ cle }) {
           Dernier fichier téléchargé le {jj(etat.telechargement.le)}{etat.telechargement.par ? ` par ${etat.telechargement.par}` : ''} ({etat.telechargement.lignes} lignes){etat.en_attente_de_retour ? ' : son retour n’a pas encore été importé.' : '.'}
         </p>
       )}
+      <CreationsEnAttente />
       <div className="mt-3 pt-3 border-t border-quai-border">
         <label className="btn-secondary inline-flex items-center gap-1.5 cursor-pointer"><Icon name="upload" size="sm" /> Importer le retour d’Exploration Modelo
           <input type="file" accept=".csv,.txt" className="hidden" onChange={importerRetour} /></label>
@@ -584,6 +585,24 @@ function Scripts() {
 
 // `section` : 'import' | 'report' | 'parametres' pour n'afficher qu'une
 // partie (espace de l'admin, rangé par onglet). Sans elle : tout.
+// Les nouveaux projets d'achat saisis à l'appel : ils n'existent pas dans
+// Modelo. Tant que la création n'y est pas ouverte, ils attendent ici.
+function CreationsEnAttente() {
+  const [d, setD] = useState(null)
+  useEffect(() => { api.get('/acquereurs/admin/creations').then(r => setD(r.data)).catch(() => {}) }, [])
+  if (!d || !d.creations.length) return null
+  return (
+    <div className="mt-3 rounded-xl bg-quai-light border border-quai-border px-3 py-2.5" data-creations>
+      <p className="text-sm font-medium text-quai-navy"><span className="text-[11px] bg-quai-gold text-quai-navy rounded-full px-2 py-0.5 mr-1.5">Création</span>
+        {d.creations.length} nouveau{d.creations.length > 1 ? 'x' : ''} projet{d.creations.length > 1 ? 's' : ''} à créer dans Modelo</p>
+      <p className="text-[11px] text-quai-muted mt-0.5">{d.envoi_ouvert ? 'Ils partent dans le prochain fichier de report.' : 'En attente : la création par Exploration Modelo n’est pas encore ouverte. Ils sont décrits dans la note du contact, rien n’est perdu.'}</p>
+      <ul className="mt-1.5 text-xs text-quai-navy space-y-0.5">
+        {d.creations.map(c => <li key={c.id_fiche}><b>{c.prenom} {c.nom}</b> · {c.resume || 'projet à préciser'} <span className="text-quai-muted">· saisi le {jj(c.creee_le)} par {c.creee_par}</span></li>)}
+      </ul>
+    </div>
+  )
+}
+
 export default function AcqAdmin({ section = null, onUtilisateurs }) {
   const [cle, setCle] = useState(0)
   const [users, setUsers] = useState([])

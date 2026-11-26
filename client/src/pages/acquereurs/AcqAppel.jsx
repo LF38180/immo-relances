@@ -191,6 +191,13 @@ function ficheVierge(f) {
 const CLE_DERNIER_SMS = 'acq-dernier-sms'
 const dernierSms = () => { try { return localStorage.getItem(CLE_DERNIER_SMS) || '' } catch { return '' } }
 
+// Un nouveau projet d'achat, absent de Modelo (26/11/2026) : même formulaire
+// qu'une recherche gardée, sous une clé provisoire « NOUVEAU-n ».
+const projetNouveau = () => ({ decision: 'GARDER', fusion_dans: '', motif: '', nouveau: true,
+  projet: { etat_projet: 'ACTIF', type_bien: '', budget_min: '', budget_max: '', surface_min: '', pieces: '', chambres: '', secteurs: '',
+    criteres: CRITERES.map(k => ({ critere: k, valeur: '', niveau: '' })) } })
+const estNouveau = (k) => String(k).startsWith('NOUVEAU-')
+
 export default function AcqAppel({ id, position, onSuivant, onRetour, onPasser, horsFile, origine, revenir, demo, lecture = false, entrantInitial = false }) {
   const [d, setD] = useState(null)
   const [s, setS] = useState(null)       // la saisie
@@ -232,7 +239,8 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, onPasser, 
       if (b && b._id === id) {
         // Le brouillon est remis d'aplomb avec les fiches d'aujourd'hui : un
         // réimport a pu en ajouter une (ou en retirer) depuis qu'il a été écrit.
-        const fiches = Object.fromEntries(r.data.fiches.map(f => [f.id_fiche, b.fiches?.[f.id_fiche] || ficheVierge(f)]))
+        const fiches = { ...Object.fromEntries(r.data.fiches.map(f => [f.id_fiche, b.fiches?.[f.id_fiche] || ficheVierge(f)])),
+          ...Object.fromEntries(Object.entries(b.fiches || {}).filter(([k, f]) => estNouveau(k) && f?.nouveau)) }
         // La clé d'envoi suit le brouillon : après un rechargement de page, un
         // appel déjà parti n'est pas enregistré une seconde fois.
         if (b._cle) cle.current = b._cle
@@ -259,6 +267,12 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, onPasser, 
 
   const c = d?.contact
   const estimes = d?.estimes
+  // Nouveau projet : en cours de saisie (clé provisoire), ou déjà enregistré
+  // ici et pas encore créé dans Modelo.
+  const nouveauProjet = (k) => estNouveau(k) || d?.fiches?.some(f => f.id_fiche === k && f.creee_appli === 1 && !f.id_modelo_cree)
+  const ajouterProjet = () => setS(prev => { const n = structuredClone(prev); let i = 1; while (n.fiches['NOUVEAU-' + i]) i++
+    n.fiches['NOUVEAU-' + i] = projetNouveau(); return n })
+  const retirerProjet = (k) => setS(prev => { const n = structuredClone(prev); delete n.fiches[k]; return n })
   const gardees = useMemo(() => s ? Object.entries(s.fiches).filter(([, f]) => f.decision === 'GARDER').map(([k]) => k) : [], [s])
   if (!d) return <p className="p-6 text-sm text-quai-muted">Chargement…</p>
   if (d.erreur) return <p className="p-6 text-sm text-red-700">La fiche n’a pas pu être chargée. <button className="underline" onClick={onRetour}>Revenir</button></p>
@@ -344,7 +358,10 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, onPasser, 
       const oubli = Object.values(s.fiches).filter(f => !f.decision).length
       if (oubli) return toast.error(`Décision manquante sur ${oubli} recherche${oubli > 1 ? 's' : ''}.`)
     }
-    const fiches = Object.fromEntries(Object.entries(s.fiches).filter(([, f]) => f.decision).map(([k, f]) => [k, {
+    const propre = (pr) => ({ ...pr, secteurs: String(pr.secteurs || '').split(',').map(x => x.trim()).filter(Boolean), criteres: (pr.criteres || []).filter(x => x.niveau) })
+    const nouvelles = sansProjet ? [] : Object.entries(s.fiches).filter(([k, f]) => estNouveau(k) && f.nouveau).map(([k, f]) => ({ cle: k, projet: propre(f.projet) }))
+    if (nouvelles.some(n => !n.projet.type_bien)) return toast.error('Nouveau projet : indiquez le type de bien.')
+    const fiches = Object.fromEntries(Object.entries(s.fiches).filter(([k, f]) => f.decision && !estNouveau(k)).map(([k, f]) => [k, {
       decision: f.decision, fusion_dans: f.fusion_dans || null, motif: f.motif,
       projet: f.decision === 'GARDER' ? { ...f.projet, secteurs: String(f.projet.secteurs || '').split(',').map(x => x.trim()).filter(Boolean),
         criteres: (f.projet.criteres || []).filter(x => x.niveau) } : null,
@@ -356,13 +373,15 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, onPasser, 
       const rep = await api.post(`/acquereurs/contacts/${id}/cloture`, {
         cle: cle.current + '-cloture', statut_final: statut, prochaine_action: impose ? 'Rappel' : s.prochaine_action,
         date_prochaine_action: dateAction || null, notes: s.notes || null,
-        joint: true, coordonnees, vendre: s.vendre, marine: s.marine, fiches, entrant,
+        joint: true, coordonnees, vendre: s.vendre, marine: s.marine, fiches, nouvelles, entrant,
         stop_mail: s.stop_mail || undefined, achat: statut === 'DEJA_ACHETE' ? (s.achat || '').trim() || null : null,
         mandat: mandatVisible && mandat.etat ? mandat : null,
       })
       effacerBrouillon(id)
       toast.success('Appel enregistré')
       // L'accord pour Marine : la fiche est partie chez elle, ou pourquoi non.
+      const np = rep.data?.nouveaux_projets?.length || 0
+      if (np) toast.success(np > 1 ? `${np} nouveaux projets enregistrés, à créer dans Modelo` : 'Nouveau projet enregistré, à créer dans Modelo')
       const ct = rep.data?.courtage
       if (ct?.ok && !ct.deja) toast.success(ct.existait ? 'Déjà connue de Marine : sa fiche est remontée en tête de sa file' : 'Transmis à Marine : la fiche est en tête de sa file', { duration: 6000 })
       else if (ct && !ct.ok) toast.error(`Pas transmis à Marine : ${ct.motif}`, { duration: 9000 })
@@ -410,7 +429,7 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, onPasser, 
     { k: 'fiches', ancre: 'acq-fiches', l: 'Recherches', fait: Object.values(s.fiches).every(f => f.decision) },
     { k: 'p0', ancre: 'acq-p0', l: 'Ouverture', fait: s.ouverture === 'OK' },
     { k: 'p1', ancre: 'acq-p1', l: 'Coordonnées', fait: Object.values(s.coordonnees).every(x => x.etat) },
-    ...gardees.map(k => ({ k: 'p2' + k, ancre: 'acq-p2' + k, l: gardees.length > 1 ? `Projet ${k}` : 'Projet', fait: manques(s.fiches[k].projet).length === 0 })),
+    ...gardees.map(k => ({ k: 'p2' + k, ancre: 'acq-p2' + k, l: gardees.length > 1 ? (nouveauProjet(k) ? 'Nouveau projet' : `Projet ${k}`) : 'Projet', fait: manques(s.fiches[k].projet).length === 0 })),
     { k: 'p3', ancre: 'acq-p3', l: 'Vendre', fait: !!s.vendre.statut_logement },
     ...(mandatVisible ? [{ k: 'pm', ancre: 'acq-pm', l: 'Mandat', fait: !!mandat.etat }] : []),
     { k: 'p4', ancre: 'acq-p4', l: 'Suite', fait: !!s.statut_final },
@@ -419,7 +438,7 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, onPasser, 
   // à la fiche n'empêche plus d'enregistrer : c'est un simple rappel.
   const projetActif = gardees.some(k => s.fiches[k].projet?.etat_projet === 'ACTIF')
   const statutAuto = statutDepuisProjets(s)
-  const manquesReq = gardees.length ? gardees.flatMap(k => manques(s.fiches[k].projet).map(m => gardees.length > 1 ? `${m} (recherche ${k})` : m)) : ['au moins une recherche gardée']
+  const manquesReq = gardees.length ? gardees.flatMap(k => manques(s.fiches[k].projet).map(m => gardees.length > 1 ? `${m} (${nouveauProjet(k) ? 'nouveau projet' : 'recherche ' + k})` : m)) : ['au moins une recherche gardée']
   const tels = [...new Set([c.tel_portable, c.tel_fixe].filter(Boolean))]
   // Pourquoi le bouton du bas est grisé : dit en clair, juste au-dessus.
   const raison = lecture ? 'Lecture seule : vous regardez l’écran de l’agent. Pour agir sur une fiche, ouvrez-la depuis l’onglet Contacts.'
@@ -637,7 +656,7 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, onPasser, 
               <button type="button" className="w-full text-left" onClick={() => basculer('f' + f.id_fiche)}>
                 <div className="text-sm text-quai-navy flex items-center gap-1.5">
                   <Icon name={ouv['f' + f.id_fiche] ? 'chevron-down' : 'chevron-right'} size="sm" className="text-quai-muted" />
-                  <span className="flex-1">N° {f.id_fiche} · {f.type_recherche === 'Location' ? 'Location · ' : ''}{f.type_bien || '?'} · {[euros(f.budget_min), euros(f.budget_max)].filter(Boolean).join(' à ') || 'budget ?'} · {f.localisation_mode === 'zone dessinée sur la carte' ? 'zone dessinée sur la carte' : (f.communes || f.codes_postaux || 'secteur ?')}</span>
+                  <span className="flex-1">{f.creee_appli === 1 && !f.id_modelo_cree ? <span className="text-[11px] bg-quai-gold text-quai-navy rounded-full px-2 py-0.5 mr-1">Nouveau projet, pas encore dans Modelo</span> : <>N° {f.id_fiche} · </>}{f.type_recherche === 'Location' ? 'Location · ' : ''}{f.type_bien || '?'} · {[euros(f.budget_min), euros(f.budget_max)].filter(Boolean).join(' à ') || 'budget ?'} · {f.localisation_mode === 'zone dessinée sur la carte' ? 'zone dessinée sur la carte' : (f.communes || f.codes_postaux || 'secteur ?')}</span>
                   <span className="text-[11px] text-quai-muted">{f.modifiee_periode || ''}</span>
                 </div>
               </button>
@@ -673,6 +692,19 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, onPasser, 
             </div>
           )
         })}
+        {Object.keys(s.fiches).filter(estNouveau).map(k => (
+          <div key={k} className="border border-quai-gold rounded-lg p-2.5 mb-2 bg-quai-gold/10 flex flex-wrap items-center gap-2" data-nouveau-projet>
+            <span className="text-[11px] bg-quai-gold text-quai-navy rounded-full px-2 py-0.5">Nouveau</span>
+            <span className="text-sm text-quai-navy flex-1 min-w-[10rem]">{[typeBien(s.fiches[k].projet.type_bien) === MIXTE ? 'Maison ou appartement' : s.fiches[k].projet.type_bien, euros(s.fiches[k].projet.budget_max), s.fiches[k].projet.secteurs].filter(Boolean).join(' · ') || 'Projet à décrire plus bas, dans « Nouveau projet d’achat »'}</span>
+            <span className="text-[11px] text-quai-muted">à créer dans Modelo</span>
+            <button type="button" className="text-xs underline text-red-700 min-h-[2.75rem] md:min-h-0" onClick={() => retirerProjet(k)}>Retirer</button>
+          </div>
+        ))}
+        {joint && !lecture && (
+          <button type="button" className="btn-secondary w-full inline-flex items-center justify-center gap-1.5" onClick={ajouterProjet} data-ajouter-projet>
+            <Icon name="plus" size="sm" /> Ajouter un nouveau projet d’achat
+          </button>
+        )}
       </Partie>
 
       {joint && <>
@@ -726,7 +758,7 @@ export default function AcqAppel({ id, position, onSuivant, onRetour, onPasser, 
         const set = (champ, v) => maj(['fiches', k, 'projet', champ], v)
         const fermeProjet = ['ABANDONNE', 'DEJA_ACHETE'].includes(p.etat_projet)
         return (
-          <Partie key={k} num="2" ancre={`acq-p2${k}`} titre="Projet d’achat" aide={gardees.length > 1 ? `recherche n° ${k}` : 'sur la recherche gardée'} script={script('2.1')}
+          <Partie key={k} num="2" ancre={`acq-p2${k}`} titre={nouveauProjet(k) ? 'Nouveau projet d’achat' : 'Projet d’achat'} aide={nouveauProjet(k) ? 'à créer dans Modelo' : gardees.length > 1 ? `recherche n° ${k}` : 'sur la recherche gardée'} script={script('2.1')}
             ouverte={ouv['p2' + k] ?? true} onBasculer={() => basculer('p2' + k)} faite={manques(p).length === 0}>
             <div className="space-y-3">
               <Champ label="État du projet"><Choix valeur={p.etat_projet} onChange={v => set('etat_projet', v)}

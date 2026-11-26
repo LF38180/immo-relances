@@ -300,14 +300,20 @@ router.post('/contacts/:id/cloture', acces, (req, res) => {
       return res.status(400).json({ error: 'Une fiche fusionnée doit l’être dans une fiche gardée.' });
     if (d.decision === 'ARCHIVER' && !String(d.motif || '').trim()) return res.status(400).json({ error: 'Le motif d’archivage est obligatoire.' });
   }
+  // Les nouveaux projets d'achat saisis pendant l'appel (26/11/2026) : ils
+  // n'existent pas dans Modelo, ils y seront créés par le report.
+  const nouvelles = Array.isArray(b.nouvelles) ? b.nouvelles.filter(n => n && n.projet && typeof n.projet === 'object') : [];
+  if (nouvelles.length > 5) return res.status(400).json({ error: 'Cinq nouveaux projets au plus par appel.' });
+  if (nouvelles.length && sansProjet) return res.status(400).json({ error: 'Un nouveau projet ne s’ajoute que sur un appel où le projet a été discuté.' });
+  if (nouvelles.some(n => !String(n.projet.type_bien || '').trim())) return res.status(400).json({ error: 'Nouveau projet : indiquez le type de bien.' });
   if (statut === 'REQUALIFIE') {
     const gardees = fiches.filter(id => dec[id]?.decision === 'GARDER');
-    if (!gardees.length) return res.status(400).json({ error: 'Requalifié : gardez au moins une recherche.' });
+    if (!gardees.length && !nouvelles.length) return res.status(400).json({ error: 'Requalifié : gardez au moins une recherche.' });
     // Décision de Loïck du 20/11 : « requalifié » = le projet est toujours d'actualité
     // et la fiche a été revue, qu'elle ait été modifiée, complétée ou simplement
     // confirmée telle quelle. Il n'est plus exigé que tout soit renseigné : ce qui
     // manque (budget, secteur, délai, financement) reste un rappel à l'écran.
-    if (!gardees.some(id => dec[id].projet?.etat_projet === 'ACTIF'))
+    if (!gardees.some(id => dec[id].projet?.etat_projet === 'ACTIF') && !nouvelles.some(n => n.projet.etat_projet === 'ACTIF'))
       return res.status(400).json({ error: 'Requalifié : le projet doit être « Actif » sur au moins une recherche gardée.' });
   }
 
@@ -350,6 +356,7 @@ router.post('/contacts/:id/cloture', acces, (req, res) => {
   const details = { coordonnees, vendre: objet(b.vendre), marine: objet(b.marine), 
     ...(mandat ? { mandat } : {}), ...(b.entrant === true ? { entrant: true } : {}),
     ...(stopMail ? { stop_mail: true } : {}), ...(achat ? { achat } : {}) };
+  const creees = [];
   const ecrire = db.transaction(() => {
     const issue = ['NE_PLUS_CONTACTER', 'ERREUR_IDENTITE', 'DECEDE'].includes(statut) ? statut : statut === 'A_RAPPELER' && !b.joint ? 'A_RAPPELER' : 'JOINT';
     const id = db.prepare(`INSERT INTO acq_appels (id_contact, madame_fichier, user_id, canal, issue, statut_final,
@@ -391,6 +398,20 @@ router.post('/contacts/:id/cloture', acces, (req, res) => {
         .run(d.decision, fusion, motif, d.decision === 'GARDER' && d.projet ? JSON.stringify(d.projet) : avant.requalif,
           req.moi.nom_complet, inchangee ? avant.archivage_valide : null, idf);
     }
+    // Les nouveaux projets : une recherche de plus, gardée, marquée « créée
+    // dans l'appli ». Son identifiant provisoire ne ressemble à aucun numéro
+    // Modelo, un réimport ne peut donc pas l'écraser.
+    let rang = db.prepare("SELECT COUNT(*) n FROM acq_fiches WHERE id_contact = ? AND creee_appli = 1").get(c.id_contact).n;
+    for (const n of nouvelles) {
+      let idf; do { rang++; idf = `N-${c.id_contact}-${rang}`; } while (db.prepare('SELECT 1 FROM acq_fiches WHERE id_fiche = ?').get(idf));
+      const pr = n.projet, entier = (v) => Number.isFinite(Number(v)) && Number(v) > 0 ? Math.round(Number(v)) : null;
+      db.prepare(`INSERT INTO acq_fiches (id_fiche, id_contact, type_recherche, type_bien, budget_min, budget_max, surface_min, pieces_min, chambres_min,
+          communes, decision, requalif, decision_le, decision_par, creee_appli, creee_le, creee_par)
+        VALUES (?, ?, 'Achat', ?, ?, ?, ?, ?, ?, ?, 'GARDER', ?, datetime('now'), ?, 1, datetime('now'), ?)`)
+        .run(idf, c.id_contact, String(pr.type_bien).trim(), entier(pr.budget_min), entier(pr.budget_max), entier(pr.surface_min), entier(pr.pieces), entier(pr.chambres),
+          Array.isArray(pr.secteurs) ? pr.secteurs.join(', ') : (pr.secteurs || null), JSON.stringify(pr), req.moi.nom_complet, req.moi.nom_complet);
+      creees.push(idf);
+    }
     // « Ne plus contacter » : écrit tout de suite dans le journal commun des
     // oppositions. La personne sort de toutes les files de tous les modules.
     if (statut === 'NE_PLUS_CONTACTER') {
@@ -419,7 +440,7 @@ router.post('/contacts/:id/cloture', acces, (req, res) => {
       if (courtage.ok && !courtage.deja) journaliser({ id: req.moi.id, nom_complet: req.moi.nom_complet }, 'ACQ_TRANSMIS_MARINE', { details: { id_contact: c.id_contact, fiche: courtage.fiche_id, existait: !!courtage.existait } });
     } catch (e) { console.error('[acquéreurs] transmission à Marine :', e.message); courtage = { ok: false, motif: 'Transmission impossible, l’administration est prévenue par la liste « À transmettre »' }; }
   }
-  res.status(201).json({ id, statut, courtage });
+  res.status(201).json({ id, statut, courtage, nouveaux_projets: creees });
 });
 
 // --- Retrouver quelqu'un : un client rappelle, ou on veut rouvrir sa fiche ---
@@ -611,6 +632,9 @@ router.post('/admin/valider', admin, (req, res) => {
   db.transaction(() => { for (const f of items) st.run(f.accepte ? 1 : 0, req.moi.nom_complet, String(f.id_fiche)); })();
   res.json({ ok: true, n: items.length });
 });
+
+// Les nouveaux projets saisis à l'appel, qui attendent leur création dans Modelo.
+router.get('/admin/creations', admin, (req, res) => res.json({ envoi_ouvert: M.ENVOI_CREATIONS, creations: M.creationsEnAttente() }));
 
 router.get('/admin/report', admin, (req, res) => {
   const attente = M.archivagesEnAttente().length;
