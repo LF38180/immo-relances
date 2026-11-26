@@ -141,6 +141,18 @@ function trier() {
     const x = relances.get(r.id_modelo); relances.set(r.id_modelo, { le: r.relance_le, n: (x?.n || 0) + 1 });
   }
   for (const l of lignes) l.relance = relances.get(l.id_modelo) || null;
+  // Les réponses reçues par mail : toutes, sans en cacher une (Loïck, 26/11).
+  const reponses = new Map();
+  for (const r of db.prepare('SELECT id_modelo, reponse, participants, precision, recue_le FROM op_reponses_soiree WHERE annulee_le IS NULL ORDER BY recue_le, id').all()) {
+    if (!reponses.has(r.id_modelo)) reponses.set(r.id_modelo, []);
+    reponses.get(r.id_modelo).push({ reponse: r.reponse, participants: r.participants, precision: r.precision, recue_le: r.recue_le });
+  }
+  for (const l of lignes) {
+    l.reponses = reponses.get(l.id_modelo) || [];
+    const a = (k) => l.reponses.some(r => r.reponse === k);
+    // Deux sons de cloche : oui au téléphone et non par mail, ou oui et non par mail.
+    l.reponses_contradictoires = (a('NON') && (l.oui || a('OUI'))) || (a('DESINSCRIT') && a('OUI'));
+  }
 
   // Une invitation par adresse : la personnalisée l'emporte, puis l'ordre du fichier.
   const garde = new Map();
@@ -193,6 +205,14 @@ function compter(lignes) {
       generique: n(l => l.relance && l.statut === 'INVITE' && l.invitation.type === 'GENERIQUE'),
       invites_non_relances: n(l => !l.relance && l.statut === 'INVITE' && l.invitation.vague > 0 && !l.invitation.via),
       jours: db.prepare(`SELECT relance_le, COUNT(*) AS n, MAX(par) AS par FROM op_relances_soiree WHERE annulee_le IS NULL GROUP BY relance_le ORDER BY relance_le`).all(),
+    },
+    reponses: {
+      oui: n(l => l.reponses.some(r => r.reponse === 'OUI')),
+      non: n(l => l.reponses.some(r => r.reponse === 'NON')),
+      desinscrits: n(l => l.reponses.some(r => r.reponse === 'DESINSCRIT')),
+      // Personnes attendues d'après les mails : le nombre indiqué, sinon une.
+      personnes_attendues: lignes.reduce((t, l) => t + l.reponses.filter(r => r.reponse === 'OUI').reduce((u, r) => u + (r.participants || 1), 0), 0),
+      contradictoires: n(l => l.reponses_contradictoires),
     },
     meme_email: n(l => l.statut === 'MEME_EMAIL'),
     stop_mail: n(l => l.statut === 'STOP_MAIL'),
@@ -292,6 +312,75 @@ function importerRelance({ lignes, relance_le, fichier, par, simulation }) {
     deja_enregistrees: connues.length, rejetees, alertes };
 }
 
+// Réponses reçues par mail : trois fichiers tenus par Emma (ont dit oui, ont
+// dit non, désinscrits), avec l'identifiant Modelo de chaque personne.
+//  - oui / non : rangés à part, rien de ce qu'a noté le conseiller n'est écrasé ;
+//  - désinscrit : stop mail ET stop téléphone (Loïck, 26/11), inscrit au journal
+//    des oppositions, donc sorti de toutes les files d'appel.
+// En simulation, rien n'est écrit. Rejouer un fichier ne crée pas de doublon.
+const cle = (brut, ...noms) => { for (const [k, v] of Object.entries(brut || {})) if (noms.includes(plier(k).replace(/[^a-z0-9]+/g, ' ').trim())) return String(v ?? '').trim(); return ''; };
+function importerReponses({ lignes, recue_le, fichier, par, simulation }) {
+  const tri = new Map(trier().map(l => [l.id_modelo, l]));
+  const jour = /^\d{4}-\d{2}-\d{2}$/.test(String(recue_le || '')) ? recue_le : new Date().toLocaleDateString('fr-CA', { timeZone: 'Europe/Paris' });
+  const deja = new Set(db.prepare('SELECT id_modelo, reponse FROM op_reponses_soiree WHERE annulee_le IS NULL').all().map(x => x.id_modelo + '|' + x.reponse));
+  const acceptees = [], rejetees = [], vus = new Set(); let connues = 0;
+  for (const [i, brut] of lignes.entries()) {
+    const id = String(brut.id_modelo || '').trim().replace(/\.0$/, '');
+    const rejet = (motif) => rejetees.push({ ligne: brut._ligne || i + 2, fichier: brut._fichier || '', id_modelo: id, nom: brut.nom || '', prenom: brut.prenom || '', motif });
+    if (!id) { rejet('identifiant Modelo manquant'); continue; }
+    const l = tri.get(id);
+    if (!l) { rejet('identifiant inconnu dans l’opération'); continue; }
+    if (plier(brut.nom) !== plier(l.nom) || plier(brut.prenom) !== plier(l.prenom)) { rejet(`le nom ne correspond pas (fiche : ${l.nom} ${l.prenom})`); continue; }
+    const origine = plier(`${brut._fichier || ''} ${brut._feuille || ''}`).replace(/[^a-z0-9]+/g, ' ');
+    const desinscrit = /desinscri/.test(origine);
+    const dit = plier(cle(brut, 'reponse'));
+    const rep = dit.startsWith('oui') ? 'OUI' : dit.startsWith('non') ? 'NON' : /pas de reponse/.test(dit) || desinscrit ? null
+      : /(^| )oui( |$)/.test(origine) ? 'OUI' : /(^| )non( |$)/.test(origine) ? 'NON' : undefined;
+    if (rep === undefined) { rejet('réponse illisible (ni oui, ni non, ni désinscription)'); continue; }
+    const precision = [cle(brut, 'soiree du 3 12'), cle(brut, 'participants indiques')].filter(Boolean).join(' · ').slice(0, 200) || null;
+    const x = /x\s*(\d{1,2})/i.exec(precision || '') || /(\d{1,2})\s*pers/i.exec(precision || '');
+    const voulues = [rep, desinscrit ? 'DESINSCRIT' : null].filter(Boolean);
+    for (const r of voulues) {
+      // La même réponse lue deux fois (un désinscrit figure aussi dans « ont dit
+      // non ») : une seule suffit, ce n'est pas une erreur.
+      if (vus.has(id + '|' + r)) continue;
+      vus.add(id + '|' + r);
+      if (deja.has(id + '|' + r)) { connues++; continue; }
+      acceptees.push({ id_modelo: id, nom: l.nom, prenom: l.prenom, conseiller: l.conseiller, reponse: r, fichier: brut._fichier || fichier || null,
+        participants: r === 'OUI' && x ? Math.min(Number(x[1]), 20) : null, precision: r === 'DESINSCRIT' ? null : precision,
+        // Ce que le conseiller avait noté au téléphone, pour voir les écarts avant d'enregistrer.
+        oui_au_telephone: !!l.oui });
+    }
+  }
+  if (!simulation && acceptees.length) {
+    const ins = db.prepare('INSERT OR IGNORE INTO op_reponses_soiree (id_modelo, reponse, participants, precision, recue_le, par, fichier) VALUES (?, ?, ?, ?, ?, ?, ?)');
+    const fiche = db.prepare('SELECT nom, prenom, tel_portable, tel_fixe FROM op_contacts WHERE id_modelo = ?');
+    const journal = db.prepare(`INSERT INTO op_journal_opposition (id_modelo, canal, origine, agent, nom, prenom, telephone) VALUES (?, 'TELEPHONE', 'DESINSCRIPTION_MAIL', ?, ?, ?, ?)`);
+    const dejaOppose = db.prepare("SELECT 1 FROM op_journal_opposition WHERE id_modelo = ? AND origine = 'DESINSCRIPTION_MAIL'");
+    const stops = db.prepare("UPDATE op_contacts SET stop_telephone = 1, stop_mail = 1, updated_at = datetime('now') WHERE id_modelo = ?");
+    db.transaction(() => {
+      for (const a of acceptees) {
+        ins.run(a.id_modelo, a.reponse, a.participants, a.precision, jour, par || null, String(a.fichier || '').slice(0, 200) || null);
+        if (a.reponse === 'DESINSCRIT') {
+          const c = fiche.get(a.id_modelo);
+          if (!dejaOppose.get(a.id_modelo)) journal.run(a.id_modelo, par || null, c.nom, c.prenom, c.tel_portable || c.tel_fixe);
+          stops.run(a.id_modelo);
+        }
+      }
+    })();
+  }
+  const n = (k) => acceptees.filter(a => a.reponse === k);
+  return { simulation: !!simulation, recue_le: jour, acceptees: acceptees.length, oui: n('OUI').length, non: n('NON').length,
+    personnes_attendues: n('OUI').reduce((t, a) => t + (a.participants || 1), 0),
+    desinscrits: n('DESINSCRIT').map(a => ({ id_modelo: a.id_modelo, nom: a.nom, prenom: a.prenom, conseiller: a.conseiller })),
+    ecarts: n('NON').filter(a => a.oui_au_telephone).map(a => ({ id_modelo: a.id_modelo, nom: a.nom, prenom: a.prenom, conseiller: a.conseiller })),
+    deja_enregistrees: connues, rejetees };
+}
+// Pour l'écran d'appel : toutes les réponses de cette personne. Lecture seule.
+function reponsesPourFiche(id_modelo) {
+  return db.prepare('SELECT reponse, participants, precision, recue_le FROM op_reponses_soiree WHERE id_modelo = ? AND annulee_le IS NULL ORDER BY recue_le, id').all(String(id_modelo));
+}
+
 // Pour l'écran d'appel : où en est l'invitation de cette personne. Rien si
 // rien n'est parti. Lecture seule.
 function pourFiche(id_modelo) {
@@ -375,4 +464,4 @@ function annulerInvitationManuelle({ id_modelo, par }) {
   return r.changes;
 }
 
-module.exports = { trier, compter, pourFiche, importerEnvoi, importerRelance, importerErreurs, annulerErreur, noterInvitation, annulerInvitationManuelle, MOTIFS, TYPES, plier };
+module.exports = { trier, compter, pourFiche, importerEnvoi, importerRelance, importerReponses, reponsesPourFiche, importerErreurs, annulerErreur, noterInvitation, annulerInvitationManuelle, MOTIFS, TYPES, plier };

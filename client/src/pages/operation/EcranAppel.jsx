@@ -63,18 +63,24 @@ export default function EcranAppel({ contact: c, onEnregistre, onPasser, horsFil
   // avec sa note. Tant qu'il n'est pas chargé, l'ancien encart reste affiché.
   const [invitation, setInvitation] = useState(null)
   const [suivi, setSuivi] = useState(null)
+  // Ce que la personne a répondu par mail : toutes ses réponses, sans en cacher.
+  const [reponsesMail, setReponsesMail] = useState([])
   const [suiviEntier, setSuiviEntier] = useState(false)
   useEffect(() => {
     if (demo || !c?.id_modelo) return
     let vivant = true
     api.get(`/operation/contacts/${c.id_modelo}/suivi`)
-      .then(r => { if (vivant) { setInvitation(r.data.invitation); setSuivi(r.data.appels || []) } }).catch(() => {})
+      .then(r => { if (vivant) { setInvitation(r.data.invitation); setReponsesMail(r.data.reponses || []); setSuivi(r.data.appels || []) } }).catch(() => {})
     return () => { vivant = false }
   }, [c?.id_modelo, demo])
   const texteInvitation = invitation && (invitation.etat === 'ERREUR'
     ? 'Mail d’invitation revenu en erreur : invitez-la de vive voix, et demandez sa nouvelle adresse e-mail.'
     : `Invitation ${invitation.canal === 'MAIL' ? 'envoyée par mail' : invitation.canal === 'SMS' ? 'envoyée par SMS' : 'faite par téléphone'} le ${String(invitation.envoye_le || '').slice(0, 10).split('-').reverse().join('/')}`
       + (invitation.etat === 'BOITE_PLEINE' ? '. Sa boîte était pleine : parlez-en.' : '.'))
+  const jourFr = (j) => String(j || '').slice(0, 10).split('-').reverse().join('/')
+  const texteReponse = (r) => r.reponse === 'OUI' ? `A confirmé sa présence par mail le ${jourFr(r.recue_le)}${r.participants ? ` (${r.participants} personne${r.participants > 1 ? 's' : ''})` : ''}.`
+    : r.reponse === 'NON' ? `A répondu non par mail le ${jourFr(r.recue_le)} : ne pas réinviter.`
+    : `S’est désinscrit de nos listes le ${jourFr(r.recue_le)} : ne veut plus recevoir nos mails ni être appelé.`
   // La relance par mail, envoyée à ceux qui n'avaient pas répondu.
   const texteRelance = invitation?.relance_le ? `Relance par mail le ${String(invitation.relance_le).slice(0, 10).split('-').reverse().join('/')} : pas encore de réponse à ce moment-là.` : null
   // Une clé par fiche ouverte : si la réponse du serveur se perd et que
@@ -335,7 +341,7 @@ export default function EcranAppel({ contact: c, onEnregistre, onPasser, horsFil
 
             {/* L'historique : « on m'a déjà appelé la semaine dernière » ne doit
                 pas prendre l'agent au dépourvu. */}
-            {suivi && (suivi.length > 0 || invitation) && (
+            {suivi && (suivi.length > 0 || invitation || reponsesMail.length > 0) && (
               <div className="text-[11px] text-white/80 bg-white/10 rounded px-2 py-1.5 mt-2 leading-snug" data-suivi>
                 <div className="text-[10px] uppercase tracking-wider text-quai-gold font-semibold">
                   Suivi{suivi.length > 0 && <> · {suivi.length} appel{suivi.length > 1 ? 's' : ''} ou SMS déjà passé{suivi.length > 1 ? 's' : ''}</>}
@@ -346,6 +352,11 @@ export default function EcranAppel({ contact: c, onEnregistre, onPasser, horsFil
                   </div>
                 )}
                 {texteRelance && <div className="mt-0.5 pl-[1.35rem] text-amber-200" data-suivi-relance>{texteRelance}</div>}
+                {reponsesMail.map((r, i) => (
+                  <div key={i} className={`mt-1 flex gap-1.5 font-semibold ${r.reponse === 'OUI' ? 'text-emerald-300' : r.reponse === 'NON' ? 'text-amber-200' : 'text-red-300'}`} data-suivi-reponse>
+                    <Icon name="mail" size="sm" className="shrink-0 mt-px" /><span>{invitation ? '' : 'Soirée du 3 décembre : '}{texteReponse(r)}</span>
+                  </div>
+                ))}
                 {suivi[0]?.issue === 'A_RAPPELER' && suivi[0].rappel_le && (
                   <div className="mt-1 font-semibold text-amber-200">
                     Rappel convenu : {new Date(suivi[0].rappel_le).toLocaleString('fr-FR',
@@ -596,6 +607,7 @@ export default function EcranAppel({ contact: c, onEnregistre, onPasser, horsFil
                 {texteInvitation}{texteRelance ? ' ' + texteRelance : ''}
               </p>
             )}
+            {reponsesMail.map((r, i) => <p key={i} className="text-[13px] -mt-1 font-semibold text-quai-navy" data-reponse-soiree>{texteReponse(r)}</p>)}
             {/* Le panneau se pose chez lui, sur un bien vendu par Le Quai : un
                 vendeur n'y habite plus. On ne cache pas la proposition (il a pu
                 racheter avec nous), on le dit. */}

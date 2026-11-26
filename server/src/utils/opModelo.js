@@ -50,14 +50,20 @@ function fichesAReporter() {
   const auteurNpai = db.prepare(`SELECT auteur FROM op_journal WHERE id_modelo = ? AND action = 'NPAI' ORDER BY le DESC LIMIT 1`);
   const SAISIE_NPAI_AVANT_JOURNAL = 'Loïck FERRUCCI';
 
+  // Les réponses reçues par mail pour la soirée (26/11/2026) : elles ouvrent
+  // une note elles aussi, et une désinscription fait remonter les deux stops.
+  const reponsesDe = db.prepare(`SELECT reponse, participants, recue_le, created_at FROM op_reponses_soiree
+    WHERE id_modelo = ? AND annulee_le IS NULL AND created_at > ? ORDER BY created_at, id`);
+
   const fiches = []; const recommandations = [];
   for (const c of contacts) {
     const depuisLe = c.modelo_reporte_le || '';
     const appels = appelsDe.all(c.id_modelo, depuisLe);
+    const reponsesMail = reponsesDe.all(c.id_modelo, depuisLe);
     const avecContact = appels.filter(a => !SANS_CONTACT.has(a.issue));
     const tentatives = appels.filter(a => SANS_CONTACT.has(a.issue));
     const resultatNouveau = !!(c.resultat_le && c.resultat_le > depuisLe);
-    if (!avecContact.length && !resultatNouveau && !tentatives.length) continue;
+    if (!avecContact.length && !resultatNouveau && !tentatives.length && !reponsesMail.length) continue;
 
     const dernier = avecContact[avecContact.length - 1] || null;
     // Sans appel : le conseiller de la fiche ; sans conseiller (fiche à
@@ -66,7 +72,7 @@ function fichesAReporter() {
     const derniereTentative = tentatives[tentatives.length - 1] || null;
     const agent = dernier?.conseiller || derniereTentative?.conseiller || c.conseiller
       || auteurNpai.get(c.id_modelo)?.auteur || SAISIE_NPAI_AVANT_JOURNAL;
-    const dateNote = dernier?.horodatage || (resultatNouveau ? c.resultat_le : null) || derniereTentative?.horodatage || c.resultat_le;
+    const dateNote = dernier?.horodatage || (resultatNouveau ? c.resultat_le : null) || derniereTentative?.horodatage || reponsesMail[reponsesMail.length - 1]?.created_at || c.resultat_le;
 
     const parts = [];
     if (dernier) {
@@ -106,14 +112,21 @@ function fichesAReporter() {
     if (essais.length) parts.push('Tentatives : ' + essais.map(a => `${jjmm(a.horodatage)} ${a.issue === 'REPONDEUR' ? 'répondeur' : 'pas de réponse'}`).join(', ') + '.');
     for (const a of sms) parts.push(`SMS envoyé le ${jjmm(a.horodatage)}${a.sms_texte ? ` : « ${a.sms_texte.trim().replace(/\s+/g, ' ')} »` : '.'}`);
 
+    const avantReponses = parts.length;
+    const jourFr = (j) => String(j || '').slice(0, 10).split('-').reverse().join('/');
+    for (const r of reponsesMail) parts.push(r.reponse === 'OUI' ? `Soirée du 3 décembre : a confirmé sa présence par mail le ${jourFr(r.recue_le)}${r.participants ? ` (${r.participants} personne${r.participants > 1 ? 's' : ''})` : ''}.`
+      : r.reponse === 'NON' ? `Soirée du 3 décembre : a répondu non par mail le ${jourFr(r.recue_le)}.`
+      : `S’est désinscrit de nos listes de diffusion le ${jourFr(r.recue_le)} : stop mail et stop téléphone.`);
+
     // Rien à dire : une ligne de résultat vide (un essai d'avant l'opération)
     // ou une saisie sans contenu. Pas de note vide dans Modelo.
     if (!parts.length) continue;
     // Pas de conversation, mais des informations saisies : le dire en tête,
     // pour que la note ne se lise pas comme un appel abouti.
     if (!dernier && !(c.r_npai === 1 || c.npai === 1)) {
-      const seulementTentatives = tentatives.length && parts.length === (essais.length ? 1 : 0) + sms.length;
-      parts.unshift(seulementTentatives ? 'Non joint.'
+      const seulementTentatives = tentatives.length && avantReponses === (essais.length ? 1 : 0) + sms.length;
+      // Une réponse par mail, sans rien d'autre : pas d'en-tête, la phrase se suffit.
+      if (avantReponses > 0 || tentatives.length) parts.unshift(seulementTentatives ? 'Non joint.'
         : tentatives.length ? 'Non joint. Infos connues de l’agent :' : 'Sans appel. Infos saisies par l’agent :');
     }
 
@@ -138,7 +151,7 @@ function fichesAReporter() {
       commune_avant: c.commune || '', commune_apres: c.adresse_maj ? diff(c.commune, c.commune_maj) : '',
       a_proposer_a_loick: proposer.join(' ; '),
       // Pour le marquage : la date du dernier élément inclus.
-      jusqu_a: [dernier?.horodatage, c.resultat_le, tentatives[tentatives.length - 1]?.horodatage].filter(Boolean).sort().pop(),
+      jusqu_a: [dernier?.horodatage, c.resultat_le, tentatives[tentatives.length - 1]?.horodatage, reponsesMail[reponsesMail.length - 1]?.created_at].filter(Boolean).sort().pop(),
     });
     if (c.recommandation_nom) recommandations.push({
       id_modelo: c.id_modelo, client: `${c.prenom || ''} ${c.nom}`.trim(), agent,

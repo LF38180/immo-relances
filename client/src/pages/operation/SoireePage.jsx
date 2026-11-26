@@ -72,6 +72,7 @@ export default function SoireePage() {
   const [recherche, setRecherche] = useState('')
   const [apercu, setApercu] = useState(null)   // retour de simulation + lignes du fichier
   const [envoi, setEnvoi] = useState(false)
+  const [reponses, setReponses] = useState(null)   // simulation des fichiers de réponses
   const [relance, setRelance] = useState(null)   // simulation des fichiers de relance
   const [erreurs, setErreurs] = useState(null)   // simulation du fichier des mails en erreur
 
@@ -131,10 +132,11 @@ export default function SoireePage() {
   // d'un coup. La ligne d'en-tête est celle qui contient « id_modelo » : un
   // fichier retravaillé peut avoir un titre au-dessus.
   const lireRelance = async (f) => {
-    let grille
+    let grille, feuille = ''
     if (/\.xlsx?$/i.test(f.name)) {
       const XLSX = await import('xlsx')
       const wb = XLSX.read(await f.arrayBuffer(), { type: 'array' })
+      feuille = wb.SheetNames[0] || ''
       grille = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: '', raw: false })
     } else {
       const texte = await f.text(), sep = (texte.split('\n')[0].match(/;/g) || []).length >= (texte.split('\n')[0].match(/,/g) || []).length ? ';' : ','
@@ -143,7 +145,7 @@ export default function SoireePage() {
     const tete = grille.findIndex(l => l.some(c => String(c).trim().toLowerCase() === 'id_modelo'))
     if (tete < 0) throw new Error(`${f.name} : colonne id_modelo introuvable`)
     const cols = grille[tete].map(c => String(c).trim().toLowerCase())
-    return grille.slice(tete + 1).map((l, i) => ({ ...Object.fromEntries(cols.map((c, k) => [c, String(l[k] ?? '').trim()]).filter(([c]) => c)), _fichier: f.name, _ligne: tete + i + 2 }))
+    return grille.slice(tete + 1).map((l, i) => ({ ...Object.fromEntries(cols.map((c, k) => [c, String(l[k] ?? '').trim()]).filter(([c]) => c)), _fichier: f.name, _feuille: feuille, _ligne: tete + i + 2 }))
       .filter(l => l.id_modelo)
   }
   const choisirRelance = async (ev) => {
@@ -172,6 +174,31 @@ export default function SoireePage() {
       const r = await api.post('/operation/soiree/relance', { lignes: relance.lignes, relance_le: relance.date, fichier: relance.fichiers.map(f => f.nom).join(', ') })
       toast.success(`${r.data.acceptees} relance${s(r.data.acceptees)} enregistrée${s(r.data.acceptees)}`)
       setRelance(null); charger()
+    } catch (e) { toast.error(e.messageLisible || 'Enregistrement impossible') } finally { setEnvoi(false) }
+  }
+  // Les réponses reçues par mail : ont dit oui, ont dit non, désinscrits.
+  const choisirReponses = async (ev) => {
+    const fichiers = [...(ev.target.files || [])]; ev.target.value = ''
+    if (!fichiers.length) return
+    setEnvoi(true)
+    try {
+      const parFichier = [], lignes = []
+      for (const f of fichiers) { const l = await lireRelance(f); parFichier.push({ nom: f.name, lignes: l.length }); lignes.push(...l) }
+      if (!lignes.length) return toast.error('Aucune ligne lisible')
+      const date = jourParis()
+      const r = await api.post('/operation/soiree/reponses', { lignes, recue_le: date, simulation: true })
+      setReponses({ ...r.data, lignes, date, fichiers: parFichier })
+    } catch (e) { toast.error(e.messageLisible || e.message || 'Lecture des fichiers impossible') }
+    finally { setEnvoi(false) }
+  }
+  const enregistrerReponses = async () => {
+    const d = reponses.desinscrits.length
+    if (d && !window.confirm(`${d} personne${s(d)} désinscrite${s(d)} : stop mail et stop téléphone, plus aucun appel ni mail, et report dans Modelo.\n\nConfirmer ?`)) return
+    setEnvoi(true)
+    try {
+      const r = await api.post('/operation/soiree/reponses', { lignes: reponses.lignes, recue_le: reponses.date, fichier: reponses.fichiers.map(f => f.nom).join(', ') })
+      toast.success(`${r.data.acceptees} réponse${s(r.data.acceptees)} enregistrée${s(r.data.acceptees)}`)
+      setReponses(null); charger()
     } catch (e) { toast.error(e.messageLisible || 'Enregistrement impossible') } finally { setEnvoi(false) }
   }
   const choisirErreurs = (ev) => {
@@ -355,6 +382,26 @@ export default function SoireePage() {
           {relance && <ApercuRelance a={relance} envoi={envoi} onDate={dateRelance} onAbandonner={() => setRelance(null)} onEnregistrer={enregistrerRelance} />}
         </div>
 
+        {/* 2 quater. Réponses reçues par mail */}
+        <div className="bg-white border border-quai-border rounded-xl p-3" data-reponses>
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-semibold text-quai-navy">Réponses reçues par mail</div>
+              <div className="text-[12px] text-quai-muted leading-snug">
+                Les fichiers « ont dit oui », « ont dit non » et « désinscrits » (Excel ou CSV, plusieurs à la fois). Un désinscrit passe en stop mail et stop téléphone.
+                {c.reponses && (c.reponses.oui + c.reponses.non + c.reponses.desinscrits) > 0 && <> <b className="text-quai-navy">{c.reponses.oui} oui</b> ({c.reponses.personnes_attendues} personne{s(c.reponses.personnes_attendues)} attendue{s(c.reponses.personnes_attendues)} au moins),
+                  {' '}<b className="text-quai-navy">{c.reponses.non} non</b>, <b className="text-quai-navy">{c.reponses.desinscrits} désinscrit{s(c.reponses.desinscrits)}</b>.
+                  {c.reponses.contradictoires > 0 && <span className="text-amber-800"> {c.reponses.contradictoires} réponse{s(c.reponses.contradictoires)} qui se contredi{c.reponses.contradictoires > 1 ? 'sent' : 't'} (oui au téléphone, non par mail) : à regarder dans la liste.</span>}</>}
+              </div>
+            </div>
+            <label className={`text-sm px-4 py-2.5 rounded-lg border border-quai-navy text-quai-navy bg-white inline-flex items-center gap-2 cursor-pointer min-h-[2.75rem] ${envoi ? 'opacity-40 pointer-events-none' : ''}`}>
+              <Icon name="file-up" size="sm" /> Choisir les fichiers de réponses
+              <input type="file" multiple accept=".xlsx,.xls,.csv,text/csv" className="hidden" onChange={choisirReponses} />
+            </label>
+          </div>
+          {reponses && <ApercuReponses a={reponses} envoi={envoi} onAbandonner={() => setReponses(null)} onEnregistrer={enregistrerReponses} />}
+        </div>
+
         {/* 3. Où on en est */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
           <Chiffre n={c.invites.total} label="Personnes invitées"
@@ -438,7 +485,11 @@ export default function SoireePage() {
   )
 }
 
-function detail(l, motifs) {
+const REP = { OUI: (r) => `a confirmé par mail le ${dateFr(r.recue_le)}${r.participants ? ` (${r.participants} pers.)` : ''}`, NON: (r) => `a répondu non par mail le ${dateFr(r.recue_le)}`,
+  DESINSCRIT: (r) => `désinscrit le ${dateFr(r.recue_le)} : stop mail et stop téléphone` }
+const texteReponses = (l) => (l.reponses || []).map(r => ' · ' + REP[r.reponse](r)).join('') + (l.reponses_contradictoires ? ' · RÉPONSES QUI SE CONTREDISENT' : '')
+function detail(l, motifs) { return detailSansReponses(l, motifs) + texteReponses(l) }
+function detailSansReponses(l, motifs) {
   if (l.statut === 'INVITE') {
     const i = l.invitation
     const quand = i.vague === 0
@@ -488,6 +539,46 @@ function Chiffre({ n, label, sous }) {
 }
 
 // Ce que le fichier des erreurs va changer, avant de l'enregistrer.
+function ApercuReponses({ a, envoi, onAbandonner, onEnregistrer }) {
+  return (
+    <div className="mt-3 border-t border-quai-border pt-3 space-y-2" data-apercu-reponses>
+      <div className="text-sm text-quai-navy">
+        {a.fichiers.length} fichier{s(a.fichiers.length)}, {a.lignes.length} ligne{s(a.lignes.length)} : <b>{a.oui} oui</b> ({a.personnes_attendues} personne{s(a.personnes_attendues)} au moins),
+        {' '}<b>{a.non} non</b>, <b>{a.desinscrits.length} désinscrit{s(a.desinscrits.length)}</b>
+        {a.deja_enregistrees > 0 && <>, {a.deja_enregistrees} déjà enregistrée{s(a.deja_enregistrees)}</>}
+        {a.rejetees.length > 0 && <>, <span className="text-red-700">{a.rejetees.length} refusée{s(a.rejetees.length)}</span></>}.
+      </div>
+      <div className="text-[12px] text-quai-muted">{a.fichiers.map(f => `${f.nom} (${f.lignes})`).join(' · ')}</div>
+      {a.desinscrits.length > 0 && (
+        <div className="rounded-lg bg-red-50 border border-red-200 p-2 text-[12px] text-red-800">
+          <b>Désinscrits : stop mail et stop téléphone. Ils sortent de toutes les files, et les deux stops partent dans Modelo.</b>
+          {a.desinscrits.map(x => <div key={x.id_modelo}>{x.prenom} {x.nom} · {x.conseiller || 'non attribuée'}</div>)}
+        </div>
+      )}
+      {a.ecarts.length > 0 && (
+        <div className="rounded-lg bg-amber-50 border border-amber-200 p-2 text-[12px] text-amber-900 max-h-32 overflow-y-auto">
+          <b>Avaient dit oui au téléphone, répondent non par mail (les deux resteront affichés) :</b>
+          {a.ecarts.map(x => <div key={x.id_modelo}>{x.prenom} {x.nom} · {x.conseiller || 'non attribuée'}</div>)}
+        </div>
+      )}
+      {a.rejetees.length > 0 && (
+        <div className="rounded-lg bg-red-50 border border-red-200 p-2 text-[12px] text-red-800 max-h-40 overflow-y-auto">
+          <b>Lignes refusées (rien n’est enregistré pour elles) :</b>
+          {a.rejetees.map((x, i) => <div key={i}>{x.fichier ? `${x.fichier}, ` : ''}ligne {x.ligne} · {x.prenom} {x.nom} · {x.motif}</div>)}
+        </div>
+      )}
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="flex-1" />
+        <button onClick={onAbandonner} className="text-sm px-3 py-2.5 rounded-lg border border-quai-border text-quai-navy min-h-[2.75rem]">Abandonner</button>
+        <button onClick={onEnregistrer} disabled={envoi || !a.acceptees}
+          className="text-sm px-4 py-2.5 rounded-lg bg-quai-gold text-quai-navy font-semibold min-h-[2.75rem] disabled:opacity-40">
+          {a.acceptees ? `Enregistrer ${a.acceptees} réponse${s(a.acceptees)}` : 'Rien à enregistrer'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 function ApercuRelance({ a, envoi, onDate, onAbandonner, onEnregistrer }) {
   return (
     <div className="mt-3 border-t border-quai-border pt-3 space-y-2" data-apercu-relance>

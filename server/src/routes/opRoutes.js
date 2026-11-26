@@ -495,7 +495,7 @@ router.get('/contacts/:id/invitation-soiree', conseillerOuPlus, dansPerimetre, (
 router.get('/contacts/:id/suivi', conseillerOuPlus, dansPerimetre, (req, res) => {
   const appels = db.prepare(`SELECT id, horodatage, conseiller, issue, canal, notes, sms_texte, rappel_le
     FROM op_appels WHERE id_modelo = ? ORDER BY horodatage DESC, id DESC`).all(String(req.params.id));
-  res.json({ invitation: SO.pourFiche(req.params.id), appels });
+  res.json({ invitation: SO.pourFiche(req.params.id), reponses: SO.reponsesPourFiche(req.params.id), appels });
 });
 
 router.get('/contacts/:id', conseillerOuPlus, dansPerimetre, (req, res) => {
@@ -1680,6 +1680,19 @@ router.post('/soiree/relance', accesSoiree, (req, res) => {
   const r = SO.importerRelance({ lignes, relance_le: req.body.relance_le, fichier: String(req.body.fichier || '').slice(0, 200),
     par: moi?.nom_complet, simulation: !!req.body.simulation });
   if (!r.simulation && r.acceptees) journaliser(moi, 'SOIREE_RELANCE', { details: { relance_le: r.relance_le, relancees: r.acceptees, rejetees: r.rejetees.length } });
+  res.json(r);
+});
+
+// Réponses reçues par mail : oui, non, désinscription. Un désinscrit passe en
+// stop mail et stop téléphone, et entre au journal des oppositions.
+router.post('/soiree/reponses', accesSoiree, (req, res) => {
+  const moi = identite(req);
+  const lignes = Array.isArray(req.body?.lignes) ? req.body.lignes : null;
+  if (!lignes || !lignes.length) return res.status(400).json({ error: 'Le fichier est vide' });
+  if (lignes.length > 5000) return res.status(400).json({ error: 'Trop de lignes' });
+  if (!lignes.some(l => l && 'id_modelo' in l)) return res.status(400).json({ error: 'Colonne id_modelo introuvable' });
+  const r = SO.importerReponses({ lignes, recue_le: req.body.recue_le, fichier: String(req.body.fichier || '').slice(0, 200), par: moi?.nom_complet, simulation: !!req.body.simulation });
+  if (!r.simulation && r.acceptees) journaliser(moi, 'SOIREE_REPONSES', { details: { oui: r.oui, non: r.non, desinscrits: r.desinscrits.length, rejetees: r.rejetees.length } });
   res.json(r);
 });
 

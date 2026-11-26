@@ -1107,6 +1107,25 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_op_relances_soiree_fiche ON op_relances_soiree(id_modelo);
 `);
 
+// Soirée : les réponses reçues par mail (26/11/2026) — oui, non, ou
+// désinscription de nos listes de diffusion. Une personne peut avoir répondu
+// non ET s'être désinscrite : une ligne par réponse. Ce que les conseillers
+// ont noté au téléphone reste dans op_resultats, on n'y touche pas.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS op_reponses_soiree (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id_modelo TEXT NOT NULL REFERENCES op_contacts(id_modelo) ON DELETE CASCADE,
+    reponse TEXT NOT NULL CHECK(reponse IN ('OUI','NON','DESINSCRIT')),
+    participants INTEGER, precision TEXT,
+    recue_le TEXT NOT NULL,
+    par TEXT, fichier TEXT,
+    annulee_le TEXT, annulee_par TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (id_modelo, reponse)
+  );
+  CREATE INDEX IF NOT EXISTS idx_op_reponses_soiree_fiche ON op_reponses_soiree(id_modelo);
+`);
+
 // Nouveau projet d'achat saisi à l'appel (26/11/2026) : une recherche qui
 // n'existe pas encore dans Modelo. `creee_appli` = 1, identifiant « N-… » en
 // attendant ; `id_modelo_cree` recevra le numéro rendu par Modelo une fois la
