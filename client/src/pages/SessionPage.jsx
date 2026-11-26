@@ -20,6 +20,39 @@ const ISSUES_LIST = [
   { key: 'autre',       label: 'Autre',                           icon: 'pencil' },
 ]
 
+// Tous les appels et toutes les notes d'un contact, datés, du plus récent au
+// plus ancien. Chargé seulement quand on le demande ; lecture seule.
+const LIB_SUIVI = { tente_sans_reponse: 'sans réponse', contacte: 'contacté', rdv_obtenu: 'rendez-vous obtenu', pas_interesse: 'pas intéressé',
+  rappel_planifie: 'rappel planifié', message_laisse: 'message laissé' }
+function SuiviComplet({ contactId }) {
+  const [liste, setListe] = useState(null), [ouvert, setOuvert] = useState(false), [charge, setCharge] = useState(false)
+  const basculer = () => {
+    if (ouvert) return setOuvert(false)
+    setOuvert(true)
+    if (liste || charge) return
+    setCharge(true)
+    api.get(`/contacts/${contactId}`).then(r => setListe(r.data.relances || [])).catch(() => { toast.error('Suivi impossible à charger'); setOuvert(false) }).finally(() => setCharge(false))
+  }
+  return (
+    <div className="mt-1" data-suivi-complet>
+      <button type="button" onClick={basculer} className="underline text-quai-navy hover:text-quai-gold">{ouvert ? 'Replier le suivi' : 'Voir tout le suivi'}</button>
+      {ouvert && (
+        <div className="mt-1.5 text-left bg-quai-light border border-quai-border rounded-lg p-2 space-y-1.5 max-h-72 overflow-y-auto">
+          {!liste && <div className="animate-pulse">Chargement…</div>}
+          {liste && !liste.length && <div>Aucun appel ni note.</div>}
+          {(liste || []).map(r => (
+            <div key={r.id} className="border-b border-quai-border/60 last:border-0 pb-1.5 last:pb-0">
+              <div className="text-quai-navy"><b>{format(new Date(String(r.created_at).replace(' ', 'T') + 'Z'), 'dd/MM/yyyy')}</b>
+                {' · '}{r.type === 'note' ? 'note' : (LIB_SUIVI[r.statut] || r.statut)}{r.agent_prenom ? ` · ${r.agent_prenom} ${r.agent_nom || ''}` : ''}</div>
+              {r.notes && <div className="whitespace-pre-wrap text-quai-text">{r.notes}</div>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function SessionPage() {
   const [file, setFile] = useState([])
   const [index, setIndex] = useState(0)
@@ -402,6 +435,9 @@ export default function SessionPage() {
                   {contact.derniere_trace_notes && (
                     <div className="mt-0.5 whitespace-pre-wrap text-quai-text">{contact.derniere_trace_notes}</div>
                   )}
+                  {/* Tout le suivi, à la demande (26/11/2026) : la dernière trace
+                      seule cachait les appels et les notes d'avant. */}
+                  <SuiviComplet key={contact.id} contactId={contact.id} />
                 </div>
               )}
             </div>
