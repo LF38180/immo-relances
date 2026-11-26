@@ -489,6 +489,15 @@ router.get('/contacts/:id/invitation-soiree', conseillerOuPlus, dansPerimetre, (
   res.json({ invitation: SO.pourFiche(req.params.id) });
 });
 
+// Le suivi complet d'une fiche, pour l'écran d'appel (26/11/2026) : tous les
+// appels et SMS avec leur date, leur auteur, leur note, et l'invitation à la
+// soirée. Avant, l'écran ne montrait que la dernière note. Lecture seule.
+router.get('/contacts/:id/suivi', conseillerOuPlus, dansPerimetre, (req, res) => {
+  const appels = db.prepare(`SELECT id, horodatage, conseiller, issue, canal, notes, sms_texte, rappel_le
+    FROM op_appels WHERE id_modelo = ? ORDER BY horodatage DESC, id DESC`).all(String(req.params.id));
+  res.json({ invitation: SO.pourFiche(req.params.id), appels });
+});
+
 router.get('/contacts/:id', conseillerOuPlus, dansPerimetre, (req, res) => {
   const moi = identite(req);
   const c = getContact(req.params.id);

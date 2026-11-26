@@ -42,6 +42,10 @@ function bienCourt(c) {
   return (c.bien_concerne || '').replace(/^[A-Z0-9-]+\s+/, '')
 }
 
+// Les résultats d'appel, en clair, pour le suivi en haut de la fiche.
+const LIB_ISSUE_SUIVI = { JOINT: 'joint', REPONDEUR: 'répondeur', PAS_DE_REPONSE: 'pas de réponse', FAUX_NUMERO: 'faux numéro', A_RAPPELER: 'à rappeler',
+  REFUS_FERME: 'refus ferme', ERREUR_IDENTITE: 'erreur d’identité', SUIVI_ANCIEN_CONSEILLER: 'suivi par son ancien conseiller', DECEDE: 'décédé' }
+
 export default function EcranAppel({ contact: c, onEnregistre, onPasser, horsFile, origine, demo, libelleRetour }) {
   const { user } = useAuth()
   // Durée de l'appel, mesurée depuis l'ouverture de la fiche. Le manager s'en
@@ -55,13 +59,22 @@ export default function EcranAppel({ contact: c, onEnregistre, onPasser, horsFil
   const [res, setRes] = useState({})
   const [envoi, setEnvoi] = useState(false)
   // L'invitation à la soirée déjà partie (mail, SMS, téléphone), en lecture seule.
+  // Avec elle, tout le suivi de la fiche : chaque appel et chaque SMS, daté,
+  // avec sa note. Tant qu'il n'est pas chargé, l'ancien encart reste affiché.
   const [invitation, setInvitation] = useState(null)
+  const [suivi, setSuivi] = useState(null)
+  const [suiviEntier, setSuiviEntier] = useState(false)
   useEffect(() => {
     if (demo || !c?.id_modelo) return
     let vivant = true
-    api.get(`/operation/contacts/${c.id_modelo}/invitation-soiree`).then(r => { if (vivant) setInvitation(r.data.invitation) }).catch(() => {})
+    api.get(`/operation/contacts/${c.id_modelo}/suivi`)
+      .then(r => { if (vivant) { setInvitation(r.data.invitation); setSuivi(r.data.appels || []) } }).catch(() => {})
     return () => { vivant = false }
   }, [c?.id_modelo, demo])
+  const texteInvitation = invitation && (invitation.etat === 'ERREUR'
+    ? 'Mail d’invitation revenu en erreur : invitez-la de vive voix, et demandez sa nouvelle adresse e-mail.'
+    : `Invitation ${invitation.canal === 'MAIL' ? 'envoyée par mail' : invitation.canal === 'SMS' ? 'envoyée par SMS' : 'faite par téléphone'} le ${String(invitation.envoye_le || '').slice(0, 10).split('-').reverse().join('/')}`
+      + (invitation.etat === 'BOITE_PLEINE' ? '. Sa boîte était pleine : parlez-en.' : '.'))
   // Une clé par fiche ouverte : si la réponse du serveur se perd et que
   // l'agent réessaie, le serveur reconnaît la clé et ne crée pas de doublon.
   const [cle] = useState(() => (globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`))
@@ -320,7 +333,40 @@ export default function EcranAppel({ contact: c, onEnregistre, onPasser, horsFil
 
             {/* L'historique : « on m'a déjà appelé la semaine dernière » ne doit
                 pas prendre l'agent au dépourvu. */}
-            {c.appels_total > 0 && (
+            {suivi && (suivi.length > 0 || invitation) && (
+              <div className="text-[11px] text-white/80 bg-white/10 rounded px-2 py-1.5 mt-2 leading-snug" data-suivi>
+                <div className="text-[10px] uppercase tracking-wider text-quai-gold font-semibold">
+                  Suivi{suivi.length > 0 && <> · {suivi.length} appel{suivi.length > 1 ? 's' : ''} ou SMS déjà passé{suivi.length > 1 ? 's' : ''}</>}
+                </div>
+                {invitation && (
+                  <div className={`mt-1 flex gap-1.5 ${invitation.etat === 'ENVOYEE' ? 'text-white' : 'text-amber-200 font-semibold'}`} data-suivi-invitation>
+                    <Icon name="mail" size="sm" className="shrink-0 mt-px" /><span>Soirée du 3 décembre : {texteInvitation}</span>
+                  </div>
+                )}
+                {suivi[0]?.issue === 'A_RAPPELER' && suivi[0].rappel_le && (
+                  <div className="mt-1 font-semibold text-amber-200">
+                    Rappel convenu : {new Date(suivi[0].rappel_le).toLocaleString('fr-FR',
+                      { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}
+                  </div>
+                )}
+                {(suiviEntier ? suivi : suivi.slice(0, 3)).map(a => (
+                  <div key={a.id} className="mt-1.5 pt-1.5 border-t border-white/10" data-suivi-appel>
+                    <span className="font-semibold text-white">{new Date(String(a.horodatage).replace(' ', 'T') + 'Z')
+                      .toLocaleString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                    {a.conseiller && <> · {a.conseiller}</>}
+                    {' · '}{a.canal === 'SMS' ? 'SMS envoyé' : LIB_ISSUE_SUIVI[a.issue] || String(a.issue || '').replace(/_/g, ' ').toLowerCase()}
+                    {a.canal === 'SMS' && a.sms_texte && <div className="italic mt-0.5 whitespace-pre-line">SMS : « {a.sms_texte} »</div>}
+                    {a.notes && <div className="italic mt-0.5 whitespace-pre-line">« {a.notes} »</div>}
+                  </div>
+                ))}
+                {suivi.length > 3 && (
+                  <button type="button" onClick={() => setSuiviEntier(v => !v)} className="mt-1.5 underline text-white/80 hover:text-white">
+                    {suiviEntier ? 'Replier' : `Voir les ${suivi.length - 3} précédent${suivi.length - 3 > 1 ? 's' : ''}`}
+                  </button>
+                )}
+              </div>
+            )}
+            {!suivi && c.appels_total > 0 && (
               <div className="text-[11px] text-white/70 bg-white/10 rounded px-2 py-1.5 mt-2 leading-snug">
                 {c.appels_total} appel{c.appels_total > 1 ? 's' : ''} déjà passé{c.appels_total > 1 ? 's' : ''}
                 {c.dernier_appel_le && <> · dernier le {new Date(c.dernier_appel_le.replace(' ', 'T') + 'Z')
@@ -544,10 +590,7 @@ export default function EcranAppel({ contact: c, onEnregistre, onPasser, horsFil
               options={[[1, 'Oui'], [0, 'Non']]} onChange={v => champ('soiree', v)} />
             {invitation && (
               <p className={`text-[13px] -mt-1 ${invitation.etat === 'ENVOYEE' ? 'text-quai-muted' : 'text-amber-800'}`} data-invitation-soiree>
-                {invitation.etat === 'ERREUR'
-                  ? 'Mail d’invitation revenu en erreur : invitez-la de vive voix, et demandez sa nouvelle adresse e-mail.'
-                  : `Invitation ${invitation.canal === 'MAIL' ? 'envoyée par mail' : invitation.canal === 'SMS' ? 'envoyée par SMS' : 'faite par téléphone'} le ${String(invitation.envoye_le || '').slice(0, 10).split('-').reverse().join('/')}`
-                    + (invitation.etat === 'BOITE_PLEINE' ? '. Sa boîte était pleine : parlez-en.' : '.')}
+                {texteInvitation}
               </p>
             )}
             {/* Le panneau se pose chez lui, sur un bien vendu par Le Quai : un
